@@ -1,0 +1,249 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: eggs.gameservers.hatchery.io
+spec:
+  group: gameservers.hatchery.io
+  names:
+    kind: Egg
+    listKind: EggList
+    plural: eggs
+    singular: egg
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.image
+      name: Image
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Egg is the Schema for the eggs API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Egg
+            properties:
+              image:
+                description: Image is the container image used to run the game server
+                  process.
+                type: string
+              install:
+                description: |-
+                  Install describes how to prepare the server files before the first start.
+                  Eggs with pre-baked images (no install step) may omit this.
+                properties:
+                  entrypoint:
+                    description: Entrypoint overrides the image entrypoint for the
+                      install step.
+                    items:
+                      type: string
+                    type: array
+                  image:
+                    description: |-
+                      Image used to run the install script container. Defaults to the Egg's main
+                      Image when empty.
+                    type: string
+                  script:
+                    description: Script is the shell script executed to install or
+                      prepare the server files.
+                    type: string
+                required:
+                - script
+                type: object
+              ports:
+                description: Ports declares the network ports this Egg's process listens
+                  on.
+                items:
+                  description: EggPort declares one network port a server built from
+                    this Egg listens on.
+                  properties:
+                    containerPort:
+                      description: ContainerPort is the port the process listens on
+                        inside the container.
+                      format: int32
+                      type: integer
+                    default:
+                      description: |-
+                        Default marks the primary allocation exposed to players, used when a
+                        GameServer does not pick one explicitly.
+                      type: boolean
+                    name:
+                      description: Name identifies this port, e.g. "game", "query"
+                        or "rcon".
+                      type: string
+                    protocol:
+                      default: TCP
+                      description: Protocol is TCP or UDP.
+                      enum:
+                      - TCP
+                      - UDP
+                      type: string
+                  required:
+                  - containerPort
+                  - name
+                  type: object
+                type: array
+              startCommand:
+                description: |-
+                  StartCommand starts the server process. It may reference variables declared
+                  below using {{VARIABLE_NAME}} placeholders, resolved by the GameServer
+                  controller before the container starts.
+                type: string
+              stopCommand:
+                description: |-
+                  StopCommand, when set, is written to the server process's stdin to request a
+                  graceful shutdown before StopSignal is used.
+                type: string
+              stopSignal:
+                default: SIGTERM
+                description: |-
+                  StopSignal is the OS signal sent to the container when StopCommand is empty
+                  or does not terminate the process within the grace period, e.g. "SIGTERM".
+                type: string
+              variables:
+                description: Variables declares the environment variables this Egg
+                  understands.
+                items:
+                  description: |-
+                    EggVariable declares one environment variable that a server built from this Egg
+                    understands. GameServers may override the value; unset required variables without
+                    a Default are rejected by the GameServer validating webhook.
+                  properties:
+                    default:
+                      description: Default is used when a GameServer does not override
+                        this variable.
+                      type: string
+                    description:
+                      description: Description explains what this variable controls,
+                        shown to end users.
+                      type: string
+                    name:
+                      description: Name is the environment variable name injected
+                        into the server container.
+                      type: string
+                    required:
+                      description: |-
+                        Required marks whether a GameServer must set this variable explicitly when it
+                        has no Default.
+                      type: boolean
+                    userEditable:
+                      description: |-
+                        UserEditable controls whether end users, not just admins, may change this
+                        value on a GameServer.
+                      type: boolean
+                    validationRegex:
+                      description: |-
+                        ValidationRegex, when set, is applied against the resolved value before it is
+                        accepted.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+            required:
+            - image
+            - startCommand
+            type: object
+          status:
+            description: status defines the observed state of Egg
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the Egg resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Standard condition types include:
+                  - "Available": the resource is fully functional
+                  - "Progressing": the resource is being created or updated
+                  - "Degraded": the resource failed to reach or maintain its desired state
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
