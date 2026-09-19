@@ -25,7 +25,9 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-var consoleUpgrader = websocket.Upgrader{}
+var consoleUpgrader = websocket.Upgrader{
+	CheckOrigin: func(_ *http.Request) bool { return true },
+}
 
 // handleConsole attaches to the GameServer's already-running "server"
 // container (pods/attach, not pods/exec — this talks to the process already
