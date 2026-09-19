@@ -1,0 +1,269 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package paneldb
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net/url"
+	"os"
+	"testing"
+	"time"
+)
+
+func newTestStore(t *testing.T) *Store {
+	t.Helper()
+	db := newIsolatedTestDB(t)
+	if err := Migrate(context.Background(), db); err != nil {
+		t.Fatalf("running migrations: %v", err)
+	}
+	return NewStore(db)
+}
+
+func newIsolatedTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	baseDSN := os.Getenv("POSTGRES_TEST_DSN")
+	if baseDSN == "" {
+		t.Skip("POSTGRES_TEST_DSN not set, skipping paneldb integration tests")
+	}
+
+	ctx := context.Background()
+	admin, err := Open(ctx, baseDSN)
+	if err != nil {
+		t.Fatalf("opening admin connection: %v", err)
+	}
+	defer admin.Close()
+
+	dbName := fmt.Sprintf("paneldb_test_%d", time.Now().UnixNano())
+	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+dbName); err != nil {
+		t.Fatalf("creating test database %s: %v", dbName, err)
+	}
+	t.Cleanup(func() {
+		cleanup, err := Open(context.Background(), baseDSN)
+		if err != nil {
+			return
+		}
+		defer cleanup.Close()
+		_, _ = cleanup.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+dbName)
+	})
+
+	u, err := url.Parse(baseDSN)
+	if err != nil {
+		t.Fatalf("POSTGRES_TEST_DSN must be a postgres:// URL: %v", err)
+	}
+	u.Path = "/" + dbName
+
+	db, err := Open(ctx, u.String())
+	if err != nil {
+		t.Fatalf("opening test database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestCreateUserAndVerifyPassword(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, err := s.CreateUser(ctx, "alice", "correct-horse-battery-staple", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ID == 0 {
+		t.Fatal("expected a non-zero id")
+	}
+
+	if _, err := s.CreateUser(ctx, "alice", "whatever", false); err != ErrAlreadyExists {
+		t.Fatalf("expected ErrAlreadyExists, got %v", err)
+	}
+
+	if _, err := s.VerifyPassword(ctx, "alice", "wrong-password"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for wrong password, got %v", err)
+	}
+	if _, err := s.VerifyPassword(ctx, "does-not-exist", "whatever"); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for unknown user, got %v", err)
+	}
+
+	verified, err := s.VerifyPassword(ctx, "alice", "correct-horse-battery-staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.ID != u.ID {
+		t.Fatalf("expected user id %d, got %d", u.ID, verified.ID)
+	}
+}
+
+func TestUpsertUserIsIdempotent(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	first, err := s.UpsertUser(ctx, "admin", "password-one", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.UpsertUser(ctx, "admin", "password-two", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected the same user id across upserts, got %d and %d", first.ID, second.ID)
+	}
+
+	if _, err := s.VerifyPassword(ctx, "admin", "password-one"); err != ErrNotFound {
+		t.Fatal("expected the old password to no longer work")
+	}
+	if _, err := s.VerifyPassword(ctx, "admin", "password-two"); err != nil {
+		t.Fatalf("expected the new password to work: %v", err)
+	}
+}
+
+func TestSessionLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, err := s.CreateUser(ctx, "bob", "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, expiresAt, err := s.CreateSession(ctx, u.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == "" || expiresAt.Before(time.Now()) {
+		t.Fatal("expected a token and a future expiry")
+	}
+
+	got, err := s.ValidateSession(ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != u.ID {
+		t.Fatalf("expected user %d, got %d", u.ID, got.ID)
+	}
+
+	if err := s.RevokeSession(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ValidateSession(ctx, token); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound after revoke, got %v", err)
+	}
+}
+
+func TestSessionExpiry(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, err := s.CreateUser(ctx, "carol", "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, _, err := s.CreateSession(ctx, u.ID, -time.Minute) // already expired
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ValidateSession(ctx, token); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for an expired session, got %v", err)
+	}
+}
+
+func TestGameServerPermissions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, err := s.CreateUser(ctx, "dave", "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := GameServerRef{Namespace: "default", Name: "my-server"}
+	has, err := s.HasGameServerAccess(ctx, u.ID, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected no access before any grant")
+	}
+
+	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil { // repeat grant: no-op
+		t.Fatal(err)
+	}
+
+	has, err = s.HasGameServerAccess(ctx, u.ID, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected access after granting it")
+	}
+
+	refs, err := s.ListGameServerAccess(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0] != ref {
+		t.Fatalf("expected exactly [%v], got %v", ref, refs)
+	}
+
+	if err := s.RevokeGameServerAccess(ctx, u.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	has, err = s.HasGameServerAccess(ctx, u.ID, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected no access after revoking it")
+	}
+}
+
+func TestDeleteUserCascadesSessionsAndPermissions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	u, err := s.CreateUser(ctx, "erin", "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := s.CreateSession(ctx, u.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := GameServerRef{Namespace: "default", Name: "erins-server"}
+	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteUser(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteUser(ctx, u.ID); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound deleting an already-deleted user, got %v", err)
+	}
+
+	if _, err := s.ValidateSession(ctx, token); err != ErrNotFound {
+		t.Fatalf("expected the session to be gone too (cascade), got %v", err)
+	}
+	if _, err := s.GetUser(ctx, u.ID); err != ErrNotFound {
+		t.Fatal("expected the user to be gone")
+	}
+}
