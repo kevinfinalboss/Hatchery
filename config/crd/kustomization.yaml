@@ -1,0 +1,7 @@
+resources:
+- bases/gameservers.hatchery.io_eggs.yaml
+- bases/gameservers.hatchery.io_gameservers.yaml
+- bases/gameservers.hatchery.io_gameserverbackups.yaml
+- bases/gameservers.hatchery.io_gameserverrestores.yaml
+
+patches:
