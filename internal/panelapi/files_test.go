@@ -44,7 +44,7 @@ func doRawRequest(t *testing.T, srv *Server, method, path, token string, body []
 
 func TestFilesListMkdirWriteReadRenameDelete(t *testing.T) {
 	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
-	base := "/api/v1/gameservers/default/" + gs.Name
+	base := orgURL("/gameservers/" + gs.Name)
 
 	rec := doRequest(t, srv, http.MethodPost, base+"/files/mkdir", token, mkdirRequest{Path: "/configs"})
 	if rec.Code != http.StatusCreated {
@@ -95,20 +95,20 @@ func TestFilesListMkdirWriteReadRenameDelete(t *testing.T) {
 	}
 }
 
-func TestFilesRequireGameServerAccess(t *testing.T) {
+func TestFilesRequireOrgMembership(t *testing.T) {
 	gs, secret := newTestGameServerWithSecret("gs-files-scoped", gameserversv1alpha1.GameServerStateRunning)
 	srv := newTestServer(t, gs, secret)
-	withoutGrant := newUserToken(t, srv, "no-grant-user-files", false)
+	outsider := newUserToken(t, srv, "outsider-files", false)
 
-	rec := doRequest(t, srv, http.MethodGet, "/api/v1/gameservers/default/gs-files-scoped/files?path=/", withoutGrant, nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without a grant, got %d: %s", rec.Code, rec.Body.String())
+	rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers/gs-files-scoped/files?path=/"), outsider, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a non-member, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestFilesCopyFileAndDirectory(t *testing.T) {
 	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
-	base := "/api/v1/gameservers/default/" + gs.Name
+	base := orgURL("/gameservers/" + gs.Name)
 
 	doRequest(t, srv, http.MethodPost, base+"/files/mkdir", token, mkdirRequest{Path: "/src"})
 	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/src/a.txt", token, []byte("hi"))
@@ -131,7 +131,7 @@ func TestFilesCopyFileAndDirectory(t *testing.T) {
 
 func TestFilesUploadAndDownload(t *testing.T) {
 	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
-	base := "/api/v1/gameservers/default/" + gs.Name
+	base := orgURL("/gameservers/" + gs.Name)
 
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -174,7 +174,7 @@ func TestFilesUploadAndDownload(t *testing.T) {
 
 func TestFilesCompressAndDecompress(t *testing.T) {
 	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
-	base := "/api/v1/gameservers/default/" + gs.Name
+	base := orgURL("/gameservers/" + gs.Name)
 
 	doRequest(t, srv, http.MethodPost, base+"/files/mkdir", token, mkdirRequest{Path: "/src"})
 	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/src/a.txt", token, []byte("hi"))
