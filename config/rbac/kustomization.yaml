@@ -19,4 +19,6 @@ resources:
 - egg_admin_role.yaml
 - egg_editor_role.yaml
 - egg_viewer_role.yaml
+- panel_tenant_role.yaml
+- panel_cluster_role.yaml
 
