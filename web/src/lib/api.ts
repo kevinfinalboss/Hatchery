@@ -17,6 +17,7 @@ import type {
   SFTPSessionResponse,
   User,
 } from "./types";
+import type { MetricsRange, MetricsResponse } from "./metrics";
 
 const API_BASE = "/api/v1";
 const TOKEN_STORAGE_KEY = "hatchery_token";
@@ -219,12 +220,15 @@ export const api = {
     request<User>("/users", { method: "POST", body: JSON.stringify(body) }),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
 
-  logsPath: (org: string, name: string, tailLines = 200) =>
-    `${API_BASE}${gs(org, name)}/logs?tailLines=${tailLines}&follow=true`,
+  restartGameServer: (org: string, name: string) =>
+    request<GameServer>(`${gs(org, name)}/restart`, { method: "POST" }),
 
-  // The console needs two steps: an authenticated call that mints a
-  // single-use ticket, then the WebSocket URL carrying only that ticket. The
-  // long-lived session token never appears in a URL.
+  getMetrics: (org: string, name: string, range: MetricsRange) =>
+    request<MetricsResponse>(`${gs(org, name)}/metrics?range=${range}`),
+
+  logsPath: (org: string, name: string, tailLines?: number) =>
+    `${API_BASE}${gs(org, name)}/logs?${tailLines ? `tailLines=${tailLines}&` : ""}follow=true`,
+  
   consoleTicket: (org: string, name: string) =>
     request<ConsoleTicketResponse>(`${gs(org, name)}/console-ticket`, { method: "POST" }),
 
