@@ -28,7 +28,7 @@ function joinPath(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
 }
 
-export function FileManager({ namespace, name }: { namespace: string; name: string }) {
+export function FileManager({ org, name }: { org: string; name: string }) {
   const queryClient = useQueryClient();
   const [currentPath, setCurrentPath] = useState("/");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -49,8 +49,8 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ["files", namespace, name, currentPath],
-    queryFn: () => api.listFiles(namespace, name, currentPath),
+    queryKey: ["files", org, name, currentPath],
+    queryFn: () => api.listFiles(org, name, currentPath),
     // A Stopped GameServer's first file-manager request triggers an
     // on-demand maintenance Pod server-side (see resolveSFTPTarget) — retry
     // a few times instead of surfacing a hard error while it comes up.
@@ -59,16 +59,16 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
   });
 
   function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ["files", namespace, name] });
+    void queryClient.invalidateQueries({ queryKey: ["files", org, name] });
   }
 
   const mkdirMutation = useMutation({
-    mutationFn: (dirName: string) => api.mkdir(namespace, name, joinPath(currentPath, dirName)),
+    mutationFn: (dirName: string) => api.mkdir(org, name, joinPath(currentPath, dirName)),
     onSuccess: invalidate,
     onError: reportError,
   });
   const deleteMutation = useMutation({
-    mutationFn: (paths: string[]) => api.deleteFiles(namespace, name, paths),
+    mutationFn: (paths: string[]) => api.deleteFiles(org, name, paths),
     onSuccess: () => {
       setSelected(new Set());
       invalidate();
@@ -76,7 +76,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     onError: reportError,
   });
   const renameMutation = useMutation({
-    mutationFn: ({ from, to }: { from: string; to: string }) => api.renameFile(namespace, name, from, to),
+    mutationFn: ({ from, to }: { from: string; to: string }) => api.renameFile(org, name, from, to),
     onSuccess: () => {
       setSelected(new Set());
       invalidate();
@@ -84,7 +84,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     onError: reportError,
   });
   const copyMutation = useMutation({
-    mutationFn: ({ from, to }: { from: string; to: string }) => api.copyFile(namespace, name, from, to),
+    mutationFn: ({ from, to }: { from: string; to: string }) => api.copyFile(org, name, from, to),
     onSuccess: () => {
       setSelected(new Set());
       invalidate();
@@ -93,7 +93,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
   });
   const compressMutation = useMutation({
     mutationFn: ({ paths, dest }: { paths: string[]; dest: string }) =>
-      api.compressFiles(namespace, name, paths, dest),
+      api.compressFiles(org, name, paths, dest),
     onSuccess: () => {
       setSelected(new Set());
       invalidate();
@@ -101,7 +101,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     onError: reportError,
   });
   const decompressMutation = useMutation({
-    mutationFn: ({ path, dest }: { path: string; dest: string }) => api.decompressFile(namespace, name, path, dest),
+    mutationFn: ({ path, dest }: { path: string; dest: string }) => api.decompressFile(org, name, path, dest),
     onSuccess: () => {
       setSelected(new Set());
       invalidate();
@@ -109,13 +109,13 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     onError: reportError,
   });
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => api.uploadFile(namespace, name, currentPath, file),
+    mutationFn: (file: File) => api.uploadFile(org, name, currentPath, file),
     onSuccess: invalidate,
     onError: reportError,
   });
   const saveMutation = useMutation({
     mutationFn: ({ path, content }: { path: string; content: string }) =>
-      api.putFileContent(namespace, name, path, content),
+      api.putFileContent(org, name, path, content),
     onSuccess: () => {
       setEditingPath(null);
       invalidate();
@@ -150,10 +150,10 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     }
     try {
       if (!isEditable(entry)) {
-        await api.downloadFiles(namespace, name, [fullPath]);
+        await api.downloadFiles(org, name, [fullPath]);
         return;
       }
-      const content = await api.getFileContent(namespace, name, fullPath);
+      const content = await api.getFileContent(org, name, fullPath);
       setEditingContent(content);
       setEditingPath(fullPath);
     } catch (err) {
@@ -248,7 +248,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
           <>
             <Button
               variant="secondary"
-              onClick={() => void api.downloadFiles(namespace, name, selectedList).catch(reportError)}
+              onClick={() => void api.downloadFiles(org, name, selectedList).catch(reportError)}
             >
               Baixar ({selectedList.length})
             </Button>
