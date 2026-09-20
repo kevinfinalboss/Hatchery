@@ -27,6 +27,11 @@ import (
 // the object is actually removed from etcd.
 const GameServerFinalizer = "gameservers.hatchery.io/finalizer"
 
+// RestartAnnotation asks the controller to restart a running GameServer. Whoever
+// wants a restart (the Panel API, or a human via kubectl) sets it to any value
+// that differs from the previous one — a timestamp by convention.
+const RestartAnnotation = "gameservers.hatchery.io/restart-at"
+
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
 // owns the object (the Panel API, or a human via kubectl).
 // +kubebuilder:validation:Enum=Running;Stopped
