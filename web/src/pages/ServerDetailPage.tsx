@@ -3,24 +3,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { api } from "../lib/api";
 import { atLeast, roleOf, useOrg } from "../lib/org";
-import { useSetServerState } from "../lib/serverActions";
+import { useRestartServer, useSetServerState } from "../lib/serverActions";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { ServerConsole } from "../components/console/ServerConsole";
 import { FileManager } from "../components/files/FileManager";
+import { ServerMetrics } from "../components/server/ServerMetrics";
 import { ServerSettings } from "../components/server/ServerSettings";
 
-type Section = "console" | "files" | "settings";
+type Section = "console" | "metrics" | "files" | "settings";
 
-const SECTIONS: { id: Section; label: "server.sectionConsole" | "server.sectionFiles" | "server.sectionSettings" }[] = [
+const SECTIONS: {
+  id: Section;
+  label: "server.sectionConsole" | "server.sectionMetrics" | "server.sectionFiles" | "server.sectionSettings";
+}[] = [
   { id: "console", label: "server.sectionConsole" },
+  { id: "metrics", label: "server.sectionMetrics" },
   { id: "files", label: "server.sectionFiles" },
   { id: "settings", label: "server.sectionSettings" },
 ];
 
 function sectionOf(raw: string | null): Section {
-  return raw === "files" || raw === "settings" ? raw : "console";
+  return raw === "metrics" || raw === "files" || raw === "settings" ? raw : "console";
 }
 
 export function ServerDetailPage() {
@@ -33,6 +38,7 @@ export function ServerDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setState = useSetServerState();
+  const restart = useRestartServer();
 
   const { data: server, isLoading } = useQuery({
     queryKey: ["gameserver", org, name],
@@ -67,13 +73,26 @@ export function ServerDetailPage() {
             {server.spec.eggRef.name} · {org} · {server.spec.storage.size}
           </div>
         </div>
-        <Button
-          variant={desiredRunning ? "secondary" : "primary"}
-          disabled={setState.isPending}
-          onClick={() => setState.mutate({ org, name, state: desiredRunning ? "Stopped" : "Running" })}
-        >
-          {desiredRunning ? t("server.stop") : t("server.start")}
-        </Button>
+        <div className="flex gap-2">
+          {desiredRunning && (
+            <Button
+              variant="secondary"
+              disabled={restart.isPending}
+              onClick={() => {
+                if (confirm(t("server.restartConfirm", { name }))) restart.mutate({ org, name });
+              }}
+            >
+              {t("server.restart")}
+            </Button>
+          )}
+          <Button
+            variant={desiredRunning ? "secondary" : "primary"}
+            disabled={setState.isPending}
+            onClick={() => setState.mutate({ org, name, state: desiredRunning ? "Stopped" : "Running" })}
+          >
+            {desiredRunning ? t("server.stop") : t("server.start")}
+          </Button>
+        </div>
       </div>
 
       <div className="flex min-h-0 grow flex-col gap-4 md:flex-row md:gap-6">
@@ -98,6 +117,8 @@ export function ServerDetailPage() {
         <div className="min-h-0 min-w-0 grow">
           {section === "console" ? (
             <ServerConsole org={org} name={name} running={podRunning} />
+          ) : section === "metrics" ? (
+            <ServerMetrics org={org} name={name} server={server} running={podRunning} />
           ) : section === "files" ? (
             <FileManager org={org} name={name} />
           ) : (
