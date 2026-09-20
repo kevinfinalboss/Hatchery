@@ -414,6 +414,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 		initContainers = append(initContainers, corev1.Container{
 			Name:         "install",
 			Image:        image,
+			WorkingDir:   dataMountPath,
 			Command:      installCommand(egg.Spec.Install),
 			Env:          env,
 			VolumeMounts: mounts,
@@ -444,6 +445,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				// delivered to PID 1. Without "exec" both would silently hit
 				// the shell instead of the game server.
 				Command:      []string{"/bin/sh", "-c", "exec " + renderStartCommand(egg.Spec.StartCommand, vars)},
+				WorkingDir:   dataMountPath,
 				Env:          env,
 				Ports:        containerPorts,
 				Resources:    gs.Spec.Resources,
