@@ -5,6 +5,7 @@ metadata:
     app.kubernetes.io/name: hatchery
     app.kubernetes.io/managed-by: kustomize
   name: minecraft-paper
+  namespace: hatchery-catalog
 spec:
   image: ghcr.io/ptero-eggs/yolks:java_25
   startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}"
