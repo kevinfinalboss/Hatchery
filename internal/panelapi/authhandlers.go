@@ -18,9 +18,13 @@ package panelapi
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
@@ -50,21 +54,53 @@ func toUserResponse(u *paneldb.User) userResponse {
 	return userResponse{ID: u.ID, Username: u.Username, IsAdmin: u.IsAdmin}
 }
 
+var authLog = logf.Log.WithName("panelapi-auth")
+
+// maxLoggedUsername caps how much of an attacker-controlled username is
+// stored in audit events and logs.
+const maxLoggedUsername = 128
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
+	ip := clientIP(r, s.TrustedProxies)
+	loggedName := truncate(req.Username, maxLoggedUsername)
+
+	// The limiter is asked BEFORE the password is checked: a blocked client
+	// must not be able to learn whether a guess was right. A limiter error
+	// fails open — a Redis outage should not lock everyone out of the panel —
+	// and is logged so the gap in protection is visible.
+	blocked, retryAfter, err := s.LoginLimiter.Blocked(r.Context(), req.Username, ip)
+	if err != nil {
+		authLog.Error(err, "login rate limiter unavailable, failing open")
+	} else if blocked {
+		s.auditEvent(r, "", "login.blocked", "user", loggedName, "denied", nil)
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+		writeError(w, http.StatusTooManyRequests, "too many failed login attempts, try again later")
+		return
+	}
 
 	user, err := s.DB.VerifyPassword(r.Context(), req.Username, req.Password)
 	if err != nil {
-		// paneldb.VerifyPassword already collapses "no such user" and "wrong
-		// password" into the same ErrNotFound — mirror that here rather than
-		// distinguishing "not found" from "forbidden", so a 4xx-status
-		// difference can't leak which one it was either.
+		if rerr := s.LoginLimiter.RecordFailure(r.Context(), req.Username, ip); rerr != nil {
+			authLog.Error(rerr, "could not record failed login")
+		}
+		s.auditEvent(r, "", "login.failure", "user", loggedName, "denied", nil)
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
+	}
+	if rerr := s.LoginLimiter.RecordSuccess(r.Context(), req.Username, ip); rerr != nil {
+		authLog.Error(rerr, "could not reset failed-login counter")
 	}
 
 	token, expiresAt, err := s.DB.CreateSession(r.Context(), user.ID, sessionTTL)
@@ -72,7 +108,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
+	s.auditEventAs(r, user, "", "login.success", "user", user.Username, "success", nil)
 	writeJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: expiresAt, User: toUserResponse(user)})
 }
 
