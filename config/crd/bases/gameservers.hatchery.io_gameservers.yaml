@@ -58,7 +58,16 @@ spec:
                   install steps. Immutable after creation.
                 properties:
                   name:
-                    description: Name of the Egg resource in the same namespace.
+                    description: Name of the Egg resource.
+                    type: string
+                  scope:
+                    default: Namespace
+                    description: |-
+                      Scope says where Name is looked up: the GameServer's own namespace
+                      (a private Egg, the default) or the global catalog.
+                    enum:
+                    - Namespace
+                    - Catalog
                     type: string
                 required:
                 - name
