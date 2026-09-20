@@ -8,6 +8,7 @@ metadata:
 spec:
   eggRef:
     name: minecraft-vanilla
+    scope: Catalog
   state: Running
   storage:
     size: 5Gi
