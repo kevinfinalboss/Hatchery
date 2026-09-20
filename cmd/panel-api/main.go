@@ -34,6 +34,7 @@ import (
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/panelapi"
+	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -44,6 +45,7 @@ func main() {
 	var adminSecretNamespace string
 	var adminSecretName string
 	var allowedOrigins string
+	var redisURL, trustedProxies string
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -56,6 +58,12 @@ func main() {
 	flag.StringVar(&allowedOrigins, "allowed-origins", os.Getenv("PANEL_ALLOWED_ORIGINS"),
 		"Comma-separated allowlist of Origins accepted by the console WebSocket (e.g. https://panel.example.com). "+
 			"Empty accepts any Origin, matching pre-allowlist behavior. Defaults to $PANEL_ALLOWED_ORIGINS.")
+	flag.StringVar(&redisURL, "redis-url", os.Getenv("PANEL_REDIS_URL"),
+		"Redis URL (redis:// or rediss:// for TLS, password in the URL) for console tickets and the login rate limiter. "+
+			"Required. Redis 6.2 or newer (GETDEL). Defaults to $PANEL_REDIS_URL.")
+	flag.StringVar(&trustedProxies, "trusted-proxies", os.Getenv("PANEL_TRUSTED_PROXIES"),
+		"Comma-separated CIDRs of reverse proxies whose X-Forwarded-For header is trusted when working out the client IP "+
+			"(rate limiting, audit). Empty trusts no proxy. Defaults to $PANEL_TRUSTED_PROXIES.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -65,6 +73,16 @@ func main() {
 
 	if postgresDSN == "" {
 		log.Error(nil, "--postgres-dsn (or $POSTGRES_DSN) is required")
+		os.Exit(1)
+	}
+
+	if redisURL == "" {
+		log.Error(nil, "--redis-url (or $PANEL_REDIS_URL) is required")
+		os.Exit(1)
+	}
+	proxyNets, err := panelapi.ParseCIDRs(trustedProxies)
+	if err != nil {
+		log.Error(err, "invalid --trusted-proxies")
 		os.Exit(1)
 	}
 
@@ -80,6 +98,13 @@ func main() {
 		os.Exit(1)
 	}
 	db := paneldb.NewStore(sqlDB)
+
+	rdb, err := panelcache.OpenRedis(ctx, redisURL)
+	if err != nil {
+		log.Error(err, "failed to connect to redis")
+		os.Exit(1)
+	}
+	defer rdb.Close()
 
 	// ctrl.GetConfig follows the same resolution order the operator binary
 	// already relies on: in-cluster config when running as a Pod, otherwise
@@ -123,6 +148,10 @@ func main() {
 	}
 
 	srv := panelapi.NewServer(c, clientset, cfg, db, sftpAgentImage, originAllowlist)
+
+	srv.Tickets = panelcache.NewRedisTicketStore(rdb)
+	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
+	srv.TrustedProxies = proxyNets
 
 	log.Info("starting panel-api", "bindAddress", bindAddr)
 	if err := http.ListenAndServe(bindAddr, srv.Routes()); err != nil {
