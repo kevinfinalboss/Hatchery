@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getAuthToken } from "../../lib/api";
+import { api, getAuthToken } from "../../lib/api";
 
 function colorFor(line: string): string {
   if (/error|fatal/i.test(line)) return "text-status-failed";
@@ -7,7 +7,7 @@ function colorFor(line: string): string {
   return "text-text-secondary";
 }
 
-export function ServerLogs({ namespace, name }: { namespace: string; name: string }) {
+export function ServerLogs({ org, name }: { org: string; name: string }) {
   const [lines, setLines] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -17,7 +17,7 @@ export function ServerLogs({ namespace, name }: { namespace: string; name: strin
 
     async function stream() {
       const token = getAuthToken();
-      const res = await fetch(`/api/v1/gameservers/${namespace}/${name}/logs?follow=true&tailLines=200`, {
+      const res = await fetch(api.logsPath(org, name), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal,
       });
@@ -40,7 +40,7 @@ export function ServerLogs({ namespace, name }: { namespace: string; name: strin
     stream().catch(() => {
     });
     return () => controller.abort();
-  }, [namespace, name]);
+  }, [org, name]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
