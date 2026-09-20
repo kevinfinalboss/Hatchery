@@ -14,7 +14,12 @@ function CreateServerForm({ onClose }: { onClose: () => void }) {
   const [namespace, setNamespace] = useState("default");
   const [eggName, setEggName] = useState("");
   const [size, setSize] = useState("2Gi");
+  const [eulaAccepted, setEulaAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const eggOptions = eggs?.items ?? [];
+  const selectedEgg = eggOptions.find((egg) => egg.metadata.name === eggName);
+  const needsEula = selectedEgg?.spec.variables?.some((v) => v.name === "EULA") ?? false;
 
   const create = useMutation({
     mutationFn: () =>
@@ -25,6 +30,7 @@ function CreateServerForm({ onClose }: { onClose: () => void }) {
           eggRef: { name: eggName },
           state: "Running",
           storage: { size },
+          ...(needsEula ? { variables: [{ name: "EULA", value: "TRUE" }] } : {}),
         },
       }),
     onSuccess: () => {
@@ -33,8 +39,6 @@ function CreateServerForm({ onClose }: { onClose: () => void }) {
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Falha ao criar servidor"),
   });
-
-  const eggOptions = eggs?.items ?? [];
 
   return (
     <Card className="flex flex-col gap-4 p-5">
@@ -62,7 +66,10 @@ function CreateServerForm({ onClose }: { onClose: () => void }) {
           <select
             id="new-egg"
             value={eggName}
-            onChange={(e) => setEggName(e.target.value)}
+            onChange={(e) => {
+              setEggName(e.target.value);
+              setEulaAccepted(false);
+            }}
             required
             className="rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
           >
@@ -79,8 +86,32 @@ function CreateServerForm({ onClose }: { onClose: () => void }) {
         <Field label="Storage" htmlFor="new-size">
           <Input id="new-size" value={size} onChange={(e) => setSize(e.target.value)} required />
         </Field>
+
+        {needsEula && (
+          <label className="flex w-full items-start gap-2 rounded-lg border border-border-strong bg-surface p-3 font-sans text-sm text-text-secondary">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={eulaAccepted}
+              onChange={(e) => setEulaAccepted(e.target.checked)}
+            />
+            <span>
+              Li e aceito a{" "}
+              <a
+                href="https://aka.ms/MinecraftEULA"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                EULA da Mojang
+              </a>
+              . Sem isso o servidor de Minecraft não inicia (fica em crash loop).
+            </span>
+          </label>
+        )}
+
         <div className="flex gap-2">
-          <Button type="submit" disabled={create.isPending}>
+          <Button type="submit" disabled={create.isPending || (needsEula && !eulaAccepted)}>
             {create.isPending ? "Criando…" : "Criar"}
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>
