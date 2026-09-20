@@ -103,3 +103,26 @@ func TestFilesRequireGameServerAccess(t *testing.T) {
 		t.Fatalf("expected 403 without a grant, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestFilesCopyFileAndDirectory(t *testing.T) {
+	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
+	base := "/api/v1/gameservers/default/" + gs.Name
+
+	doRequest(t, srv, http.MethodPost, base+"/files/mkdir", token, mkdirRequest{Path: "/src"})
+	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/src/a.txt", token, []byte("hi"))
+
+	rec := doRequest(t, srv, http.MethodPost, base+"/files/copy", token, copyRequest{From: "/src", To: "/dst"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("copy dir: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/content?path=/dst/a.txt", token, nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "hi" {
+		t.Fatalf("copied file: expected 200/hi, got %d/%s", rec.Code, rec.Body.String())
+	}
+	// original must still exist — this is a copy, not a move.
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/content?path=/src/a.txt", token, nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "hi" {
+		t.Fatalf("original file: expected 200/hi, got %d/%s", rec.Code, rec.Body.String())
+	}
+}

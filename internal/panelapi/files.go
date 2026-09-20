@@ -22,7 +22,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"sort"
+	"strings"
 	"time"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
@@ -275,4 +277,83 @@ func (s *Server) handleDeleteFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type copyRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func (s *Server) handleCopyFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+	gs, ok := s.targetGameServer(w, r)
+	if !ok {
+		return
+	}
+	var req copyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.From == "" || req.To == "" {
+		writeError(w, http.StatusBadRequest, "from and to are required")
+		return
+	}
+	conn, err := s.openFileSFTPClient(r.Context(), gs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	info, err := conn.Stat(req.From)
+	if err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+	if !info.IsDir() {
+		if err := copyOneFile(conn, req.From, req.To); err != nil {
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		return
+	}
+
+	walker := conn.Walk(req.From)
+	for walker.Step() {
+		if err := walker.Err(); err != nil {
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+		rel := strings.TrimPrefix(walker.Path(), req.From)
+		dest := path.Join(req.To, rel)
+		if walker.Stat().IsDir() {
+			if err := conn.MkdirAll(dest); err != nil {
+				writeError(w, statusForSFTP(err), err.Error())
+				return
+			}
+			continue
+		}
+		if err := copyOneFile(conn, walker.Path(), dest); err != nil {
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+// copyOneFile streams src's content into dest over the same SFTP connection
+// — the protocol has no native "copy" verb, so this is a plain read+write.
+func copyOneFile(conn *sftpConn, src, dest string) error {
+	srcFile, err := conn.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	destFile, err := conn.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+	_, err = io.Copy(destFile, srcFile)
+	return err
 }
