@@ -18,6 +18,7 @@ package panelapi
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
@@ -25,8 +26,18 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-var consoleUpgrader = websocket.Upgrader{
-	CheckOrigin: func(_ *http.Request) bool { return true },
+func (s *Server) checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Non-browser clients (server-to-server, CLI tools) never send an
+		// Origin header at all; only a browser does, and only a browser
+		// needs this check.
+		return true
+	}
+	if len(s.AllowedOrigins) == 0 {
+		return true
+	}
+	return slices.Contains(s.AllowedOrigins, origin)
 }
 
 // handleConsole attaches to the GameServer's already-running "server"
@@ -44,7 +55,8 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	namespace := r.PathValue("namespace")
 	name := r.PathValue("name")
 
-	conn, err := consoleUpgrader.Upgrade(w, r, nil)
+	upgrader := websocket.Upgrader{CheckOrigin: s.checkOrigin}
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
