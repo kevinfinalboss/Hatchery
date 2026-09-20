@@ -37,23 +37,6 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return s.authenticate(next, headerToken)
 }
 
-// requireAuthWS is requireAuth for the one route that can't use it: a
-// browser's native WebSocket constructor cannot set an Authorization header
-// on the upgrade request, so the console route also accepts the session
-// token as a "token" query parameter. Every other route stays header-only —
-// query strings end up in server access logs and browser history, which is
-// fine for a value that's already meant to be sent over the wire on every
-// request, but not worth widening beyond the one route that has no other
-// option.
-func (s *Server) requireAuthWS(next http.Handler) http.Handler {
-	return s.authenticate(next, func(r *http.Request) string {
-		if t := headerToken(r); t != "" {
-			return t
-		}
-		return r.URL.Query().Get("token")
-	})
-}
-
 func headerToken(r *http.Request) string {
 	parts := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
 	if len(parts) != 2 || parts[0] != "Bearer" {
@@ -84,8 +67,8 @@ func (s *Server) authenticate(next http.Handler, extractToken func(*http.Request
 }
 
 // requireAdmin is requireAuth plus an is_admin check, for routes that
-// provision infrastructure or manage other users rather than operate on a
-// GameServer a permission grant could scope.
+// provision infrastructure or manage other users rather than operate inside
+// one organization.
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !userFromContext(r.Context()).IsAdmin {
@@ -101,25 +84,13 @@ func userFromContext(ctx context.Context) *paneldb.User {
 	return u
 }
 
-// requireGameServerAccess reports whether the request's authenticated user
-// may act on the GameServer named by the request's {namespace}/{name} path
-// values: true for an admin, or for a user with an explicit grant. It writes
-// the 403 response itself on denial, so callers just need to return when it
-// reports false.
+// requireGameServerAccess is now a safety net rather than the authorization
+// check: authorization happened in requireOrgRole, which every org-scoped
+// route goes through before reaching a handler. It only asserts that ran, so a
+// route registered without it fails closed instead of silently open.
 func (s *Server) requireGameServerAccess(w http.ResponseWriter, r *http.Request) bool {
-	user := userFromContext(r.Context())
-	if user.IsAdmin {
-		return true
-	}
-
-	ref := paneldb.GameServerRef{Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
-	has, err := s.DB.HasGameServerAccess(r.Context(), user.ID, ref)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return false
-	}
-	if !has {
-		writeError(w, http.StatusForbidden, "you do not have access to this gameserver")
+	if orgAccessFromContext(r.Context()) == nil {
+		writeError(w, http.StatusInternalServerError, "route is not org-scoped")
 		return false
 	}
 	return true
