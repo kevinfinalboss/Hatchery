@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-
-	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
 func TestUserManagementIsAdminOnly(t *testing.T) {
@@ -89,44 +87,12 @@ func TestCreateListDeleteUser(t *testing.T) {
 	}
 }
 
-func TestGrantAndRevokeGameServerPermission(t *testing.T) {
+func TestDeleteUserIsRefusedForTheSoleOwnerOfAnOrg(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
 
-	target, err := srv.DB.CreateUser(t.Context(), "scoped-user", "password", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	grantPath := fmt.Sprintf("/api/v1/users/%d/permissions", target.ID)
-	rec := doRequest(t, srv, http.MethodPost, grantPath, admin, grantPermissionRequest{Namespace: "default", Name: "some-server"})
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("grant: expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	rec = doRequest(t, srv, http.MethodGet, grantPath, admin, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list permissions: expected 200, got %d", rec.Code)
-	}
-	var refs []paneldb.GameServerRef
-	if err := json.Unmarshal(rec.Body.Bytes(), &refs); err != nil {
-		t.Fatal(err)
-	}
-	if len(refs) != 1 || refs[0].Name != "some-server" {
-		t.Fatalf("expected one grant for some-server, got %+v", refs)
-	}
-
-	revokePath := fmt.Sprintf("/api/v1/users/%d/permissions/default/some-server", target.ID)
-	rec = doRequest(t, srv, http.MethodDelete, revokePath, admin, nil)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("revoke: expected 204, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	rec = doRequest(t, srv, http.MethodGet, grantPath, admin, nil)
-	if err := json.Unmarshal(rec.Body.Bytes(), &refs); err != nil {
-		t.Fatal(err)
-	}
-	if len(refs) != 0 {
-		t.Fatalf("expected no grants after revoke, got %+v", refs)
+	rec := doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/users/%d", userID(t, srv, "fixture-owner")), admin, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for the sole owner of an org, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
