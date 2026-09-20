@@ -187,7 +187,7 @@ var _ = Describe("Tenant Controller", func() {
 		for _, p := range list.Items {
 			names = append(names, p.Name)
 		}
-		Expect(names).To(ConsistOf("default-deny", "allow-dns-egress", "allow-internet-egress", "allow-panel-sftp"))
+		Expect(names).To(ConsistOf("default-deny", "allow-dns-egress", "allow-internet-egress", "allow-same-namespace", "allow-panel-sftp"))
 
 		Expect(k8sClient.Delete(ctx, &networkingv1.NetworkPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "default-deny", Namespace: "hatchery-ns-netpol"},
