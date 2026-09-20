@@ -1,30 +1,104 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Space Grotesk", sans-serif;
-  --font-sans: "IBM Plex Sans", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-prose: "IBM Plex Sans", system-ui, sans-serif;
 
-  --color-canvas: #0a1428;
-  --color-sidebar: #08111f;
-  --color-surface: #111d38;
-  --color-surface-hover: #172746;
-  --color-border: #1e2c4d;
-  --color-border-strong: #29406e;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+}
 
-  --color-primary: #3f80ec;
-  --color-primary-hover: #5c93ef;
-  --color-primary-active: #2e66c4;
-  --color-deep: #0b2e6e;
+@theme inline {
+  --color-canvas: var(--c-canvas);
+  --color-sidebar: var(--c-sidebar);
+  --color-surface: var(--c-surface);
+  --color-surface-hover: var(--c-surface-hover);
+  --color-border: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
 
-  --color-text-primary: #f3f6fc;
-  --color-text-secondary: #9fadc9;
-  --color-text-tertiary: #63719a;
+  --color-primary: var(--c-primary);
+  --color-primary-hover: var(--c-primary-hover);
+  --color-primary-active: var(--c-primary-active);
+  --color-deep: var(--c-deep);
+  --color-on-primary: var(--c-on-primary);
+  --color-primary-text: var(--c-primary-text);
 
-  --color-status-running: #34d399;
-  --color-status-installing: #f5a94e;
-  --color-status-stopped: #6b7a99;
-  --color-status-failed: #f0575f;
+  --color-text-primary: var(--c-text-primary);
+  --color-text-secondary: var(--c-text-secondary);
+  --color-text-tertiary: var(--c-text-tertiary);
+
+  --color-status-running: var(--c-status-running);
+  --color-status-installing: var(--c-status-installing);
+  --color-status-stopped: var(--c-status-stopped);
+  --color-status-failed: var(--c-status-failed);
+
+  --color-chart-cpu: var(--c-chart-cpu);
+  --color-chart-mem: var(--c-chart-mem);
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-canvas: #09090b;
+  --c-sidebar: #0c0c0f;
+  --c-surface: #111113;
+  --c-surface-hover: #18181b;
+  --c-border: #27272a;
+  --c-border-strong: #3f3f46;
+
+  --c-primary: #a3e635;
+  --c-primary-hover: #bef264;
+  --c-primary-active: #84cc16;
+  --c-deep: #1a2e05;
+  --c-on-primary: #09090b;
+  --c-primary-text: #a3e635;
+
+  --c-text-primary: #e4e4e7;
+  --c-text-secondary: #a1a1aa;
+  --c-text-tertiary: #71717a;
+
+  --c-status-running: #10b981;
+  --c-status-installing: #f59e0b;
+  --c-status-stopped: #71717a;
+  --c-status-failed: #ef4444;
+
+  --c-chart-cpu: #65a30d;
+  --c-chart-mem: #8b5cf6;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --c-canvas: #fafafa;
+  --c-sidebar: #f4f4f5;
+  --c-surface: #ffffff;
+  --c-surface-hover: #f4f4f5;
+  --c-border: #e4e4e7;
+  --c-border-strong: #d4d4d8;
+
+  --c-primary: #a3e635;
+  --c-primary-hover: #84cc16;
+  --c-primary-active: #65a30d;
+  --c-deep: #ecfccb;
+  --c-on-primary: #09090b;
+  --c-primary-text: #4d7c0f;
+
+  --c-text-primary: #18181b;
+  --c-text-secondary: #52525b;
+  --c-text-tertiary: #71717a;
+
+  --c-status-running: #047857;
+  --c-status-installing: #b45309;
+  --c-status-stopped: #52525b;
+  --c-status-failed: #b91c1c;
+
+  --c-chart-cpu: #4d7c0f;
+  --c-chart-mem: #7c3aed;
 }
 
 @layer base {
