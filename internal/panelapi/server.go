@@ -113,6 +113,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET "+gs, orgRoute(paneldb.RoleMember, "", s.handleGetGameServer))
 	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
 	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
+	mux.Handle("POST "+gs+"/restart", orgRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
 	mux.Handle("GET "+gs+"/logs", orgRoute(paneldb.RoleMember, "", s.handleLogs))
 	mux.Handle("POST "+gs+"/sftp-session", orgRoute(paneldb.RoleMember, "gameserver.sftp-session", s.handleSFTPSession))
 
