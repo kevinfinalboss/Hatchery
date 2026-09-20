@@ -17,12 +17,15 @@ limitations under the License.
 package panelapi
 
 import (
+	"context"
+	"net"
 	"net/http"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -32,25 +35,27 @@ type Server struct {
 	RESTConfig *rest.Config
 	DB         *paneldb.Store
 
-	// SFTPAgentImage is the container image used for the on-demand
-	// maintenance Pod created when a Stopped GameServer needs an SFTP
-	// session — the sidecar case reuses whatever image the
-	// GameServerController already put in the Pod.
 	SFTPAgentImage string
 
 	AllowedOrigins []string
 
-	// resolveSFTPAddr overrides the host:port dialed for a GameServer's
-	// sftp-agent (see sftpAddr in filesftp.go). nil in production, where the
-	// real in-cluster Service DNS name is used; tests set it to point at an
-	// in-process test sftp-agent instead of a real cluster.
+	// Tickets stores single-use console tickets; LoginLimiter throttles failed
+	// logins. Both are backed by Redis in production (cmd/panel-api) and by
+	// in-memory fakes in tests. Neither may be nil.
+	Tickets      panelcache.TicketStore
+	LoginLimiter panelcache.LoginLimiter
+
+	// TrustedProxies are the peers whose X-Forwarded-For header is believed
+	// when working out the client IP (see clientIP in clientip.go).
+	TrustedProxies []*net.IPNet
+
+	// recordAuditFn overrides how audit events are stored. nil in production
+	// (the events go to Postgres); tests set it to simulate a failing store.
+	recordAuditFn func(context.Context, paneldb.AuditEvent) error
+
 	resolveSFTPAddr func(namespace, name string) string
 }
 
-// NewServer builds a Server. cfg and clientset are kept alongside client
-// because the console handler needs the raw REST config to build its own SPDY
-// executor, and Clientset because controller-runtime's client doesn't expose
-// the log/attach subresources.
 func NewServer(c client.Client, clientset kubernetes.Interface, cfg *rest.Config, db *paneldb.Store, sftpAgentImage string, allowedOrigins []string) *Server {
 	return &Server{Client: c, Clientset: clientset, RESTConfig: cfg, DB: db, SFTPAgentImage: sftpAgentImage, AllowedOrigins: allowedOrigins}
 }
@@ -70,35 +75,64 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v1/users", s.requireAdmin(http.HandlerFunc(s.handleListUsers)))
 	mux.Handle("POST /api/v1/users", s.requireAdmin(http.HandlerFunc(s.handleCreateUser)))
 	mux.Handle("DELETE /api/v1/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleDeleteUser)))
-	mux.Handle("GET /api/v1/users/{id}/permissions", s.requireAdmin(http.HandlerFunc(s.handleListUserPermissions)))
-	mux.Handle("POST /api/v1/users/{id}/permissions", s.requireAdmin(http.HandlerFunc(s.handleGrantUserPermission)))
-	mux.Handle("DELETE /api/v1/users/{id}/permissions/{namespace}/{name}", s.requireAdmin(http.HandlerFunc(s.handleRevokeUserPermission)))
 
-	// Eggs are a read-only catalog, not scoped to any user's permissions —
-	// any authenticated user can see what's available to build a server
-	// from.
-	mux.Handle("GET /api/v1/eggs", s.requireAuth(http.HandlerFunc(s.handleListEggs)))
-	mux.Handle("GET /api/v1/eggs/{namespace}/{name}", s.requireAuth(http.HandlerFunc(s.handleGetEgg)))
+	orgRoute := func(min paneldb.Role, action string, h http.HandlerFunc) http.Handler {
+		var inner http.Handler = h
+		if action != "" {
+			inner = s.audited(action, inner)
+		}
+		return s.requireOrgRole(min, inner)
+	}
+	const org = "/api/v1/orgs/{org}"
+	const gs = org + "/gameservers/{name}"
 
-	mux.Handle("GET /api/v1/gameservers", s.requireAuth(http.HandlerFunc(s.handleListGameServers)))
-	mux.Handle("POST /api/v1/gameservers", s.requireAdmin(http.HandlerFunc(s.handleCreateGameServer)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}", s.requireAuth(http.HandlerFunc(s.handleGetGameServer)))
-	mux.Handle("DELETE /api/v1/gameservers/{namespace}/{name}", s.requireAdmin(http.HandlerFunc(s.handleDeleteGameServer)))
-	mux.Handle("PATCH /api/v1/gameservers/{namespace}/{name}/state", s.requireAuth(http.HandlerFunc(s.handleSetGameServerState)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/logs", s.requireAuth(http.HandlerFunc(s.handleLogs)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/console", s.requireAuthWS(http.HandlerFunc(s.handleConsole)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/sftp-session", s.requireAuth(http.HandlerFunc(s.handleSFTPSession)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files", s.requireAuth(http.HandlerFunc(s.handleListFiles)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files/content", s.requireAuth(http.HandlerFunc(s.handleGetFileContent)))
-	mux.Handle("PUT /api/v1/gameservers/{namespace}/{name}/files/content", s.requireAuth(http.HandlerFunc(s.handlePutFileContent)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/mkdir", s.requireAuth(http.HandlerFunc(s.handleMkdir)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/rename", s.requireAuth(http.HandlerFunc(s.handleRenameFile)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/delete", s.requireAuth(http.HandlerFunc(s.handleDeleteFiles)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/copy", s.requireAuth(http.HandlerFunc(s.handleCopyFile)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/upload", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
-	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files/download", s.requireAuth(http.HandlerFunc(s.handleDownloadFiles)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/compress", s.requireAuth(http.HandlerFunc(s.handleCompressFiles)))
-	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/decompress", s.requireAuth(http.HandlerFunc(s.handleDecompressFile)))
+	mux.Handle("GET /api/v1/orgs", s.requireAuth(http.HandlerFunc(s.handleListOrgs)))
+	mux.Handle("POST /api/v1/orgs", s.requireAdmin(http.HandlerFunc(s.handleCreateOrg)))
+	mux.Handle("GET "+org, orgRoute(paneldb.RoleMember, "", s.handleGetOrg))
+	mux.Handle("DELETE "+org, orgRoute(paneldb.RoleOwner, "", s.handleDeleteOrg))
+	mux.Handle("PATCH "+org+"/quota", s.requireAdmin(orgRoute(paneldb.RoleOwner, "", s.handleUpdateQuota)))
+
+	mux.Handle("GET "+org+"/members", orgRoute(paneldb.RoleMember, "", s.handleListMembers))
+	mux.Handle("POST "+org+"/members", orgRoute(paneldb.RoleAdmin, "", s.handleAddMember))
+	mux.Handle("PATCH "+org+"/members/{userId}", orgRoute(paneldb.RoleAdmin, "", s.handleSetMemberRole))
+	mux.Handle("DELETE "+org+"/members/{userId}", orgRoute(paneldb.RoleMember, "", s.handleRemoveMember))
+
+	mux.Handle("GET "+org+"/eggs", orgRoute(paneldb.RoleMember, "", s.handleListOrgEggs))
+	mux.Handle("GET "+org+"/eggs/{scope}/{name}", orgRoute(paneldb.RoleMember, "", s.handleGetOrgEgg))
+	mux.Handle("POST "+org+"/eggs", orgRoute(paneldb.RoleAdmin, "", s.handleCreateOrgEgg))
+	mux.Handle("PUT "+org+"/eggs/{name}", orgRoute(paneldb.RoleAdmin, "", s.handleUpdateOrgEgg))
+	mux.Handle("DELETE "+org+"/eggs/{name}", orgRoute(paneldb.RoleAdmin, "", s.handleDeleteOrgEgg))
+
+	mux.Handle("GET /api/v1/catalog/eggs", s.requireAuth(http.HandlerFunc(s.handleListCatalogEggs)))
+	mux.Handle("POST /api/v1/catalog/eggs", s.requireAdmin(http.HandlerFunc(s.handleCreateCatalogEgg)))
+	mux.Handle("PUT /api/v1/catalog/eggs/{name}", s.requireAdmin(http.HandlerFunc(s.handleUpdateCatalogEgg)))
+	mux.Handle("DELETE /api/v1/catalog/eggs/{name}", s.requireAdmin(http.HandlerFunc(s.handleDeleteCatalogEgg)))
+
+	mux.Handle("GET "+org+"/gameservers", orgRoute(paneldb.RoleMember, "", s.handleListGameServers))
+	mux.Handle("POST "+org+"/gameservers", orgRoute(paneldb.RoleAdmin, "", s.handleCreateGameServer))
+	mux.Handle("GET "+gs, orgRoute(paneldb.RoleMember, "", s.handleGetGameServer))
+	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
+	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
+	mux.Handle("GET "+gs+"/logs", orgRoute(paneldb.RoleMember, "", s.handleLogs))
+	mux.Handle("POST "+gs+"/sftp-session", orgRoute(paneldb.RoleMember, "gameserver.sftp-session", s.handleSFTPSession))
+
+	mux.Handle("GET "+gs+"/files", orgRoute(paneldb.RoleMember, "", s.handleListFiles))
+	mux.Handle("GET "+gs+"/files/content", orgRoute(paneldb.RoleMember, "", s.handleGetFileContent))
+	mux.Handle("PUT "+gs+"/files/content", orgRoute(paneldb.RoleMember, "file.write", s.handlePutFileContent))
+	mux.Handle("POST "+gs+"/files/mkdir", orgRoute(paneldb.RoleMember, "file.mkdir", s.handleMkdir))
+	mux.Handle("POST "+gs+"/files/rename", orgRoute(paneldb.RoleMember, "file.rename", s.handleRenameFile))
+	mux.Handle("POST "+gs+"/files/delete", orgRoute(paneldb.RoleMember, "file.delete", s.handleDeleteFiles))
+	mux.Handle("POST "+gs+"/files/copy", orgRoute(paneldb.RoleMember, "file.copy", s.handleCopyFile))
+	mux.Handle("POST "+gs+"/files/upload", orgRoute(paneldb.RoleMember, "file.upload", s.handleUploadFile))
+	mux.Handle("GET "+gs+"/files/download", orgRoute(paneldb.RoleMember, "", s.handleDownloadFiles))
+	mux.Handle("POST "+gs+"/files/compress", orgRoute(paneldb.RoleMember, "file.compress", s.handleCompressFiles))
+	mux.Handle("POST "+gs+"/files/decompress", orgRoute(paneldb.RoleMember, "file.decompress", s.handleDecompressFile))
+
+	mux.Handle("POST "+gs+"/console-ticket", orgRoute(paneldb.RoleMember, "gameserver.console-ticket", s.handleConsoleTicket))
+	mux.Handle("GET "+gs+"/console", s.requireConsoleTicket(http.HandlerFunc(s.handleConsole)))
+
+	mux.Handle("GET "+org+"/audit", orgRoute(paneldb.RoleAdmin, "", s.handleListOrgAudit))
+	mux.Handle("GET /api/v1/audit", s.requireAdmin(http.HandlerFunc(s.handleListPlatformAudit)))
 
 	return mux
 }
