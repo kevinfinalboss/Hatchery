@@ -17,8 +17,10 @@ limitations under the License.
 package panelapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -124,5 +126,48 @@ func TestFilesCopyFileAndDirectory(t *testing.T) {
 	rec = doRequest(t, srv, http.MethodGet, base+"/files/content?path=/src/a.txt", token, nil)
 	if rec.Code != http.StatusOK || rec.Body.String() != "hi" {
 		t.Fatalf("original file: expected 200/hi, got %d/%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFilesUploadAndDownload(t *testing.T) {
+	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
+	base := "/api/v1/gameservers/default/" + gs.Name
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", "note.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("upload me")); err != nil {
+		t.Fatal(err)
+	}
+	mw.Close()
+
+	req := httptest.NewRequest(http.MethodPost, base+"/files/upload?path=/", &body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("upload: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/download?paths=/note.txt", token, nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "upload me" {
+		t.Fatalf("download single: expected 200/upload me, got %d/%s", rec.Code, rec.Body.String())
+	}
+
+	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/note2.txt", token, []byte("second"))
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/download?paths=/note.txt,/note2.txt", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("download zip: expected 200, got %d", rec.Code)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil {
+		t.Fatalf("response is not a valid zip: %v", err)
+	}
+	if len(zr.File) != 2 {
+		t.Fatalf("expected 2 entries in zip, got %d", len(zr.File))
 	}
 }

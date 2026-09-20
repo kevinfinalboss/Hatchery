@@ -17,6 +17,7 @@ limitations under the License.
 package panelapi
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
 	"io"
@@ -355,5 +356,141 @@ func copyOneFile(conn *sftpConn, src, dest string) error {
 	}
 	defer destFile.Close()
 	_, err = io.Copy(destFile, srcFile)
+	return err
+}
+
+func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+	gs, ok := s.targetGameServer(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing file field: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	conn, err := s.openFileSFTPClient(r.Context(), gs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	dest, err := conn.Create(path.Join(filePathParam(r), header.Filename))
+	if err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+	defer dest.Close()
+
+	if _, err := io.Copy(dest, file); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) handleDownloadFiles(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+	gs, ok := s.targetGameServer(w, r)
+	if !ok {
+		return
+	}
+	paths := strings.Split(r.URL.Query().Get("paths"), ",")
+	if len(paths) == 0 || paths[0] == "" {
+		writeError(w, http.StatusBadRequest, "paths is required")
+		return
+	}
+	conn, err := s.openFileSFTPClient(r.Context(), gs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	if len(paths) == 1 {
+		info, err := conn.Stat(paths[0])
+		if err != nil {
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+		if !info.IsDir() {
+			f, err := conn.Open(paths[0])
+			if err != nil {
+				writeError(w, statusForSFTP(err), err.Error())
+				return
+			}
+			defer f.Close()
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition", `attachment; filename="`+path.Base(paths[0])+`"`)
+			_, _ = io.Copy(w, f)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="download.zip"`)
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+	_ = writeZipEntries(zw, conn, paths) // headers are already sent; nothing left to do on error but stop writing.
+}
+
+// writeZipEntries adds every regular file under each of paths (recursively,
+// for a directory) to zw, named relative to that path's own parent — so
+// zipping "/configs" produces zip entries rooted at "configs/...". Shared by
+// handleDownloadFiles above and handleCompressFiles (Task 6) so the
+// tree-walking logic exists exactly once.
+func writeZipEntries(zw *zip.Writer, conn *sftpConn, paths []string) error {
+	for _, p := range paths {
+		info, err := conn.Stat(p)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			if err := addFileToZip(zw, conn, p, path.Base(p)); err != nil {
+				return err
+			}
+			continue
+		}
+		base := path.Base(p)
+		walker := conn.Walk(p)
+		for walker.Step() {
+			if err := walker.Err(); err != nil {
+				return err
+			}
+			if walker.Stat().IsDir() {
+				continue
+			}
+			rel := path.Join(base, strings.TrimPrefix(walker.Path(), p))
+			if err := addFileToZip(zw, conn, walker.Path(), rel); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func addFileToZip(zw *zip.Writer, conn *sftpConn, srcPath, zipName string) error {
+	f, err := conn.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	entry, err := zw.Create(zipName)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(entry, f)
 	return err
 }

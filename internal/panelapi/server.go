@@ -95,6 +95,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/rename", s.requireAuth(http.HandlerFunc(s.handleRenameFile)))
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/delete", s.requireAuth(http.HandlerFunc(s.handleDeleteFiles)))
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/copy", s.requireAuth(http.HandlerFunc(s.handleCopyFile)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/upload", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
+	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files/download", s.requireAuth(http.HandlerFunc(s.handleDownloadFiles)))
 
 	return mux
 }
