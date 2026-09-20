@@ -88,6 +88,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/logs", s.requireAuth(http.HandlerFunc(s.handleLogs)))
 	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/console", s.requireAuthWS(http.HandlerFunc(s.handleConsole)))
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/sftp-session", s.requireAuth(http.HandlerFunc(s.handleSFTPSession)))
+	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files", s.requireAuth(http.HandlerFunc(s.handleListFiles)))
+	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files/content", s.requireAuth(http.HandlerFunc(s.handleGetFileContent)))
+	mux.Handle("PUT /api/v1/gameservers/{namespace}/{name}/files/content", s.requireAuth(http.HandlerFunc(s.handlePutFileContent)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/mkdir", s.requireAuth(http.HandlerFunc(s.handleMkdir)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/rename", s.requireAuth(http.HandlerFunc(s.handleRenameFile)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/delete", s.requireAuth(http.HandlerFunc(s.handleDeleteFiles)))
 
 	return mux
 }
