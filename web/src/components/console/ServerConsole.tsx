@@ -6,7 +6,7 @@ import { api } from "../../lib/api";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 
-export function ServerConsole({ namespace, name }: { namespace: string; name: string }) {
+export function ServerConsole({ org, name }: { org: string; name: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -38,37 +38,51 @@ export function ServerConsole({ namespace, name }: { namespace: string; name: st
     fit.fit();
     termRef.current = term;
 
-    const ws = new WebSocket(api.consoleUrl(namespace, name));
-    wsRef.current = ws;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
 
-    ws.onopen = () => {
-      setConnected(true);
-      term.write("\x1b[90m-- conectado --\x1b[0m\r\n");
-    };
-    ws.onmessage = (event) => {
-      if (typeof event.data === "string") {
-        term.write(event.data);
-      } else {
-        void (event.data as Blob).arrayBuffer().then((buf) => term.write(new Uint8Array(buf)));
+    void (async () => {
+      try {
+        const { ticket } = await api.consoleTicket(org, name);
+        if (cancelled) return;
+
+        ws = new WebSocket(api.consoleUrl(org, name, ticket));
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setConnected(true);
+          term.write("\x1b[90m-- conectado --\x1b[0m\r\n");
+        };
+        ws.onmessage = (event) => {
+          if (typeof event.data === "string") {
+            term.write(event.data);
+          } else {
+            void (event.data as Blob).arrayBuffer().then((buf) => term.write(new Uint8Array(buf)));
+          }
+        };
+        ws.onclose = () => {
+          setConnected(false);
+          term.write("\r\n\x1b[90m-- desconectado --\x1b[0m\r\n");
+        };
+        ws.onerror = () => term.write("\r\n\x1b[31m-- erro de conexão --\x1b[0m\r\n");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "falha ao abrir o console";
+        term.write(`\r\n\x1b[31m-- ${msg} --\x1b[0m\r\n`);
       }
-    };
-    ws.onclose = () => {
-      setConnected(false);
-      term.write("\r\n\x1b[90m-- desconectado --\x1b[0m\r\n");
-    };
-    ws.onerror = () => term.write("\r\n\x1b[31m-- erro de conexão --\x1b[0m\r\n");
+    })();
 
     const resizeObserver = new ResizeObserver(() => fit.fit());
     resizeObserver.observe(container);
 
     return () => {
+      cancelled = true;
       resizeObserver.disconnect();
-      ws.close();
+      ws?.close();
       term.dispose();
       termRef.current = null;
       wsRef.current = null;
     };
-  }, [namespace, name]);
+  }, [org, name]);
 
   function sendCommand() {
     const trimmed = command.trim();
