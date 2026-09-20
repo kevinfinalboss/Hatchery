@@ -37,10 +37,26 @@ const (
 	GameServerStateStopped GameServerState = "Stopped"
 )
 
-// GameServerEggRef points at the Egg this GameServer is instantiated from.
+type EggScope string
+
+const (
+	EggScopeNamespace EggScope = "Namespace"
+	EggScopeCatalog   EggScope = "Catalog"
+)
+
 type GameServerEggRef struct {
-	// Name of the Egg resource in the same namespace.
+	// Name of the Egg resource.
 	Name string `json:"name"`
+
+	Scope EggScope `json:"scope,omitempty"`
+}
+
+// EggNamespace returns the namespace this GameServer's Egg lives in.
+func (g *GameServer) EggNamespace() string {
+	if g.Spec.EggRef.Scope == EggScopeCatalog {
+		return CatalogNamespace
+	}
+	return g.Namespace
 }
 
 // GameServerVariable overrides the value of a variable declared by the referenced
