@@ -1,14 +1,12 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
+import { useI18n } from "../../lib/i18n";
 import { ApiError, api } from "../../lib/api";
 import type { FileEntry } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { FileEditor } from "./FileEditor";
 
-// Extensions the editor opens as text; anything else (or anything over
-// MAX_EDITABLE_SIZE) downloads instead of opening — see the spec's "Limite
-// de edição".
 const EDITABLE_TEXT_EXTENSIONS = new Set([
   "txt", "json", "yml", "yaml", "properties", "toml", "cfg", "conf",
   "js", "mjs", "cjs", "lua", "sh", "log", "md",
@@ -29,6 +27,7 @@ function joinPath(dir: string, name: string): string {
 }
 
 export function FileManager({ org, name }: { org: string; name: string }) {
+  const { t, plural, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const [currentPath, setCurrentPath] = useState("/");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -212,7 +211,7 @@ export function FileManager({ org, name }: { org: string; name: string }) {
           <span>{error}</span>
           <button
             type="button"
-            aria-label="Fechar erro"
+            aria-label={t("files.closeError")}
             className="shrink-0 leading-none hover:text-text-primary"
             onClick={() => setError(null)}
           >
@@ -225,14 +224,14 @@ export function FileManager({ org, name }: { org: string; name: string }) {
         <Button
           variant="secondary"
           onClick={() => {
-            const dirName = prompt("Nome da nova pasta:");
+            const dirName = prompt(t("files.newFolderPrompt"));
             if (dirName) mkdirMutation.mutate(dirName);
           }}
         >
-          Nova pasta
+          {t("files.newFolder")}
         </Button>
         <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-          Upload
+          {t("files.upload")}
         </Button>
         <input
           ref={fileInputRef}
@@ -250,26 +249,26 @@ export function FileManager({ org, name }: { org: string; name: string }) {
               variant="secondary"
               onClick={() => void api.downloadFiles(org, name, selectedList).catch(reportError)}
             >
-              Baixar ({selectedList.length})
+              {t("files.download", { count: selectedList.length })}
             </Button>
             <Button
               variant="secondary"
               onClick={() => {
-                const dest = prompt("Compactar selecionados em:", joinPath(currentPath, "archive.zip"));
+                const dest = prompt(t("files.compressPrompt"), joinPath(currentPath, "archive.zip"));
                 if (dest) compressMutation.mutate({ paths: selectedList, dest });
               }}
             >
-              Compactar
+              {t("files.compress")}
             </Button>
             {selectedList.length === 1 && selectedList[0].endsWith(".zip") && (
               <Button
                 variant="secondary"
                 onClick={() => {
-                  const dest = prompt("Descompactar em:", currentPath);
+                  const dest = prompt(t("files.decompressPrompt"), currentPath);
                   if (dest) decompressMutation.mutate({ path: selectedList[0], dest });
                 }}
               >
-                Descompactar
+                {t("files.decompress")}
               </Button>
             )}
             {selectedList.length === 1 && (
@@ -277,11 +276,11 @@ export function FileManager({ org, name }: { org: string; name: string }) {
                 variant="secondary"
                 onClick={() => {
                   const from = selectedList[0];
-                  const to = prompt("Mover/renomear para:", from);
+                  const to = prompt(t("files.movePrompt"), from);
                   if (to) renameMutation.mutate({ from, to });
                 }}
               >
-                Mover/Renomear
+                {t("files.move")}
               </Button>
             )}
             {selectedList.length === 1 && (
@@ -289,20 +288,20 @@ export function FileManager({ org, name }: { org: string; name: string }) {
                 variant="secondary"
                 onClick={() => {
                   const from = selectedList[0];
-                  const to = prompt("Copiar para:", from + ".copy");
+                  const to = prompt(t("files.copyPrompt"), from + ".copy");
                   if (to) copyMutation.mutate({ from, to });
                 }}
               >
-                Copiar
+                {t("files.copy")}
               </Button>
             )}
             <Button
               variant="danger"
               onClick={() => {
-                if (confirm(`Apagar ${selectedList.length} item(ns)?`)) deleteMutation.mutate(selectedList);
+                if (confirm(plural("files.deleteConfirm", selectedList.length))) deleteMutation.mutate(selectedList);
               }}
             >
-              Apagar
+              {t("files.delete")}
             </Button>
           </>
         )}
@@ -310,10 +309,10 @@ export function FileManager({ org, name }: { org: string; name: string }) {
 
       <div className="min-h-0 grow overflow-auto rounded-lg border border-border">
         {isLoading ? (
-          <div className="p-4 font-sans text-sm text-text-secondary">Carregando…</div>
+          <div className="p-4 font-sans text-sm text-text-secondary">{t("common.loading")}</div>
         ) : isError ? (
           <div className="p-4 font-sans text-sm text-text-secondary">
-            Preparando ambiente de arquivos… tentando de novo.
+            {t("files.preparing")}
           </div>
         ) : (
           <table className="w-full text-left font-sans text-sm">
@@ -333,7 +332,7 @@ export function FileManager({ org, name }: { org: string; name: string }) {
                       {entry.isDir ? "📁" : "📄"} {entry.name}
                     </td>
                     <td className="px-3 py-2 text-text-tertiary">{entry.isDir ? "" : entry.size}</td>
-                    <td className="px-3 py-2 text-text-tertiary">{new Date(entry.modTime).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-text-tertiary">{formatDateTime(entry.modTime)}</td>
                   </tr>
                 );
               })}
