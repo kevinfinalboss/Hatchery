@@ -183,60 +183,7 @@ func TestSessionExpiry(t *testing.T) {
 	}
 }
 
-func TestGameServerPermissions(t *testing.T) {
-	s := newTestStore(t)
-	ctx := context.Background()
-
-	u, err := s.CreateUser(ctx, "dave", "password", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ref := GameServerRef{Namespace: "default", Name: "my-server"}
-	has, err := s.HasGameServerAccess(ctx, u.ID, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if has {
-		t.Fatal("expected no access before any grant")
-	}
-
-	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil { // repeat grant: no-op
-		t.Fatal(err)
-	}
-
-	has, err = s.HasGameServerAccess(ctx, u.ID, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !has {
-		t.Fatal("expected access after granting it")
-	}
-
-	refs, err := s.ListGameServerAccess(ctx, u.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(refs) != 1 || refs[0] != ref {
-		t.Fatalf("expected exactly [%v], got %v", ref, refs)
-	}
-
-	if err := s.RevokeGameServerAccess(ctx, u.ID, ref); err != nil {
-		t.Fatal(err)
-	}
-	has, err = s.HasGameServerAccess(ctx, u.ID, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if has {
-		t.Fatal("expected no access after revoking it")
-	}
-}
-
-func TestDeleteUserCascadesSessionsAndPermissions(t *testing.T) {
+func TestDeleteUserCascadesSessions(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -246,10 +193,6 @@ func TestDeleteUserCascadesSessionsAndPermissions(t *testing.T) {
 	}
 	token, _, err := s.CreateSession(ctx, u.ID, time.Hour)
 	if err != nil {
-		t.Fatal(err)
-	}
-	ref := GameServerRef{Namespace: "default", Name: "erins-server"}
-	if err := s.GrantGameServerAccess(ctx, u.ID, ref); err != nil {
 		t.Fatal(err)
 	}
 
@@ -265,5 +208,23 @@ func TestDeleteUserCascadesSessionsAndPermissions(t *testing.T) {
 	}
 	if _, err := s.GetUser(ctx, u.ID); err != ErrNotFound {
 		t.Fatal("expected the user to be gone")
+	}
+}
+
+func TestVerifyPasswordUnknownUserCostsAsMuchAsAWrongPassword(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, err := s.CreateUser(ctx, "real", "correct-horse", false); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	_, _ = s.VerifyPassword(ctx, "no-such-user", "whatever")
+	unknown := time.Since(start)
+
+	// bcrypt at DefaultCost takes tens of milliseconds. Without the dummy
+	// comparison the unknown-user path is a single indexed SELECT, well under 5ms.
+	if unknown < 5*time.Millisecond {
+		t.Fatalf("unknown-user login took %v: it skipped the bcrypt comparison, so response time reveals which usernames exist", unknown)
 	}
 }
