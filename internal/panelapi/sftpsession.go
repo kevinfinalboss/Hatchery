@@ -155,6 +155,8 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 
 	deadline := int64(maintenancePodTTL.Seconds())
 	secretName := sftpagent.SecretName(gs.Name)
+	// The maintenance pod only serves files; it never talks to the Kubernetes API.
+	automountToken := false
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -162,10 +164,11 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 			Labels:    gameserversv1alpha1.GameServerLabels(gs.Name),
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:         corev1.RestartPolicyNever,
-			ActiveDeadlineSeconds: &deadline,
-			Affinity:              affinity,
-			SecurityContext:       &corev1.PodSecurityContext{FSGroup: sftpagent.FSGroupPtr()},
+			RestartPolicy:                corev1.RestartPolicyNever,
+			AutomountServiceAccountToken: &automountToken,
+			ActiveDeadlineSeconds:        &deadline,
+			Affinity:                     affinity,
+			SecurityContext:              &corev1.PodSecurityContext{FSGroup: sftpagent.FSGroupPtr()},
 			Volumes: []corev1.Volume{
 				{
 					Name: sftpagent.DefaultDataVolumeName,
