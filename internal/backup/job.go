@@ -80,6 +80,8 @@ var jobBackoffLimit int32 = 2
 // controllerutil.SetControllerReference on the result — this package doesn't
 // take a Scheme just to do that itself.
 func job(name, namespace, script, pvcName string, readOnlyData bool, env []corev1.EnvVar) *batchv1.Job {
+	// restic only talks to the S3 endpoint, never to the Kubernetes API.
+	automountToken := false
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -89,7 +91,8 @@ func job(name, namespace, script, pvcName string, readOnlyData bool, env []corev
 			BackoffLimit: &jobBackoffLimit,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:                corev1.RestartPolicyNever,
+					AutomountServiceAccountToken: &automountToken,
 					Containers: []corev1.Container{{
 						Name:    "restic",
 						Image:   Image,
