@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import clsx from "clsx";
 import logo from "../../assets/logo.png";
 import { useAuth } from "../../lib/auth";
+import { atLeast, useOrg } from "../../lib/org";
 
 const navItemClasses = ({ isActive }: { isActive: boolean }) =>
   clsx(
@@ -19,6 +20,7 @@ function NavDot({ active }: { active: boolean }) {
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const { orgs, current, setCurrent } = useOrg();
 
   return (
     <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-sidebar p-4">
@@ -27,24 +29,57 @@ export function Sidebar() {
         <span className="font-display text-lg font-bold text-text-primary">Hatchery</span>
       </div>
 
+      {orgs.length > 0 && (
+        <div className="px-2 pb-4">
+          <label htmlFor="org-switcher" className="mb-1 block font-sans text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
+            Organização
+          </label>
+          <select
+            id="org-switcher"
+            value={current?.slug ?? ""}
+            onChange={(e) => setCurrent(e.target.value)}
+            className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {orgs.map((o) => (
+              <option key={o.slug} value={o.slug}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <nav className="flex flex-col gap-0.5">
         <NavLink to="/" end className={navItemClasses}>
-          {({ isActive }) => (
-            <>
-              <NavDot active={isActive} />
-              Servidores
-            </>
-          )}
+          {({ isActive }) => (<><NavDot active={isActive} />Servidores</>)}
         </NavLink>
-        {user?.isAdmin && (
-          <NavLink to="/users" className={navItemClasses}>
-            {({ isActive }) => (
-              <>
-                <NavDot active={isActive} />
-                Usuários
-              </>
-            )}
+        {current && (
+          <NavLink to="/eggs" className={navItemClasses}>
+            {({ isActive }) => (<><NavDot active={isActive} />Eggs</>)}
           </NavLink>
+        )}
+        {current && (
+          <NavLink to="/members" className={navItemClasses}>
+            {({ isActive }) => (<><NavDot active={isActive} />Membros</>)}
+          </NavLink>
+        )}
+        {atLeast(current?.role, "admin") && (
+          <NavLink to="/audit" className={navItemClasses}>
+            {({ isActive }) => (<><NavDot active={isActive} />Auditoria</>)}
+          </NavLink>
+        )}
+        {user?.isAdmin && (
+          <>
+            <div className="mt-4 px-3.5 pb-1 font-sans text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
+              Plataforma
+            </div>
+            <NavLink to="/orgs" className={navItemClasses}>
+              {({ isActive }) => (<><NavDot active={isActive} />Organizações</>)}
+            </NavLink>
+            <NavLink to="/users" className={navItemClasses}>
+              {({ isActive }) => (<><NavDot active={isActive} />Usuários</>)}
+            </NavLink>
+          </>
         )}
       </nav>
 
