@@ -78,13 +78,10 @@ func (s *Server) handleSFTPSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := "sidecar"
-	if gs.Spec.State == gameserversv1alpha1.GameServerStateStopped {
-		mode = "maintenance"
-		if err := s.ensureMaintenancePod(r.Context(), &gs); err != nil {
-			writeError(w, http.StatusInternalServerError, "creating maintenance pod: "+err.Error())
-			return
-		}
+	mode, err := s.resolveSFTPTarget(r.Context(), &gs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	token, err := authtoken.Sign(hmacKey, string(gs.UID), authtoken.ScopeSFTP, sftpSessionTTL)
@@ -101,6 +98,23 @@ func (s *Server) handleSFTPSession(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: time.Now().Add(sftpSessionTTL),
 		Mode:      mode,
 	})
+}
+
+// resolveSFTPTarget reports how to reach gs's sftp-agent right now: "sidecar"
+// when the GameServer is Running (the agent already shares its Pod), or
+// "maintenance" when it's Stopped — creating the on-demand maintenance Pod
+// first if one isn't already up. Both modes sit behind the same Service, so
+// this only decides the side effect (whether a Pod needs creating), not the
+// address a caller dials — see openFileSFTPClient in filesftp.go, the other
+// caller of this function.
+func (s *Server) resolveSFTPTarget(ctx context.Context, gs *gameserversv1alpha1.GameServer) (mode string, err error) {
+	if gs.Spec.State != gameserversv1alpha1.GameServerStateStopped {
+		return "sidecar", nil
+	}
+	if err := s.ensureMaintenancePod(ctx, gs); err != nil {
+		return "", fmt.Errorf("creating maintenance pod: %w", err)
+	}
+	return "maintenance", nil
 }
 
 func maintenancePodName(gameServerName string) string {
