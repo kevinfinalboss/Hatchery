@@ -39,6 +39,12 @@ type Server struct {
 	SFTPAgentImage string
 
 	AllowedOrigins []string
+
+	// resolveSFTPAddr overrides the host:port dialed for a GameServer's
+	// sftp-agent (see sftpAddr in filesftp.go). nil in production, where the
+	// real in-cluster Service DNS name is used; tests set it to point at an
+	// in-process test sftp-agent instead of a real cluster.
+	resolveSFTPAddr func(namespace, name string) string
 }
 
 // NewServer builds a Server. cfg and clientset are kept alongside client
