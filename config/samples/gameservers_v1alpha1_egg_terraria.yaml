@@ -1,0 +1,151 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: terraria-vanilla
+  namespace: hatchery-catalog
+spec:
+  image: ghcr.io/ptero-eggs/yolks:debian
+  startCommand: "./TerrariaServer.bin.x86_64 -config serverconfig.txt"
+  stopCommand: "exit"
+  stopSignal: SIGTERM
+  install:
+    image: ghcr.io/ptero-eggs/installers:debian
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      cd /data
+
+      if ! command -v jq >/dev/null || ! command -v curl >/dev/null || ! command -v unzip >/dev/null; then
+        apt-get update
+        apt-get install -y curl wget file unzip jq
+      fi
+
+      DOWNLOAD_LINK=""
+      if [ "${TERRARIA_VERSION}" = "latest" ] || [ -z "${TERRARIA_VERSION}" ]; then
+        V=$(curl -sSL https://terraria.org/api/get/dedicated-servers-names | jq -r '.[]' | head -1)
+        if [ -n "${V}" ]; then
+          DOWNLOAD_LINK="https://terraria.org/api/download/pc-dedicated-server/${V}"
+        fi
+      else
+        CLEAN_REQUESTED=$(echo "${TERRARIA_VERSION}" | sed 's/\.//g')
+        DOWNLOAD_LINK=$(curl -sSL "https://terraria.wiki.gg/wiki/Server#Downloads" | grep '>Terraria Server ' | grep -Eoi '<a [^>]+>' | grep -Eo 'href="[^"]+"' | grep -Eo 'https?://[^"]+' | grep "${CLEAN_REQUESTED}" | cut -d'?' -f1 | head -1)
+      fi
+
+      if [ -z "${DOWNLOAD_LINK}" ] || ! curl --output /dev/null --silent --head --fail "${DOWNLOAD_LINK}"; then
+        if [ -x ./TerrariaServer.bin.x86_64 ]; then
+          echo "Could not resolve a valid download link; keeping the existing server files."
+        else
+          echo "link is invalid closing out"
+          exit 2
+        fi
+      else
+        ZIP_NAME="${DOWNLOAD_LINK##*/}"
+        CLEAN_VERSION=$(echo "${ZIP_NAME}" | cut -d'-' -f3 | cut -d'.' -f1)
+
+        if [ -x ./TerrariaServer.bin.x86_64 ] && [ "$(cat .terraria-version 2>/dev/null)" = "${CLEAN_VERSION}" ]; then
+          echo "Terraria ${CLEAN_VERSION} already installed, skipping download."
+        else
+          echo "Downloading ${DOWNLOAD_LINK}"
+          curl -sSL "${DOWNLOAD_LINK}" -o "${ZIP_NAME}"
+
+          echo "Unpacking server files"
+          unzip -o "${ZIP_NAME}"
+          cp -R "${CLEAN_VERSION}"/Linux/* ./
+          chmod +x TerrariaServer.bin.x86_64
+
+          echo "Cleaning up extra files."
+          rm -rf "${CLEAN_VERSION}" "${ZIP_NAME}"
+          echo "${CLEAN_VERSION}" > .terraria-version
+        fi
+      fi
+
+      mkdir -p /data/saves/Worlds
+      touch serverconfig.txt
+
+      # Substitui (ou acrescenta) uma chave do serverconfig.txt sem tocar nas outras linhas.
+      # Não usa sed com o valor: MOTD e senha são texto livre e podem ter |, & ou \.
+      setkey() {
+        grep -v "^$1=" serverconfig.txt > serverconfig.tmp || true
+        printf '%s=%s\n' "$1" "$2" >> serverconfig.tmp
+        mv serverconfig.tmp serverconfig.txt
+      }
+
+      echo "Generating config file"
+      setkey worldpath /data/saves/Worlds
+      setkey worldname "${WORLD_NAME}"
+      setkey world "/data/saves/Worlds/${WORLD_NAME}.wld"
+      setkey difficulty "${WORLD_DIFFICULTY}"
+      setkey autocreate "${WORLD_SIZE}"
+      setkey port 7777
+      setkey maxplayers "${MAX_PLAYERS}"
+      setkey motd "${SERVER_MOTD}"
+      setkey seed "${WORLD_SEED}"
+      setkey password "${PASSWORD}"
+      setkey npcstream "${NPCSTREAM}"
+
+      # Este script roda como root; o container do jogo (yolks) roda como uid 1000. Sem isso o
+      # servidor não consegue criar o mundo em saves/Worlds (o Wings fazia esse chown no fim
+      # da instalação no Pterodactyl).
+      chown -R 1000:1000 /data
+
+      echo "Install complete"
+  variables:
+    - name: TERRARIA_VERSION
+      description: "Versão do Terraria a instalar. Aceita o número completo ou o número do arquivo (ex: 1.4.4.9 ou 1449). 'latest' pega sempre a mais recente. Versões: https://terraria.wiki.gg/wiki/Server#Downloads"
+      default: "latest"
+      required: true
+      userEditable: true
+      validationRegex: "^(latest|[0-9]+(\\.[0-9]+){0,3})$"
+    - name: WORLD_NAME
+      description: "Nome do arquivo do mundo. Só letras, números, _ e - (vira parte do caminho do arquivo)."
+      default: "world"
+      required: true
+      userEditable: true
+      validationRegex: "^[A-Za-z0-9_-]{1,20}$"
+    - name: MAX_PLAYERS
+      description: "Número máximo de jogadores no servidor (0 a 255)."
+      default: "8"
+      required: true
+      userEditable: true
+      validationRegex: "^([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
+    - name: WORLD_SIZE
+      description: "Tamanho do mundo ao criar: 1 (pequeno), 2 (médio) ou 3 (grande). Só vale para um mundo novo."
+      default: "1"
+      required: true
+      userEditable: true
+      validationRegex: "^[123]$"
+    - name: WORLD_DIFFICULTY
+      description: "Dificuldade do mundo: 0 (normal), 1 (expert), 2 (master) ou 3 (journey)."
+      default: "3"
+      required: true
+      userEditable: true
+      validationRegex: "^[0-3]$"
+    - name: SERVER_MOTD
+      description: "Mensagem do dia exibida pro jogador ao entrar."
+      default: "Welcome!"
+      required: true
+      userEditable: true
+      validationRegex: "^.{1,128}$"
+    - name: WORLD_SEED
+      description: "Seed usada ao criar o mundo. Vazio = aleatória."
+      default: ""
+      userEditable: true
+      validationRegex: "^.{0,20}$"
+    - name: PASSWORD
+      description: "Senha do servidor. Vazio = sem senha."
+      default: ""
+      userEditable: true
+    - name: NPCSTREAM
+      description: "Reduz o 'pulo' dos inimigos, mas gasta mais banda. Quanto menor o número, menos pulo e mais dados enviados. 0 desliga (0 a 60)."
+      default: "0"
+      required: true
+      userEditable: true
+      validationRegex: "^([0-9]|[1-5][0-9]|60)$"
+  ports:
+    - name: game
+      containerPort: 7777
+      protocol: TCP
+      default: true
