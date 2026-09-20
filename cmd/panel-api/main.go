@@ -21,6 +21,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -42,6 +43,7 @@ func main() {
 	var postgresDSN string
 	var adminSecretNamespace string
 	var adminSecretName string
+	var allowedOrigins string
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -51,6 +53,9 @@ func main() {
 		"Namespace the bootstrap admin credentials Secret is created in.")
 	flag.StringVar(&adminSecretName, "admin-secret-name", "panel-admin-credentials",
 		"Name of the bootstrap admin credentials Secret (mirrors ArgoCD's argocd-initial-admin-secret).")
+	flag.StringVar(&allowedOrigins, "allowed-origins", os.Getenv("PANEL_ALLOWED_ORIGINS"),
+		"Comma-separated allowlist of Origins accepted by the console WebSocket (e.g. https://panel.example.com). "+
+			"Empty accepts any Origin, matching pre-allowlist behavior. Defaults to $PANEL_ALLOWED_ORIGINS.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -108,7 +113,16 @@ func main() {
 	log.Info("admin bootstrap checked", "secretNamespace", adminSecretNamespace, "secretName", adminSecretName,
 		"note", "if this is the first run, fetch the generated password from that Secret")
 
-	srv := panelapi.NewServer(c, clientset, cfg, db, sftpAgentImage)
+	var originAllowlist []string
+	if allowedOrigins != "" {
+		for _, o := range strings.Split(allowedOrigins, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				originAllowlist = append(originAllowlist, o)
+			}
+		}
+	}
+
+	srv := panelapi.NewServer(c, clientset, cfg, db, sftpAgentImage, originAllowlist)
 
 	log.Info("starting panel-api", "bindAddress", bindAddr)
 	if err := http.ListenAndServe(bindAddr, srv.Routes()); err != nil {
