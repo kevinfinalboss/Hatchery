@@ -4,6 +4,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
+import { useT } from "../../lib/i18n";
 import { Button } from "../ui/Button";
 
 function languageFor(filename: string): Extension[] {
@@ -36,6 +37,7 @@ export function FileEditor({
   onClose: () => void;
   saving: boolean;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
@@ -60,11 +62,6 @@ export function FileEditor({
     viewRef.current = view;
 
     return () => view.destroy();
-    // Intentionally mount-only: the parent remounts this component with a
-    // new `key={path}` (see FileManager.tsx) whenever a different file is
-    // opened, instead of this effect reacting to prop changes — reacting
-    // here would reset the cursor/undo history on every re-render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -73,7 +70,7 @@ export function FileEditor({
         <span className="font-mono text-sm text-text-secondary">{path}</span>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose}>
-            Fechar
+            {t("common.close")}
           </Button>
           <Button
             disabled={saving}
@@ -81,7 +78,7 @@ export function FileEditor({
               if (viewRef.current) onSave(viewRef.current.state.doc.toString());
             }}
           >
-            Salvar
+            {t("common.save")}
           </Button>
         </div>
       </div>
