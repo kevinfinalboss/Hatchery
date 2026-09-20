@@ -4,88 +4,7 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Field, Input } from "../components/ui/Input";
-import type { User } from "../lib/types";
-
-function UserPermissions({ user }: { user: User }) {
-  const queryClient = useQueryClient();
-  const [namespace, setNamespace] = useState("default");
-  const [name, setName] = useState("");
-
-  const { data: grants } = useQuery({
-    queryKey: ["permissions", user.id],
-    queryFn: () => api.listUserPermissions(user.id),
-  });
-
-  const grant = useMutation({
-    mutationFn: () => api.grantPermission(user.id, { namespace, name }),
-    onSuccess: () => {
-      setName("");
-      void queryClient.invalidateQueries({ queryKey: ["permissions", user.id] });
-    },
-  });
-
-  const revoke = useMutation({
-    mutationFn: (ref: { namespace: string; name: string }) => api.revokePermission(user.id, ref),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["permissions", user.id] }),
-  });
-
-  if (user.isAdmin) {
-    return <div className="font-sans text-xs text-text-tertiary">Admin — acesso a todos os servidores.</div>;
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5">
-        {(grants ?? []).length === 0 && (
-          <span className="font-sans text-xs text-text-tertiary">Nenhum servidor concedido ainda.</span>
-        )}
-        {(grants ?? []).map((ref) => (
-          <span
-            key={`${ref.namespace}/${ref.name}`}
-            className="flex items-center gap-1.5 rounded-full bg-surface-hover px-2.5 py-1 font-mono text-[11px] text-text-secondary"
-          >
-            {ref.namespace}/{ref.name}
-            <button
-              onClick={() => revoke.mutate(ref)}
-              className="text-text-tertiary hover:text-status-failed"
-              aria-label={`Revogar acesso a ${ref.name}`}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) grant.mutate();
-        }}
-        className="flex items-end gap-2"
-      >
-        <Field label="Namespace" htmlFor={`ns-${user.id}`}>
-          <Input
-            id={`ns-${user.id}`}
-            value={namespace}
-            onChange={(e) => setNamespace(e.target.value)}
-            className="w-28"
-          />
-        </Field>
-        <Field label="Servidor" htmlFor={`name-${user.id}`}>
-          <Input
-            id={`name-${user.id}`}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="survival-vanilla"
-            className="w-44"
-          />
-        </Field>
-        <Button type="submit" variant="secondary" disabled={grant.isPending}>
-          Conceder
-        </Button>
-      </form>
-    </div>
-  );
-}
+import { errorMessage } from "../lib/errors";
 
 function CreateUserForm() {
   const queryClient = useQueryClient();
@@ -145,9 +64,14 @@ export function UsersPage() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery({ queryKey: ["users"], queryFn: api.listUsers });
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteUser = useMutation({
     mutationFn: (id: number) => api.deleteUser(id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      setDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) => setDeleteError(errorMessage(err, "Falha ao excluir usuário")),
   });
 
   return (
@@ -156,32 +80,29 @@ export function UsersPage() {
 
       <CreateUserForm />
 
+      {deleteError && <div className="font-sans text-sm text-status-failed">{deleteError}</div>}
+
       {isLoading && <div className="font-sans text-sm text-text-secondary">Carregando…</div>}
 
       <div className="flex flex-col gap-3">
         {(users ?? []).map((user) => (
-          <Card key={user.id} className="flex flex-col gap-4 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-display text-[15px] font-semibold text-text-primary">
-                  {user.username}
+          <Card key={user.id} className="flex items-center justify-between p-5">
+            <div>
+              <span className="font-display text-[15px] font-semibold text-text-primary">{user.username}</span>
+              {user.isAdmin && (
+                <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 font-sans text-[11px] font-semibold text-primary">
+                  Admin
                 </span>
-                {user.isAdmin && (
-                  <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 font-sans text-[11px] font-semibold text-primary">
-                    Admin
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (confirm(`Excluir usuário ${user.username}?`)) deleteUser.mutate(user.id);
-                }}
-              >
-                Excluir
-              </Button>
+              )}
             </div>
-            <UserPermissions user={user} />
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (confirm(`Excluir usuário ${user.username}?`)) deleteUser.mutate(user.id);
+              }}
+            >
+              Excluir
+            </Button>
           </Card>
         ))}
       </div>
