@@ -1,0 +1,6 @@
+resources:
+- gameservers_v1alpha1_egg.yaml
+- gameservers_v1alpha1_gameserver.yaml
+- gameservers_v1alpha1_gameserverbackup.yaml
+- gameservers_v1alpha1_gameserverrestore.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
