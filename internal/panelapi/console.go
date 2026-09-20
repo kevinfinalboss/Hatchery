@@ -17,13 +17,21 @@ limitations under the License.
 package panelapi
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
+	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
 func (s *Server) checkOrigin(r *http.Request) bool {
@@ -38,6 +46,70 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 		return true
 	}
 	return slices.Contains(s.AllowedOrigins, origin)
+}
+
+// consoleTicketTTL is how long a console ticket can wait to be used. It only
+// has to cover the round trip between the client asking for it and opening
+// the WebSocket, so it is short: a leaked ticket is worthless almost at once.
+const consoleTicketTTL = 30 * time.Second
+
+var consoleLog = logf.Log.WithName("panelapi-console")
+
+func (s *Server) handleConsoleTicket(w http.ResponseWriter, r *http.Request) {
+	acc := orgAccessFromContext(r.Context())
+	ticket, err := s.Tickets.Issue(r.Context(), panelcache.ConsoleTicket{
+		UserID:     userFromContext(r.Context()).ID,
+		Org:        acc.Org.Slug,
+		GameServer: r.PathValue("name"),
+	}, consoleTicketTTL)
+	if err != nil {
+		consoleLog.Error(err, "could not issue console ticket")
+		writeError(w, http.StatusServiceUnavailable, "console is temporarily unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ticket":           ticket,
+		"expiresInSeconds": int(consoleTicketTTL.Seconds()),
+	})
+}
+
+func (s *Server) requireConsoleTicket(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ticket := r.URL.Query().Get("ticket")
+		if ticket == "" {
+			writeError(w, http.StatusUnauthorized, "missing console ticket")
+			return
+		}
+		t, err := s.Tickets.Consume(r.Context(), ticket)
+		if err != nil {
+			if errors.Is(err, panelcache.ErrTicketNotFound) {
+				writeError(w, http.StatusUnauthorized, "invalid or expired console ticket")
+				return
+			}
+			consoleLog.Error(err, "could not consume console ticket")
+			writeError(w, http.StatusServiceUnavailable, "console is temporarily unavailable")
+			return
+		}
+		if t.Org != r.PathValue("org") || t.GameServer != r.PathValue("name") {
+			writeError(w, http.StatusUnauthorized, "invalid or expired console ticket")
+			return
+		}
+
+		user, err := s.DB.GetUser(r.Context(), t.UserID)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "invalid or expired console ticket")
+			return
+		}
+		acc, status, msg := s.resolveOrgAccess(r.Context(), user, t.Org, paneldb.RoleMember)
+		if acc == nil {
+			writeError(w, status, msg)
+			return
+		}
+
+		r.SetPathValue("namespace", gameserversv1alpha1.TenantNamespace(acc.Org.Slug))
+		ctx := context.WithValue(withOrgAccess(r.Context(), acc), userContextKey, user)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // handleConsole attaches to the GameServer's already-running "server"
