@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -84,6 +85,21 @@ func (s *Store) UpsertUser(ctx context.Context, username, password string, isAdm
 	return u, nil
 }
 
+var (
+	dummyHashOnce sync.Once
+	dummyHash     []byte
+)
+
+// dummyPasswordHash is a valid bcrypt hash (same cost as real ones) that
+// VerifyPassword compares against when the username does not exist, so that
+// case costs the same as a wrong password.
+func dummyPasswordHash() []byte {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("hatchery-timing-equalizer"), bcrypt.DefaultCost)
+	})
+	return dummyHash
+}
+
 // VerifyPassword looks up username and checks password against its stored
 // hash. Returns ErrNotFound for both "no such user" and "wrong password" —
 // deliberately the same error, so a caller can't use response differences to
@@ -95,6 +111,7 @@ func (s *Store) VerifyPassword(ctx context.Context, username, password string) (
 		`SELECT id, username, password_hash, is_admin, created_at FROM users WHERE username = $1`, username)
 	if err := row.Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash(), []byte(password))
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -138,9 +155,36 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 // DeleteUser removes a user (and, via ON DELETE CASCADE, their sessions and
-// GameServer permission grants).
+// memberships). It refuses with ErrLastOwner if the user is the only owner of
+// any org, since that would leave the org with nobody able to manage it.
 func (s *Store) DeleteUser(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	// Lock every org this user owns so a concurrent role change cannot slip
+	// a second owner out from under the check below.
+	if _, err := tx.ExecContext(ctx, `
+		SELECT o.id FROM organizations o JOIN memberships m ON m.org_id = o.id
+		WHERE m.user_id = $1 AND m.role = 'owner' FOR UPDATE OF o`, id); err != nil {
+		return err
+	}
+	var soleOwner bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM memberships m
+			WHERE m.user_id = $1 AND m.role = 'owner'
+			AND (SELECT count(*) FROM memberships o WHERE o.org_id = m.org_id AND o.role = 'owner') = 1
+		)`, id).Scan(&soleOwner); err != nil {
+		return err
+	}
+	if soleOwner {
+		return ErrLastOwner
+	}
+
+	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -151,7 +195,21 @@ func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	if n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
+}
+
+// GetUserByUsername looks up a user by username, or returns ErrNotFound.
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	u := &User{}
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, username, is_admin, created_at FROM users WHERE username = $1`, username)
+	if err := row.Scan(&u.ID, &u.Username, &u.IsAdmin, &u.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return u, nil
 }
 
 // HasAdmin reports whether any admin user exists — used to decide whether
