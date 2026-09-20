@@ -1,0 +1,29 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: minecraft-vanilla
+spec:
+  image: itzg/minecraft-server:latest
+  startCommand: "/image/scripts/start"
+  stopSignal: SIGTERM
+  variables:
+    - name: EULA
+      description: "Accepts the Minecraft EULA (https://aka.ms/MinecraftEULA). Required to start the server."
+      default: "TRUE"
+      required: true
+    - name: MEMORY
+      description: "JVM heap size, e.g. 1G, 2G."
+      default: "1G"
+      userEditable: true
+    - name: TYPE
+      description: "Server flavor: VANILLA, PAPER, FABRIC, etc."
+      default: "VANILLA"
+      userEditable: true
+  ports:
+    - name: game
+      containerPort: 25565
+      protocol: TCP
+      default: true
