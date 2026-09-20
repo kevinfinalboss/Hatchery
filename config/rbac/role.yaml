@@ -14,8 +14,11 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - limitranges
+  - namespaces
   - persistentvolumeclaims
   - pods
+  - resourcequotas
   - secrets
   - services
   verbs:
@@ -52,6 +55,7 @@ rules:
   - gameserverbackups
   - gameserverrestores
   - gameservers
+  - tenants
   verbs:
   - create
   - delete
@@ -66,6 +70,7 @@ rules:
   - gameserverbackups/finalizers
   - gameserverrestores/finalizers
   - gameservers/finalizers
+  - tenants/finalizers
   verbs:
   - update
 - apiGroups:
@@ -74,7 +79,40 @@ rules:
   - gameserverbackups/status
   - gameserverrestores/status
   - gameservers/status
+  - tenants/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - hatchery-panel-tenant
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
