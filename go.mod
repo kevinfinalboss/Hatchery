@@ -10,6 +10,7 @@ require (
 	github.com/onsi/gomega v1.39.0
 	github.com/pkg/sftp v1.13.9
 	github.com/prometheus/client_golang v1.24.0
+	github.com/redis/go-redis/v9 v9.22.0
 	golang.org/x/crypto v0.57.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
@@ -81,6 +82,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
