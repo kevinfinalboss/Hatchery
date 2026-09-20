@@ -22,6 +22,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -46,6 +48,76 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(k8sClient.Get(ctx, key, &gameserversv1alpha1.GameServer{})).NotTo(Succeed())
 	}
+
+	It("never mounts a ServiceAccount token into the game pod", func() {
+		egg := &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{Image: "example.com/g:1", StartCommand: "run"}}
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "tok", Namespace: "default"},
+			Spec:       gameserversv1alpha1.GameServerSpec{Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"}},
+		}
+		pod, err := buildPod(gs, egg, testSFTPAgentImage)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.Spec.AutomountServiceAccountToken).NotTo(BeNil())
+		Expect(*pod.Spec.AutomountServiceAccountToken).To(BeFalse())
+	})
+
+	It("opens the Egg's ports with a NetworkPolicy only in tenant namespaces", func() {
+		egg := func(ns string) *gameserversv1alpha1.Egg {
+			return &gameserversv1alpha1.Egg{
+				ObjectMeta: metav1.ObjectMeta{Name: "np-egg", Namespace: ns},
+				Spec: gameserversv1alpha1.EggSpec{
+					Image:        "example.com/game:latest",
+					StartCommand: "run",
+					Ports:        []gameserversv1alpha1.EggPort{{Name: "game", ContainerPort: 25565}},
+				},
+			}
+		}
+		server := func(name, ns string) *gameserversv1alpha1.GameServer {
+			return &gameserversv1alpha1.GameServer{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+				Spec: gameserversv1alpha1.GameServerSpec{
+					EggRef:  gameserversv1alpha1.GameServerEggRef{Name: "np-egg"},
+					State:   gameserversv1alpha1.GameServerStateRunning,
+					Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+				},
+			}
+		}
+		reconciler := &GameServerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), SFTPAgentImage: testSFTPAgentImage}
+		reconcileTwice := func(gs *gameserversv1alpha1.GameServer) {
+			key := types.NamespacedName{Name: gs.Name, Namespace: gs.Namespace}
+			for range 2 {
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+				Expect(err).NotTo(HaveOccurred())
+			}
+		}
+
+		By("a GameServer in a namespace labeled as a tenant's")
+		Expect(k8sClient.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+			Name: "hatchery-gs-np", Labels: map[string]string{gameserversv1alpha1.LabelTenant: "gs-np"},
+		}})).To(Succeed())
+		Expect(k8sClient.Create(ctx, egg("hatchery-gs-np"))).To(Succeed())
+		tenantGS := server("gs-np", "hatchery-gs-np")
+		Expect(k8sClient.Create(ctx, tenantGS)).To(Succeed())
+		reconcileTwice(tenantGS)
+
+		var np networkingv1.NetworkPolicy
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "hatchery-gs-np", Name: "gs-np-game"}, &np)).To(Succeed())
+		Expect(np.Spec.Ingress).To(HaveLen(1))
+		Expect(np.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(25565))
+
+		By("a GameServer in an ordinary namespace")
+		Expect(k8sClient.Create(ctx, egg(resourceNamespace))).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg(resourceNamespace))).To(Succeed()) })
+		plainGS := server("gs-np-default", resourceNamespace)
+		Expect(k8sClient.Create(ctx, plainGS)).To(Succeed())
+		DeferCleanup(func() {
+			deleteAndFinalize(reconciler, plainGS, types.NamespacedName{Name: plainGS.Name, Namespace: resourceNamespace})
+		})
+		reconcileTwice(plainGS)
+
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: resourceNamespace, Name: "gs-np-default-game"}, &networkingv1.NetworkPolicy{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue())
+	})
 
 	It("creates the owned Pod, Service and PVC for a Running GameServer", func() {
 		By("creating the Egg the GameServer will reference")
