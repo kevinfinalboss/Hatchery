@@ -24,23 +24,3 @@ webhooks:
     resources:
     - gameservers
   sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-gameservers-hatchery-io-v1alpha1-gameserverrestore
-  failurePolicy: Fail
-  name: vgameserverrestore-v1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - gameservers.hatchery.io
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - gameserverrestores
-  sideEffects: None
