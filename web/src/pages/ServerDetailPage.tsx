@@ -1,113 +1,115 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import clsx from "clsx";
 import { api } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { atLeast, roleOf, useOrg } from "../lib/org";
+import { useSetServerState } from "../lib/serverActions";
 import { Button } from "../components/ui/Button";
+import { useT } from "../lib/i18n";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { ServerConsole } from "../components/console/ServerConsole";
-import { ServerLogs } from "../components/console/ServerLogs";
 import { FileManager } from "../components/files/FileManager";
-import clsx from "clsx";
+import { ServerSettings } from "../components/server/ServerSettings";
 
-type Tab = "console" | "logs" | "files";
+type Section = "console" | "files" | "settings";
+
+const SECTIONS: { id: Section; label: "server.sectionConsole" | "server.sectionFiles" | "server.sectionSettings" }[] = [
+  { id: "console", label: "server.sectionConsole" },
+  { id: "files", label: "server.sectionFiles" },
+  { id: "settings", label: "server.sectionSettings" },
+];
+
+function sectionOf(raw: string | null): Section {
+  return raw === "files" || raw === "settings" ? raw : "console";
+}
 
 export function ServerDetailPage() {
-  const { namespace = "", name = "" } = useParams();
-  const { user } = useAuth();
+  const t = useT();
+  const { org = "", name = "" } = useParams();
+  const [params, setParams] = useSearchParams();
+  const section = sectionOf(params.get("s"));
+  const { orgs } = useOrg();
+  const canDelete = atLeast(roleOf(orgs, org), "admin");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>("console");
+  const setState = useSetServerState();
 
   const { data: server, isLoading } = useQuery({
-    queryKey: ["gameserver", namespace, name],
-    queryFn: () => api.getGameServer(namespace, name),
+    queryKey: ["gameserver", org, name],
+    queryFn: () => api.getGameServer(org, name),
     refetchInterval: 5000,
   });
 
-  const setState = useMutation({
-    mutationFn: (state: "Running" | "Stopped") => api.setGameServerState(namespace, name, state),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["gameserver", namespace, name] });
-      void queryClient.invalidateQueries({ queryKey: ["gameservers"] });
-    },
-  });
-
   const deleteServer = useMutation({
-    mutationFn: () => api.deleteGameServer(namespace, name),
+    mutationFn: () => api.deleteGameServer(org, name),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["gameservers"] });
+      void queryClient.invalidateQueries({ queryKey: ["gameservers", org] });
       navigate("/");
     },
   });
 
   if (isLoading || !server) {
-    return <div className="font-sans text-sm text-text-secondary">Carregando…</div>;
+    return <div className="font-sans text-sm text-text-secondary">{t("common.loading")}</div>;
   }
 
-  const running = server.spec.state === "Running";
+  const desiredRunning = server.spec.state === "Running";
+  const podRunning = server.status?.phase === "Running";
 
   return (
     <div className="flex h-full flex-col gap-5">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <div className="font-display text-2xl font-bold text-text-primary">{name}</div>
+            <div className="font-display text-xl font-bold text-text-primary">{name}</div>
             <StatusBadge phase={server.status?.phase ?? ""} />
           </div>
-          <div className="mt-0.5 font-sans text-sm text-text-secondary">
-            {server.spec.eggRef.name} · {namespace} · {server.spec.storage.size}
+          <div className="mt-0.5 font-sans text-xs text-text-secondary">
+            {server.spec.eggRef.name} · {org} · {server.spec.storage.size}
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant={running ? "secondary" : "primary"}
-            disabled={setState.isPending}
-            onClick={() => setState.mutate(running ? "Stopped" : "Running")}
-          >
-            {running ? "Parar" : "Iniciar"}
-          </Button>
-          {user?.isAdmin && (
-            <Button
-              variant="danger"
-              disabled={deleteServer.isPending}
-              onClick={() => {
-                if (confirm(`Excluir ${name}? Isso remove o Pod e a PVC.`)) {
-                  deleteServer.mutate();
-                }
-              }}
+        <Button
+          variant={desiredRunning ? "secondary" : "primary"}
+          disabled={setState.isPending}
+          onClick={() => setState.mutate({ org, name, state: desiredRunning ? "Stopped" : "Running" })}
+        >
+          {desiredRunning ? t("server.stop") : t("server.start")}
+        </Button>
+      </div>
+
+      <div className="flex min-h-0 grow flex-col gap-4 md:flex-row md:gap-6">
+        <nav className="flex shrink-0 gap-1 border-b border-border pb-2 md:w-40 md:flex-col md:border-b-0 md:pb-0">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setParams({ s: s.id }, { replace: true })}
+              className={clsx(
+                "flex items-center gap-2 px-3 py-1.5 text-left font-sans text-sm",
+                section === s.id ? "bg-surface-hover text-primary-text" : "text-text-secondary hover:text-text-primary",
+              )}
             >
-              Excluir
-            </Button>
+              <span aria-hidden className="w-2">
+                {section === s.id ? ">" : ""}
+              </span>
+              {t(s.label)}
+            </button>
+          ))}
+        </nav>
+
+        <div className="min-h-0 min-w-0 grow">
+          {section === "console" ? (
+            <ServerConsole org={org} name={name} running={podRunning} />
+          ) : section === "files" ? (
+            <FileManager org={org} name={name} />
+          ) : (
+            <ServerSettings
+              org={org}
+              server={server}
+              canDelete={canDelete}
+              deleting={deleteServer.isPending}
+              onDelete={() => deleteServer.mutate()}
+            />
           )}
         </div>
-      </div>
-
-      <div className="flex gap-1 border-b border-border">
-        {(["console", "logs", "files"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={clsx(
-              "-mb-px border-b-2 px-3 py-2 font-sans text-sm font-medium capitalize",
-              tab === t
-                ? "border-primary text-text-primary"
-                : "border-transparent text-text-tertiary hover:text-text-secondary",
-            )}
-          >
-            {t === "console" ? "Console" : t === "logs" ? "Logs" : "Arquivos"}
-          </button>
-        ))}
-      </div>
-
-      <div className="min-h-0 grow">
-        {tab === "console" ? (
-          <ServerConsole namespace={namespace} name={name} />
-        ) : tab === "logs" ? (
-          <ServerLogs namespace={namespace} name={name} />
-        ) : (
-          <FileManager namespace={namespace} name={name} />
-        )}
       </div>
     </div>
   );
