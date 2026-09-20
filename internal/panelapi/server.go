@@ -14,13 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package panelapi is the HTTP API for the Panel: CRUD over Egg/GameServer
-// CRDs, plus log streaming and an interactive console, all talking to the
-// Kubernetes API server directly (no Wings-style per-node daemon — see
-// AGENTS.md's "Decisão de design: eliminar o 'daemon' para exec/logs/console").
-// User accounts, sessions and per-GameServer permission grants live in
-// Postgres (internal/paneldb) — see AGENTS.md for why that's a real database
-// and not another CRD.
 package panelapi
 
 import (
@@ -33,16 +26,6 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
-// Server holds everything the HTTP handlers need.
-//
-//   - Client is a controller-runtime client for typed CRUD over Egg/GameServer
-//     (and anything else registered in its scheme).
-//   - Clientset is a plain client-go Clientset for the subresources
-//     controller-runtime's client doesn't wrap: pods/log and pods/attach.
-//   - RESTConfig is the raw config those subresources need to open their own
-//     SPDY connection for the console (remotecommand can't reuse Clientset's
-//     already-built REST client for that).
-//   - DB is the Panel's own user/session/permission store.
 type Server struct {
 	Client     client.Client
 	Clientset  kubernetes.Interface
@@ -54,14 +37,16 @@ type Server struct {
 	// session — the sidecar case reuses whatever image the
 	// GameServerController already put in the Pod.
 	SFTPAgentImage string
+
+	AllowedOrigins []string
 }
 
 // NewServer builds a Server. cfg and clientset are kept alongside client
 // because the console handler needs the raw REST config to build its own SPDY
 // executor, and Clientset because controller-runtime's client doesn't expose
 // the log/attach subresources.
-func NewServer(c client.Client, clientset kubernetes.Interface, cfg *rest.Config, db *paneldb.Store, sftpAgentImage string) *Server {
-	return &Server{Client: c, Clientset: clientset, RESTConfig: cfg, DB: db, SFTPAgentImage: sftpAgentImage}
+func NewServer(c client.Client, clientset kubernetes.Interface, cfg *rest.Config, db *paneldb.Store, sftpAgentImage string, allowedOrigins []string) *Server {
+	return &Server{Client: c, Clientset: clientset, RESTConfig: cfg, DB: db, SFTPAgentImage: sftpAgentImage, AllowedOrigins: allowedOrigins}
 }
 
 // Routes builds the HTTP handler for the Panel API.
@@ -89,11 +74,6 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v1/eggs", s.requireAuth(http.HandlerFunc(s.handleListEggs)))
 	mux.Handle("GET /api/v1/eggs/{namespace}/{name}", s.requireAuth(http.HandlerFunc(s.handleGetEgg)))
 
-	// Creating/deleting GameServers is provisioning infrastructure —
-	// admin-only. Everything scoped to one already-existing GameServer
-	// additionally requires a permission grant (or admin) via
-	// requireGameServerAccess, checked inside each handler since it needs
-	// the {namespace}/{name} path values requireAuth alone doesn't parse.
 	mux.Handle("GET /api/v1/gameservers", s.requireAuth(http.HandlerFunc(s.handleListGameServers)))
 	mux.Handle("POST /api/v1/gameservers", s.requireAdmin(http.HandlerFunc(s.handleCreateGameServer)))
 	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}", s.requireAuth(http.HandlerFunc(s.handleGetGameServer)))
