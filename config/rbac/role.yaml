@@ -1,0 +1,80 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gameservers.hatchery.io
+  resources:
+  - eggs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gameservers.hatchery.io
+  resources:
+  - gameserverbackups
+  - gameserverrestores
+  - gameservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gameservers.hatchery.io
+  resources:
+  - gameserverbackups/finalizers
+  - gameserverrestores/finalizers
+  - gameservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gameservers.hatchery.io
+  resources:
+  - gameserverbackups/status
+  - gameserverrestores/status
+  - gameservers/status
+  verbs:
+  - get
+  - patch
+  - update
