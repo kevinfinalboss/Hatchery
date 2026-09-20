@@ -91,10 +91,15 @@ func (v *GameServerValidator) ValidateDelete(_ context.Context, obj *gameservers
 
 func (v *GameServerValidator) validateEggExists(ctx context.Context, gs *gameserversv1alpha1.GameServer) error {
 	var egg gameserversv1alpha1.Egg
-	key := types.NamespacedName{Namespace: gs.Namespace, Name: gs.Spec.EggRef.Name}
+	ns := gs.EggNamespace()
+	key := types.NamespacedName{Namespace: ns, Name: gs.Spec.EggRef.Name}
+	where := fmt.Sprintf("namespace %q", ns)
+	if gs.Spec.EggRef.Scope == gameserversv1alpha1.EggScopeCatalog {
+		where = "the global catalog"
+	}
 	if err := v.Client.Get(ctx, key, &egg); err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("spec.eggRef.name: egg %q not found in namespace %q", gs.Spec.EggRef.Name, gs.Namespace)
+			return fmt.Errorf("spec.eggRef.name: egg %q not found in %s", gs.Spec.EggRef.Name, where)
 		}
 		return fmt.Errorf("spec.eggRef.name: looking up egg %q: %w", gs.Spec.EggRef.Name, err)
 	}
