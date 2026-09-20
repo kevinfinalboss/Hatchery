@@ -29,13 +29,13 @@ import (
 	"testing"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -101,7 +101,50 @@ func newTestServer(t *testing.T, objs ...client.Object) *Server {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&gameserversv1alpha1.GameServer{}).Build()
 	// Clientset/RESTConfig are nil: none of the handlers exercised in this
 	// package's tests touch the log/attach subresources that need them.
-	return NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test", nil)
+	srv := NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test", nil)
+	srv.Tickets = panelcache.NewMemoryTicketStore()
+	srv.LoginLimiter = panelcache.NewMemoryLoginLimiter(panelcache.DefaultLoginLimits)
+
+	// Every test server has one org, "testorg", owned by a fixture user. Tests
+	// that need other identities add them with newMemberToken/newUserToken.
+	owner, err := srv.DB.CreateUser(context.Background(), "fixture-owner", "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.DB.CreateOrg(context.Background(), testOrgSlug, "Test Org", owner.ID); err != nil {
+		t.Fatal(err)
+	}
+	return srv
+}
+
+const testOrgSlug = "testorg"
+
+// testOrgNS is the namespace every test GameServer/Egg/Secret lives in.
+func testOrgNS() string { return gameserversv1alpha1.TenantNamespace(testOrgSlug) }
+
+// orgURL builds a path under the fixture org, e.g. orgURL("/gameservers").
+func orgURL(rest string) string { return "/api/v1/orgs/" + testOrgSlug + rest }
+
+// newMemberToken creates a user with the given role in the fixture org and
+// returns a live session token for them.
+func newMemberToken(t *testing.T, srv *Server, username string, role paneldb.Role) string {
+	t.Helper()
+	u, err := srv.DB.CreateUser(context.Background(), username, "password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	org, err := srv.DB.GetOrgBySlug(context.Background(), testOrgSlug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.DB.AddMember(context.Background(), org.ID, u.ID, role); err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := srv.DB.CreateSession(context.Background(), u.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
 }
 
 // adminToken creates a fresh admin user and returns a live session token for
@@ -152,13 +195,13 @@ func TestAuthRejectsMissingOrWrongToken(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)
 
-	if rec := doRequest(t, srv, http.MethodGet, "/api/v1/gameservers", "", nil); rec.Code != http.StatusUnauthorized {
+	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers"), "", nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: expected 401, got %d", rec.Code)
 	}
-	if rec := doRequest(t, srv, http.MethodGet, "/api/v1/gameservers", "wrong-token", nil); rec.Code != http.StatusUnauthorized {
+	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers"), "wrong-token", nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong token: expected 401, got %d", rec.Code)
 	}
-	if rec := doRequest(t, srv, http.MethodGet, "/api/v1/gameservers", token, nil); rec.Code != http.StatusOK {
+	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers"), token, nil); rec.Code != http.StatusOK {
 		t.Fatalf("correct token: expected 200, got %d", rec.Code)
 	}
 }
@@ -171,61 +214,29 @@ func TestHealthzDoesNotRequireAuth(t *testing.T) {
 	}
 }
 
-func TestEggListAndGet(t *testing.T) {
-	egg := &gameserversv1alpha1.Egg{
-		ObjectMeta: metav1.ObjectMeta{Name: "minecraft", Namespace: "default"},
-		Spec:       gameserversv1alpha1.EggSpec{Image: "itzg/minecraft-server:latest", StartCommand: "/image/scripts/start"},
-	}
-	srv := newTestServer(t, egg)
-	token := adminToken(t, srv)
-
-	rec := doRequest(t, srv, http.MethodGet, "/api/v1/eggs?namespace=default", token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list eggs: expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var list gameserversv1alpha1.EggList
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
-		t.Fatal(err)
-	}
-	if len(list.Items) != 1 || list.Items[0].Name != "minecraft" {
-		t.Fatalf("expected one egg named minecraft, got %+v", list.Items)
-	}
-
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/eggs/default/minecraft", token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("get egg: expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/eggs/default/does-not-exist", token, nil)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("get missing egg: expected 404, got %d", rec.Code)
-	}
-}
-
 func TestGameServerCRUDAndState(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)
 
 	createReq := createGameServerRequest{
-		Name:      "my-server",
-		Namespace: "default",
+		Name: "my-server",
 		Spec: gameserversv1alpha1.GameServerSpec{
 			EggRef:  gameserversv1alpha1.GameServerEggRef{Name: "minecraft"},
 			State:   gameserversv1alpha1.GameServerStateRunning,
 			Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
 		},
 	}
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers", token, createReq)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), token, createReq)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/gameservers/default/my-server", token, nil)
+	rec = doRequest(t, srv, http.MethodGet, orgURL("/gameservers/my-server"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/gameservers?namespace=default", token, nil)
+	rec = doRequest(t, srv, http.MethodGet, orgURL("/gameservers"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: expected 200, got %d", rec.Code)
 	}
@@ -237,7 +248,7 @@ func TestGameServerCRUDAndState(t *testing.T) {
 		t.Fatalf("expected one gameserver, got %d", len(list.Items))
 	}
 
-	rec = doRequest(t, srv, http.MethodPatch, "/api/v1/gameservers/default/my-server/state", token,
+	rec = doRequest(t, srv, http.MethodPatch, orgURL("/gameservers/my-server/state"), token,
 		setStateRequest{State: gameserversv1alpha1.GameServerStateStopped})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("set state: expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -250,45 +261,45 @@ func TestGameServerCRUDAndState(t *testing.T) {
 		t.Fatalf("expected state Stopped, got %q", updated.Spec.State)
 	}
 
-	rec = doRequest(t, srv, http.MethodPatch, "/api/v1/gameservers/default/my-server/state", token,
+	rec = doRequest(t, srv, http.MethodPatch, orgURL("/gameservers/my-server/state"), token,
 		setStateRequest{State: "Sideways"})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid state: expected 400, got %d", rec.Code)
 	}
 
-	rec = doRequest(t, srv, http.MethodDelete, "/api/v1/gameservers/default/my-server", token, nil)
+	rec = doRequest(t, srv, http.MethodDelete, orgURL("/gameservers/my-server"), token, nil)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("delete: expected 202, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/gameservers/default/my-server", token, nil)
+	rec = doRequest(t, srv, http.MethodGet, orgURL("/gameservers/my-server"), token, nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("get after delete: expected 404, got %d", rec.Code)
 	}
 }
 
-func TestCreateGameServerRequiresNameAndNamespace(t *testing.T) {
+func TestCreateGameServerRequiresName(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers", token, createGameServerRequest{})
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), token, createGameServerRequest{})
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestNonAdminCannotCreateOrDeleteGameServers(t *testing.T) {
+func TestOrgMemberCannotCreateOrDeleteGameServers(t *testing.T) {
 	srv := newTestServer(t)
-	token := newUserToken(t, srv, "regular-user", false)
+	token := newMemberToken(t, srv, "regular-user", paneldb.RoleMember)
 
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers", token, createGameServerRequest{
-		Name: "nope", Namespace: "default",
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), token, createGameServerRequest{
+		Name: "nope",
 		Spec: gameserversv1alpha1.GameServerSpec{EggRef: gameserversv1alpha1.GameServerEggRef{Name: "minecraft"}, Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"}},
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("create: expected 403, got %d", rec.Code)
 	}
 
-	rec = doRequest(t, srv, http.MethodDelete, "/api/v1/gameservers/default/whatever", token, nil)
+	rec = doRequest(t, srv, http.MethodDelete, orgURL("/gameservers/whatever"), token, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("delete: expected 403, got %d", rec.Code)
 	}
