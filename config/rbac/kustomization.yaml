@@ -21,4 +21,4 @@ resources:
 - egg_viewer_role.yaml
 - panel_tenant_role.yaml
 - panel_cluster_role.yaml
-
+- panel_catalog_role.yaml
