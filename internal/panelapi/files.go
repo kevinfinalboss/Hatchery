@@ -407,8 +407,11 @@ func (s *Server) handleDownloadFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	paths := strings.Split(r.URL.Query().Get("paths"), ",")
-	if len(paths) == 0 || paths[0] == "" {
+	// Repeated `paths=` params, not one comma-joined value: Query().Get()
+	// percent-decodes before we could split, so an escaped comma inside a
+	// filename would un-escape into a real delimiter and corrupt the parse.
+	paths := r.URL.Query()["paths"]
+	if len(paths) == 0 {
 		writeError(w, http.StatusBadRequest, "paths is required")
 		return
 	}

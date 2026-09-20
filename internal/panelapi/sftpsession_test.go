@@ -138,6 +138,51 @@ func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 	}
 }
 
+// A maintenance Pod that already hit its ActiveDeadlineSeconds TTL is left
+// behind by Kubernetes in a terminal phase with no Service endpoints behind
+// it. The file manager re-resolves the SFTP target on every click, so a stale
+// Pod must be replaced rather than reused — otherwise every later dial fails
+// forever until someone deletes it by hand.
+func TestSFTPSessionReplacesStaleMaintenancePod(t *testing.T) {
+	gs, secret := newTestGameServerWithSecret("gs-stale", gameserversv1alpha1.GameServerStateStopped)
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "gs-stale", Namespace: "default"},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+			},
+		},
+	}
+	stale := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      maintenancePodName("gs-stale"),
+			Namespace: "default",
+			Labels:    gameserversv1alpha1.GameServerLabels("gs-stale"),
+		},
+		Spec:   corev1.PodSpec{Containers: []corev1.Container{{Name: "sftp-agent", Image: "old"}}},
+		Status: corev1.PodStatus{Phase: corev1.PodFailed, Reason: "DeadlineExceeded"},
+	}
+	srv := newTestServer(t, gs, secret, pvc, stale)
+	token := adminToken(t, srv)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-stale/sftp-session", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var pod corev1.Pod
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: maintenancePodName("gs-stale")}, &pod); err != nil {
+		t.Fatalf("expected a fresh maintenance pod to exist: %v", err)
+	}
+	if pod.Status.Phase == corev1.PodFailed {
+		t.Fatal("expected the stale Failed pod to have been replaced by a fresh one")
+	}
+	if pod.Spec.ActiveDeadlineSeconds == nil || *pod.Spec.ActiveDeadlineSeconds <= 0 {
+		t.Fatal("expected the replacement pod to carry a fresh ActiveDeadlineSeconds")
+	}
+}
+
 func TestSFTPSessionMissingGameServer(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)

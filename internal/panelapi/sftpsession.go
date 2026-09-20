@@ -130,10 +130,21 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 	name := maintenancePodName(gs.Name)
 	var existing corev1.Pod
 	err := s.Client.Get(ctx, client.ObjectKey{Namespace: gs.Namespace, Name: name}, &existing)
-	if err == nil {
-		return nil // already up; it'll tear itself down via ActiveDeadlineSeconds
-	}
-	if !apierrors.IsNotFound(err) {
+	switch {
+	case err == nil:
+		if existing.Status.Phase != corev1.PodFailed && existing.Status.Phase != corev1.PodSucceeded {
+			return nil // already up and healthy; it'll tear itself down via ActiveDeadlineSeconds
+		}
+		// Terminal phase: the Pod is past its ActiveDeadlineSeconds TTL (or
+		// otherwise dead) and Kubernetes leaves the object behind with
+		// RestartPolicy: Never — no Service endpoints point at it any more.
+		// Delete it so the create below can stand a fresh one up; without
+		// this, every later SFTP dial for this GameServer would keep
+		// "succeeding" against a corpse.
+		if delErr := s.Client.Delete(ctx, &existing); delErr != nil && !apierrors.IsNotFound(delErr) {
+			return fmt.Errorf("deleting stale maintenance pod: %w", delErr)
+		}
+	case !apierrors.IsNotFound(err):
 		return err
 	}
 

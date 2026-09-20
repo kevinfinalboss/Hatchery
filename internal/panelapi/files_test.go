@@ -159,7 +159,7 @@ func TestFilesUploadAndDownload(t *testing.T) {
 	}
 
 	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/note2.txt", token, []byte("second"))
-	rec = doRequest(t, srv, http.MethodGet, base+"/files/download?paths=/note.txt,/note2.txt", token, nil)
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/download?paths=/note.txt&paths=/note2.txt", token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("download zip: expected 200, got %d", rec.Code)
 	}
