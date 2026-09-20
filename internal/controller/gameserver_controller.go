@@ -309,9 +309,6 @@ func (r *GameServerReconciler) reconcileService(ctx context.Context, gs *gameser
 	return err
 }
 
-// reconcilePod drives the server Pod towards the desired state: created when
-// State is Running and absent; deleted when State is Stopped and present.
-// It returns the current Pod, or nil if none should exist.
 func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) (*corev1.Pod, error) {
 	var pod corev1.Pod
 	err := r.Get(ctx, types.NamespacedName{Namespace: gs.Namespace, Name: gs.Name}, &pod)
@@ -328,6 +325,9 @@ func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameservers
 	}
 
 	if exists {
+		if pod.DeletionTimestamp.IsZero() && restartRequested(gs, &pod) {
+			return nil, r.Delete(ctx, &pod)
+		}
 		return &pod, nil
 	}
 
@@ -342,6 +342,14 @@ func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameservers
 		return nil, err
 	}
 	return desired, nil
+}
+
+// restartRequested reports whether the GameServer asks for a restart the running Pod
+// hasn't been through yet: it carries a RestartAnnotation the Pod's stamp doesn't match.
+// A Pod created before restarts existed has no stamp, so the first request restarts it too.
+func restartRequested(gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) bool {
+	want := gs.Annotations[gameserversv1alpha1.RestartAnnotation]
+	return want != "" && want != pod.Annotations[gameserversv1alpha1.RestartAnnotation]
 }
 
 // updateStatus recomputes GameServerStatus from the live Pod (if any) and
@@ -477,9 +485,10 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      gs.Name,
-			Namespace: gs.Namespace,
-			Labels:    gameServerLabels(gs.Name),
+			Name:        gs.Name,
+			Namespace:   gs.Namespace,
+			Labels:      gameServerLabels(gs.Name),
+			Annotations: podAnnotations(gs),
 		},
 		Spec: corev1.PodSpec{
 			RestartPolicy:                corev1.RestartPolicyNever,
@@ -519,6 +528,15 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 		},
 	}
 	return pod, nil
+}
+
+// podAnnotations stamps the Pod with the GameServer's current RestartAnnotation, so a
+// restart that was already served isn't served again by the Pod that replaced the old one.
+func podAnnotations(gs *gameserversv1alpha1.GameServer) map[string]string {
+	if v := gs.Annotations[gameserversv1alpha1.RestartAnnotation]; v != "" {
+		return map[string]string{gameserversv1alpha1.RestartAnnotation: v}
+	}
+	return nil
 }
 
 func installCommand(install *gameserversv1alpha1.EggInstall) []string {
