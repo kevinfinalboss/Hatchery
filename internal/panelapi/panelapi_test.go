@@ -39,16 +39,6 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
-// Every test in this package needs paneldb for auth, so — like paneldb's own
-// tests — they need a real Postgres and skip without one. See
-// internal/paneldb/store_test.go for how to point POSTGRES_TEST_DSN at one.
-//
-// This gets its own isolated database (not just a reset "public" schema) for
-// the same reason internal/paneldb's own test helper does: `go test ./...`
-// runs this package's tests and paneldb's tests concurrently, and both point
-// at the same POSTGRES_TEST_DSN — a schema reset in one could wipe out
-// tables the other's test just created mid-run. See the longer comment on
-// paneldb's own newIsolatedTestDB.
 func newTestStore(t *testing.T) *paneldb.Store {
 	t.Helper()
 	db := newIsolatedTestDB(t)
@@ -111,7 +101,7 @@ func newTestServer(t *testing.T, objs ...client.Object) *Server {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&gameserversv1alpha1.GameServer{}).Build()
 	// Clientset/RESTConfig are nil: none of the handlers exercised in this
 	// package's tests touch the log/attach subresources that need them.
-	return NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test")
+	return NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test", nil)
 }
 
 // adminToken creates a fresh admin user and returns a live session token for
