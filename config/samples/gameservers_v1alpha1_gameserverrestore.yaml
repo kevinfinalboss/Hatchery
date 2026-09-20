@@ -1,0 +1,8 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: GameServerRestore
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: gameserverrestore-sample
+spec:
