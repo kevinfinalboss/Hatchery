@@ -51,7 +51,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(res.status, message);
   }
-  if (res.status === 204) return undefined as T;
+  // 204, or any bodyless response (several file endpoints answer 201 Created
+  // with no body) — res.json() on an empty body throws a SyntaxError.
+  if (res.status === 204 || res.headers.get("Content-Length") === "0") return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -152,10 +154,12 @@ export const api = {
   // reasoning as getFileContent bypassing request(), and it avoids putting
   // the session token in a URL the way consoleUrl below has to.
   downloadFiles: async (ns: string, name: string, paths: string[]) => {
-    const query = paths.map(encodeURIComponent).join(",");
+    // Repeated params instead of one comma-joined value: a comma inside a
+    // filename would survive the server's percent-decoding as a delimiter.
+    const query = paths.map((p) => `paths=${encodeURIComponent(p)}`).join("&");
     const headers = new Headers();
     if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
-    const res = await fetch(`${API_BASE}/gameservers/${ns}/${name}/files/download?paths=${query}`, { headers });
+    const res = await fetch(`${API_BASE}/gameservers/${ns}/${name}/files/download?${query}`, { headers });
     if (!res.ok) throw new ApiError(res.status, res.statusText);
     const blob = await res.blob();
     const disposition = res.headers.get("Content-Disposition") ?? "";

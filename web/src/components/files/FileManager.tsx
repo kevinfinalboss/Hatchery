@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { api } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 import type { FileEntry } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { FileEditor } from "./FileEditor";
@@ -18,7 +18,10 @@ const MAX_EDITABLE_SIZE = 2 * 1024 * 1024;
 function isEditable(entry: FileEntry): boolean {
   if (entry.isDir || entry.size > MAX_EDITABLE_SIZE) return false;
   const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
-  return EDITABLE_TEXT_EXTENSIONS.has(ext) || !entry.name.includes(".");
+  // No extensionless fallback: getFileContent reads via res.text(), which
+  // lossily UTF-8-decodes arbitrary bytes, and saving would write that
+  // corruption back over the real file. Extensionless files download instead.
+  return EDITABLE_TEXT_EXTENSIONS.has(ext);
 }
 
 function joinPath(dir: string, name: string): string {
@@ -32,7 +35,14 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Every mutation and every async row action funnels failures here; without
+  // it a 403/404/409/502 was completely silent to the user.
+  function reportError(err: unknown) {
+    setError(err instanceof ApiError ? err.message : String(err));
+  }
 
   const {
     data: entries,
@@ -55,6 +65,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
   const mkdirMutation = useMutation({
     mutationFn: (dirName: string) => api.mkdir(namespace, name, joinPath(currentPath, dirName)),
     onSuccess: invalidate,
+    onError: reportError,
   });
   const deleteMutation = useMutation({
     mutationFn: (paths: string[]) => api.deleteFiles(namespace, name, paths),
@@ -62,6 +73,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setSelected(new Set());
       invalidate();
     },
+    onError: reportError,
   });
   const renameMutation = useMutation({
     mutationFn: ({ from, to }: { from: string; to: string }) => api.renameFile(namespace, name, from, to),
@@ -69,6 +81,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setSelected(new Set());
       invalidate();
     },
+    onError: reportError,
   });
   const copyMutation = useMutation({
     mutationFn: ({ from, to }: { from: string; to: string }) => api.copyFile(namespace, name, from, to),
@@ -76,6 +89,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setSelected(new Set());
       invalidate();
     },
+    onError: reportError,
   });
   const compressMutation = useMutation({
     mutationFn: ({ paths, dest }: { paths: string[]; dest: string }) =>
@@ -84,6 +98,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setSelected(new Set());
       invalidate();
     },
+    onError: reportError,
   });
   const decompressMutation = useMutation({
     mutationFn: ({ path, dest }: { path: string; dest: string }) => api.decompressFile(namespace, name, path, dest),
@@ -91,10 +106,12 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setSelected(new Set());
       invalidate();
     },
+    onError: reportError,
   });
   const uploadMutation = useMutation({
     mutationFn: (file: File) => api.uploadFile(namespace, name, currentPath, file),
     onSuccess: invalidate,
+    onError: reportError,
   });
   const saveMutation = useMutation({
     mutationFn: ({ path, content }: { path: string; content: string }) =>
@@ -103,6 +120,7 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       setEditingPath(null);
       invalidate();
     },
+    onError: reportError,
   });
 
   const breadcrumbs = currentPath === "/" ? [] : currentPath.split("/").filter(Boolean);
@@ -116,20 +134,31 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
     });
   }
 
+  // Every path change clears the selection: the checkboxes don't carry over
+  // to the new listing, but the bulk toolbar (Apagar included) would still
+  // act on the now-invisible paths.
+  function navigateTo(p: string) {
+    setCurrentPath(p);
+    setSelected(new Set());
+  }
+
   async function openEntry(entry: FileEntry) {
     const fullPath = joinPath(currentPath, entry.name);
     if (entry.isDir) {
-      setCurrentPath(fullPath);
-      setSelected(new Set());
+      navigateTo(fullPath);
       return;
     }
-    if (!isEditable(entry)) {
-      await api.downloadFiles(namespace, name, [fullPath]);
-      return;
+    try {
+      if (!isEditable(entry)) {
+        await api.downloadFiles(namespace, name, [fullPath]);
+        return;
+      }
+      const content = await api.getFileContent(namespace, name, fullPath);
+      setEditingContent(content);
+      setEditingPath(fullPath);
+    } catch (err) {
+      reportError(err);
     }
-    const content = await api.getFileContent(namespace, name, fullPath);
-    setEditingContent(content);
-    setEditingPath(fullPath);
   }
 
   if (editingPath) {
@@ -162,14 +191,14 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
       }}
     >
       <div className="flex flex-wrap items-center gap-1 font-mono text-sm text-text-secondary">
-        <button className="hover:text-text-primary" onClick={() => setCurrentPath("/")}>
+        <button className="hover:text-text-primary" onClick={() => navigateTo("/")}>
           /
         </button>
         {breadcrumbs.map((segment, i) => (
           <span key={i} className="flex items-center gap-1">
             <button
               className="hover:text-text-primary"
-              onClick={() => setCurrentPath("/" + breadcrumbs.slice(0, i + 1).join("/"))}
+              onClick={() => navigateTo("/" + breadcrumbs.slice(0, i + 1).join("/"))}
             >
               {segment}
             </button>
@@ -177,6 +206,20 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
           </span>
         ))}
       </div>
+
+      {error && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-status-failed px-3 py-2 font-sans text-sm text-status-failed">
+          <span>{error}</span>
+          <button
+            type="button"
+            aria-label="Fechar erro"
+            className="shrink-0 leading-none hover:text-text-primary"
+            onClick={() => setError(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -203,7 +246,10 @@ export function FileManager({ namespace, name }: { namespace: string; name: stri
         />
         {selectedList.length > 0 && (
           <>
-            <Button variant="secondary" onClick={() => void api.downloadFiles(namespace, name, selectedList)}>
+            <Button
+              variant="secondary"
+              onClick={() => void api.downloadFiles(namespace, name, selectedList).catch(reportError)}
+            >
               Baixar ({selectedList.length})
             </Button>
             <Button
