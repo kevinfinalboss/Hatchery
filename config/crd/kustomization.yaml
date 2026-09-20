@@ -3,5 +3,6 @@ resources:
 - bases/gameservers.hatchery.io_gameservers.yaml
 - bases/gameservers.hatchery.io_gameserverbackups.yaml
 - bases/gameservers.hatchery.io_gameserverrestores.yaml
+- bases/gameservers.hatchery.io_tenants.yaml
 
 patches:
