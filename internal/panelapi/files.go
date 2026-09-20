@@ -359,6 +359,8 @@ func copyOneFile(conn *sftpConn, src, dest string) error {
 	return err
 }
 
+const maxUploadFormMemory = 100 << 20 // 100MB
+
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGameServerAccess(w, r) {
 		return
@@ -367,7 +369,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(maxUploadFormMemory); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
 		return
 	}
