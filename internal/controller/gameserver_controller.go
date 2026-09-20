@@ -116,7 +116,7 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	var egg gameserversv1alpha1.Egg
-	eggKey := types.NamespacedName{Namespace: gs.Namespace, Name: gs.Spec.EggRef.Name}
+	eggKey := types.NamespacedName{Namespace: gs.EggNamespace(), Name: gs.Spec.EggRef.Name}
 	if err := r.Get(ctx, eggKey, &egg); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("referenced Egg not found, waiting", "egg", eggKey.Name)
