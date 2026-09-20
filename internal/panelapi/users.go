@@ -25,9 +25,8 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
-// Every handler in this file is admin-only (see Routes) — managing accounts
-// and who can reach which GameServer is provisioning, same tier as
-// creating/deleting GameServers themselves.
+// Every handler in this file is platform-admin-only (see Routes): accounts
+// are platform-level, while who belongs to which org is managed in members.go.
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.DB.ListUsers(r.Context())
@@ -82,63 +81,10 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleListUserPermissions(w http.ResponseWriter, r *http.Request) {
-	id, err := userIDFromPath(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	refs, err := s.DB.ListGameServerAccess(r.Context(), id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, refs)
-}
-
-type grantPermissionRequest struct {
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-}
-
-func (s *Server) handleGrantUserPermission(w http.ResponseWriter, r *http.Request) {
-	id, err := userIDFromPath(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var req grantPermissionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-		return
-	}
-	if req.Namespace == "" || req.Name == "" {
-		writeError(w, http.StatusBadRequest, "namespace and name are required")
-		return
-	}
-
-	ref := paneldb.GameServerRef{Namespace: req.Namespace, Name: req.Name}
-	if err := s.DB.GrantGameServerAccess(r.Context(), id, ref); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, ref)
-}
-
-func (s *Server) handleRevokeUserPermission(w http.ResponseWriter, r *http.Request) {
-	id, err := userIDFromPath(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ref := paneldb.GameServerRef{Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
-	if err := s.DB.RevokeGameServerAccess(r.Context(), id, ref); err != nil {
+		if errors.Is(err, paneldb.ErrLastOwner) {
+			writeError(w, http.StatusConflict, "user is the only owner of an organization: transfer ownership first")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
