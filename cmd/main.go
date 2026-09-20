@@ -26,6 +26,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -64,6 +65,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var sftpAgentImage string
+	var panelServiceAccount, egressExceptCIDRs string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -86,6 +88,11 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the sftp-agent sidecar injected into every Running GameServer's Pod.")
+	flag.StringVar(&panelServiceAccount, "panel-service-account", os.Getenv("OPERATOR_PANEL_SERVICE_ACCOUNT"),
+		"ServiceAccount the Panel API runs as, as <namespace>/<name>. When set, each tenant namespace gets a RoleBinding for it "+
+			"and an ingress rule letting that namespace reach the sftp-agent port. Empty disables both.")
+	flag.StringVar(&egressExceptCIDRs, "egress-except-cidrs", os.Getenv("OPERATOR_EGRESS_EXCEPT_CIDRS"),
+		"Comma-separated extra CIDRs tenant pods may not reach over internet egress (added to RFC1918, link-local and CGNAT).")
 	// Development defaults to false so logs are JSON-encoded by default (structured
 	// logging, one object per line — what a log aggregator expects). Pass
 	// --zap-devel for human-readable console output while developing locally.
@@ -177,6 +184,25 @@ func main() {
 		SFTPAgentImage: sftpAgentImage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "gameserver")
+		os.Exit(1)
+	}
+	panelNS, panelName, err := parseServiceAccount(panelServiceAccount)
+	if err != nil {
+		setupLog.Error(err, "invalid --panel-service-account")
+		os.Exit(1)
+	}
+	extraEgressExcept, err := parseCIDRList(egressExceptCIDRs)
+	if err != nil {
+		setupLog.Error(err, "invalid --egress-except-cidrs")
+		os.Exit(1)
+	}
+	if err := (&controller.TenantReconciler{
+		Client:              mgr.GetClient(),
+		Scheme:              mgr.GetScheme(),
+		PanelServiceAccount: types.NamespacedName{Namespace: panelNS, Name: panelName},
+		EgressExceptCIDRs:   extraEgressExcept,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "tenant")
 		os.Exit(1)
 	}
 	// nolint:goconst
