@@ -2,17 +2,41 @@ import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { api } from "../../lib/api";
+import { api, getAuthToken } from "../../lib/api";
+import { useT } from "../../lib/i18n";
+import { useTheme } from "../../lib/theme";
+import { readXtermTheme } from "../../lib/xtermTheme";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 
-export function ServerConsole({ org, name }: { org: string; name: string }) {
+const RETRY_MS = 2000;
+
+type StreamState = "idle" | "connecting" | "live" | "reconnecting";
+
+function sleep(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+export function ServerConsole({ org, name, running }: { org: string; name: string; running: boolean }) {
+  const t = useT();
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(0);
 
+  const [stream, setStream] = useState<StreamState>("idle");
   const [connected, setConnected] = useState(false);
   const [command, setCommand] = useState("");
 
@@ -23,14 +47,10 @@ export function ServerConsole({ org, name }: { org: string; name: string }) {
     const term = new Terminal({
       convertEol: true,
       disableStdin: true,
+      scrollback: 20000,
       fontFamily: "'JetBrains Mono', monospace",
       fontSize: 13,
-      theme: {
-        background: "#08111f",
-        foreground: "#f3f6fc",
-        cursor: "#3f80ec",
-        selectionBackground: "#29406e",
-      },
+      theme: readXtermTheme(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -38,51 +58,98 @@ export function ServerConsole({ org, name }: { org: string; name: string }) {
     fit.fit();
     termRef.current = term;
 
-    let cancelled = false;
-    let ws: WebSocket | null = null;
-
-    void (async () => {
-      try {
-        const { ticket } = await api.consoleTicket(org, name);
-        if (cancelled) return;
-
-        ws = new WebSocket(api.consoleUrl(org, name, ticket));
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          setConnected(true);
-          term.write("\x1b[90m-- conectado --\x1b[0m\r\n");
-        };
-        ws.onmessage = (event) => {
-          if (typeof event.data === "string") {
-            term.write(event.data);
-          } else {
-            void (event.data as Blob).arrayBuffer().then((buf) => term.write(new Uint8Array(buf)));
-          }
-        };
-        ws.onclose = () => {
-          setConnected(false);
-          term.write("\r\n\x1b[90m-- desconectado --\x1b[0m\r\n");
-        };
-        ws.onerror = () => term.write("\r\n\x1b[31m-- erro de conexão --\x1b[0m\r\n");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "falha ao abrir o console";
-        term.write(`\r\n\x1b[31m-- ${msg} --\x1b[0m\r\n`);
-      }
-    })();
-
     const resizeObserver = new ResizeObserver(() => fit.fit());
     resizeObserver.observe(container);
 
     return () => {
-      cancelled = true;
       resizeObserver.disconnect();
-      ws?.close();
       term.dispose();
       termRef.current = null;
-      wsRef.current = null;
     };
   }, [org, name]);
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = readXtermTheme();
+  }, [theme]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    if (!running) {
+      setStream("idle");
+      return;
+    }
+
+    const controller = new AbortController();
+    let first = true;
+
+    void (async () => {
+      while (!controller.signal.aborted) {
+        setStream(first ? "connecting" : "reconnecting");
+        try {
+          const token = getAuthToken();
+          const res = await fetch(api.logsPath(org, name), {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: controller.signal,
+          });
+          if (!res.ok || !res.body) throw new Error(`logs ${res.status}`);
+
+          term.reset();
+          setStream("live");
+          const reader = res.body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            term.write(value);
+          }
+        } catch {
+        }
+        if (controller.signal.aborted) return;
+        first = false;
+        await sleep(RETRY_MS, controller.signal);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [org, name, running]);
+
+  useEffect(() => {
+    if (!running) {
+      setConnected(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          const { ticket } = await api.consoleTicket(org, name);
+          if (controller.signal.aborted) return;
+
+          const socket = new WebSocket(api.consoleUrl(org, name, ticket));
+          wsRef.current = socket;
+          await new Promise<void>((resolve) => {
+            socket.onopen = () => setConnected(true);
+            socket.onclose = () => resolve();
+            socket.onerror = () => resolve();
+          });
+          setConnected(false);
+        } catch {
+          // ticket falhou: tenta de novo
+        }
+        if (controller.signal.aborted) return;
+        await sleep(RETRY_MS, controller.signal);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      wsRef.current?.close();
+      wsRef.current = null;
+      setConnected(false);
+    };
+  }, [org, name, running]);
 
   function sendCommand() {
     const trimmed = command.trim();
@@ -90,7 +157,7 @@ export function ServerConsole({ org, name }: { org: string; name: string }) {
     const term = termRef.current;
     if (!trimmed || !term || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-    term.write(`\x1b[36m> ${trimmed}\x1b[0m\r\n`);
+    term.write(`\x1b[32m> ${trimmed}\x1b[0m\r\n`);
     ws.send(trimmed + "\n");
 
     const history = historyRef.current;
@@ -118,9 +185,18 @@ export function ServerConsole({ org, name }: { org: string; name: string }) {
     }
   }
 
+  const statusText = !running
+    ? t("console.stopped")
+    : stream === "live"
+      ? t("console.live")
+      : stream === "reconnecting"
+        ? t("console.reconnecting")
+        : t("console.connecting");
+
   return (
     <div className="flex h-full w-full flex-col gap-2">
-      <div ref={containerRef} className="min-h-0 grow [&_.xterm]:h-full" />
+      <div className="shrink-0 font-sans text-xs text-text-tertiary">{statusText}</div>
+      <div ref={containerRef} className="min-h-0 grow border border-border bg-canvas p-2 [&_.xterm]:h-full" />
       <form
         className="flex shrink-0 items-center gap-2"
         onSubmit={(e) => {
@@ -128,18 +204,21 @@ export function ServerConsole({ org, name }: { org: string; name: string }) {
           sendCommand();
         }}
       >
+        <span className="text-primary-text" aria-hidden>
+          &gt;
+        </span>
         <Input
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!connected}
-          placeholder={connected ? "Digite um comando e pressione Enter" : "Conectando..."}
+          placeholder={!running ? t("console.placeholderStopped") : connected ? t("console.placeholderReady") : t("console.placeholderConnecting")}
           className="grow font-mono"
           spellCheck={false}
           autoComplete="off"
         />
         <Button type="submit" disabled={!connected || !command.trim()}>
-          Enviar
+          {t("common.send")}
         </Button>
       </form>
     </div>
