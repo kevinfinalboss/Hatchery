@@ -3,4 +3,5 @@ resources:
 - gameservers_v1alpha1_gameserver.yaml
 - gameservers_v1alpha1_gameserverbackup.yaml
 - gameservers_v1alpha1_gameserverrestore.yaml
+- gameservers_v1alpha1_tenant.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
