@@ -1,0 +1,11 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Tenant
+metadata:
+  name: acme
+spec:
+  displayName: Acme Games
+  quota:
+    cpu: "8"
+    memory: 16Gi
+    storage: 100Gi
+    maxGameServers: 5
