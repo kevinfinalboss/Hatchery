@@ -278,6 +278,66 @@ func TestGameServerCRUDAndState(t *testing.T) {
 	}
 }
 
+func TestRestartGameServer(t *testing.T) {
+	srv := newTestServer(t)
+	token := adminToken(t, srv)
+
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), token, createGameServerRequest{
+		Name: "my-server",
+		Spec: gameserversv1alpha1.GameServerSpec{
+			EggRef:  gameserversv1alpha1.GameServerEggRef{Name: "minecraft"},
+			State:   gameserversv1alpha1.GameServerStateRunning,
+			Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+		},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/my-server/restart"), token, nil)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("restart: expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var restarted gameserversv1alpha1.GameServer
+	if err := json.Unmarshal(rec.Body.Bytes(), &restarted); err != nil {
+		t.Fatal(err)
+	}
+	stamp := restarted.Annotations[gameserversv1alpha1.RestartAnnotation]
+	if stamp == "" {
+		t.Fatal("expected the restart annotation to be set")
+	}
+	if restarted.Spec.State != gameserversv1alpha1.GameServerStateRunning {
+		t.Fatalf("restart must not change the desired state, got %q", restarted.Spec.State)
+	}
+
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/my-server/restart"), token, nil)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("second restart: expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var again gameserversv1alpha1.GameServer
+	if err := json.Unmarshal(rec.Body.Bytes(), &again); err != nil {
+		t.Fatal(err)
+	}
+	if again.Annotations[gameserversv1alpha1.RestartAnnotation] == stamp {
+		t.Fatal("a second restart request must produce a new annotation value, or the controller would ignore it")
+	}
+
+	rec = doRequest(t, srv, http.MethodPatch, orgURL("/gameservers/my-server/state"), token,
+		setStateRequest{State: gameserversv1alpha1.GameServerStateStopped})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/my-server/restart"), token, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("restart of a stopped server: expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/nope/restart"), token, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("restart of an unknown server: expected 404, got %d", rec.Code)
+	}
+}
+
 func TestCreateGameServerRequiresName(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)
