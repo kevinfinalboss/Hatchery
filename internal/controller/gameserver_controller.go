@@ -24,6 +24,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,6 +133,10 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("reconciling service: %w", err)
 	}
 
+	if err := r.reconcileNetworkPolicy(ctx, &gs, &egg); err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling network policy: %w", err)
+	}
+
 	pod, err := r.reconcilePod(ctx, &gs, &egg)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling pod: %w", err)
@@ -227,6 +232,54 @@ func (r *GameServerReconciler) reconcileSecret(ctx context.Context, gs *gameserv
 		return err
 	}
 	return r.Create(ctx, secret)
+}
+
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+
+// gameIngressPolicySpec allows player traffic to one GameServer's pods on
+// exactly the ports its Egg declares, from any source. It is additive to the
+// tenant namespace's default-deny (see tenantNetworkPolicies). An Egg with no
+// ports gets no rule at all: an ingress rule with an empty port list would
+// mean "every port".
+func gameIngressPolicySpec(gsName string, egg *gameserversv1alpha1.Egg) networkingv1.NetworkPolicySpec {
+	spec := networkingv1.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{MatchLabels: gameServerLabels(gsName)},
+		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+	}
+	var ports []networkingv1.NetworkPolicyPort
+	for _, p := range egg.Spec.Ports {
+		proto := p.Protocol
+		if proto == "" {
+			proto = corev1.ProtocolTCP
+		}
+		port := intstr.FromInt32(p.ContainerPort)
+		ports = append(ports, networkingv1.NetworkPolicyPort{Protocol: &proto, Port: &port})
+	}
+	if len(ports) > 0 {
+		spec.Ingress = []networkingv1.NetworkPolicyIngressRule{{Ports: ports}}
+	}
+	return spec
+}
+
+// reconcileNetworkPolicy opens the Egg's ports to players, but only in tenant
+// namespaces. In any other namespace nothing is default-denied, and adding an
+// ingress policy there would *isolate* the pods for ingress and cut off the
+// sftp-agent port — the opposite of what this is for.
+func (r *GameServerReconciler) reconcileNetworkPolicy(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
+	var ns corev1.Namespace
+	if err := r.Get(ctx, types.NamespacedName{Name: gs.Namespace}, &ns); err != nil {
+		return err
+	}
+	if ns.Labels[gameserversv1alpha1.LabelTenant] == "" {
+		return nil
+	}
+	np := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: gs.Name + "-game", Namespace: gs.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, np, func() error {
+		np.Spec = gameIngressPolicySpec(gs.Name, egg)
+		return controllerutil.SetControllerReference(gs, np, r.Scheme)
+	})
+	return err
 }
 
 // reconcileService ensures a ClusterIP Service exposes the Egg's declared
@@ -420,6 +473,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			VolumeMounts: mounts,
 		})
 	}
+	automountToken := false
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -428,8 +482,9 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			Labels:    gameServerLabels(gs.Name),
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:  corev1.RestartPolicyNever,
-			InitContainers: initContainers,
+			RestartPolicy:                corev1.RestartPolicyNever,
+			AutomountServiceAccountToken: &automountToken,
+			InitContainers:               initContainers,
 			// fsGroup lets the sftp-agent sidecar and the "server" container
 			// share files on the data volume regardless of which uid the
 			// Egg's image runs the server as — see sftpagent.SharedFSGroup.
@@ -510,6 +565,7 @@ func (r *GameServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
+		Owns(&networkingv1.NetworkPolicy{}).
 		Named("gameserver").
 		Complete(r)
 }
