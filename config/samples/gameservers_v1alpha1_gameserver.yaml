@@ -1,0 +1,20 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: GameServer
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: gameserver-sample
+spec:
+  eggRef:
+    name: minecraft-vanilla
+  state: Running
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1200Mi"
+    limits:
+      cpu: "2"
+      memory: "1200Mi"
