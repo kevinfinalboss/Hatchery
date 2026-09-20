@@ -19,6 +19,7 @@ package panelapi
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -137,6 +138,32 @@ func (s *Server) handleSetGameServerState(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, gs)
+}
+
+func (s *Server) handleRestartGameServer(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+
+	var gs gameserversv1alpha1.GameServer
+	if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+	if gs.Spec.State != gameserversv1alpha1.GameServerStateRunning {
+		writeError(w, http.StatusConflict, "server is not running; start it instead")
+		return
+	}
+
+	if gs.Annotations == nil {
+		gs.Annotations = map[string]string{}
+	}
+	gs.Annotations[gameserversv1alpha1.RestartAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := s.Client.Update(r.Context(), &gs); err != nil {
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, gs)
 }
 
 func gameServerKey(r *http.Request) client.ObjectKey {
