@@ -99,6 +99,7 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resourceNames:
+  - hatchery-panel-catalog
   - hatchery-panel-tenant
   resources:
   - clusterroles
