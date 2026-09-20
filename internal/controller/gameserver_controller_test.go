@@ -232,6 +232,85 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(pod.Spec.Containers[0].Image).To(Equal("example.com/catalog-game:1"))
 	})
 
+	It("restarts the Pod exactly once per RestartAnnotation change", func() {
+		By("creating the Egg the GameServer will reference")
+		egg := &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-restart", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.EggSpec{
+				Image:        "example.com/game:latest",
+				StartCommand: "start",
+			},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg)).To(Succeed()) })
+
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-gameserver-restart", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.GameServerSpec{
+				EggRef:  gameserversv1alpha1.GameServerEggRef{Name: egg.Name},
+				State:   gameserversv1alpha1.GameServerStateRunning,
+				Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+
+		key := types.NamespacedName{Name: gs.Name, Namespace: resourceNamespace}
+		reconciler := &GameServerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), SFTPAgentImage: testSFTPAgentImage}
+		DeferCleanup(func() { deleteAndFinalize(reconciler, gs, key) })
+
+		reconcileOnce := func() {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		requestRestart := func(value string) {
+			Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+			if gs.Annotations == nil {
+				gs.Annotations = map[string]string{}
+			}
+			gs.Annotations[gameserversv1alpha1.RestartAnnotation] = value
+			Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+		}
+
+		reconcileOnce() // attaches finalizer
+		reconcileOnce() // creates resources
+
+		var pod corev1.Pod
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		firstUID := pod.UID
+		Expect(pod.Annotations).NotTo(HaveKey(gameserversv1alpha1.RestartAnnotation))
+
+		By("reconciling again without a restart request leaves the Pod alone")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		Expect(pod.UID).To(Equal(firstUID))
+
+		By("requesting a restart deletes the Pod")
+		requestRestart("restart-1")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).NotTo(Succeed())
+
+		By("the next reconcile recreates it, stamped with the request that was just served")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		secondUID := pod.UID
+		Expect(secondUID).NotTo(Equal(firstUID))
+		Expect(pod.Annotations).To(HaveKeyWithValue(gameserversv1alpha1.RestartAnnotation, "restart-1"))
+
+		By("the same request is not served twice")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		Expect(pod.UID).To(Equal(secondUID))
+
+		By("a new request restarts it again")
+		requestRestart("restart-2")
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).NotTo(Succeed())
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		Expect(pod.UID).NotTo(Equal(secondUID))
+		Expect(pod.Annotations).To(HaveKeyWithValue(gameserversv1alpha1.RestartAnnotation, "restart-2"))
+	})
+
 	It("deletes the Pod but keeps the PVC when the desired state is Stopped", func() {
 		By("creating the Egg the GameServer will reference")
 		egg := &gameserversv1alpha1.Egg{
