@@ -26,43 +26,12 @@ import (
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 )
 
-// handleListGameServers returns every GameServer for an admin, or just the
-// ones the requesting user has an explicit grant for otherwise. There's no
-// way to express "namespace/name in this specific set" as a single List
-// call against the Kubernetes API, so a non-admin's grants are fetched
-// individually — fine at the scale this table is expected to stay at (see
-// paneldb.ListGameServerAccess).
+// handleListGameServers lists the GameServers of the requested org. The
+// namespace is the org's derived one (set by requireOrgRole), so there is no
+// way to list another org's servers from here.
 func (s *Server) handleListGameServers(w http.ResponseWriter, r *http.Request) {
-	user := userFromContext(r.Context())
-
-	if !user.IsAdmin {
-		refs, err := s.DB.ListGameServerAccess(r.Context(), user.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		list := gameserversv1alpha1.GameServerList{}
-		for _, ref := range refs {
-			var gs gameserversv1alpha1.GameServer
-			if err := s.Client.Get(r.Context(), client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, &gs); err != nil {
-				if statusFor(err) == http.StatusNotFound {
-					continue // grant outlived the GameServer it pointed at
-				}
-				writeError(w, statusFor(err), err.Error())
-				return
-			}
-			list.Items = append(list.Items, gs)
-		}
-		writeJSON(w, http.StatusOK, list)
-		return
-	}
-
 	var list gameserversv1alpha1.GameServerList
-	var opts []client.ListOption
-	if ns := r.URL.Query().Get("namespace"); ns != "" {
-		opts = append(opts, client.InNamespace(ns))
-	}
-	if err := s.Client.List(r.Context(), &list, opts...); err != nil {
+	if err := s.Client.List(r.Context(), &list, client.InNamespace(r.PathValue("namespace"))); err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
@@ -81,13 +50,12 @@ func (s *Server) handleGetGameServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gs)
 }
 
-// createGameServerRequest is a thin envelope around GameServerSpec: the CRD
-// type itself has no top-level name/namespace fields worth exposing
-// separately in a create request body.
+// createGameServerRequest is a thin envelope around GameServerSpec. There is
+// deliberately no namespace field: the server is always created in the org's
+// own namespace. Any "namespace" a client sends is ignored by the JSON decoder.
 type createGameServerRequest struct {
-	Name      string                             `json:"name"`
-	Namespace string                             `json:"namespace"`
-	Spec      gameserversv1alpha1.GameServerSpec `json:"spec"`
+	Name string                             `json:"name"`
+	Spec gameserversv1alpha1.GameServerSpec `json:"spec"`
 }
 
 func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) {
@@ -96,24 +64,31 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
-	if req.Name == "" || req.Namespace == "" {
-		writeError(w, http.StatusBadRequest, "name and namespace are required")
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	acc := orgAccessFromContext(r.Context())
+	ns := r.PathValue("namespace")
+
+	if err := s.checkQuotaHeadroom(r.Context(), acc.Org.Slug, ns, req.Spec); err != nil {
+		s.auditEvent(r, acc.Org.Slug, "gameserver.create", "gameserver", req.Name, "failed", nil)
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 
 	gs := &gameserversv1alpha1.GameServer{
-		ObjectMeta: metav1.ObjectMeta{Name: req.Name, Namespace: req.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: req.Name, Namespace: ns},
 		Spec:       req.Spec,
 	}
-	// Validation beyond "is this well-formed JSON" (does the Egg exist, is
-	// eggRef/storage well-formed) is intentionally not duplicated here — the
-	// GameServer validating webhook and CRD CEL rules already enforce it
-	// server-side, and re-checking here would just be two sources of truth
-	// that can drift.
+	// Validation beyond well-formed JSON (does the Egg exist, is eggRef/storage
+	// well-formed) stays in the GameServer webhook and the CRD's CEL rules.
 	if err := s.Client.Create(r.Context(), gs); err != nil {
+		s.auditEvent(r, acc.Org.Slug, "gameserver.create", "gameserver", req.Name, "failed", nil)
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
+	s.auditEvent(r, acc.Org.Slug, "gameserver.create", "gameserver", req.Name, "success", nil)
 	writeJSON(w, http.StatusCreated, gs)
 }
 
