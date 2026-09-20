@@ -1,44 +1,62 @@
 import { NavLink } from "react-router-dom";
 import clsx from "clsx";
-import logo from "../../assets/logo.png";
 import { useAuth } from "../../lib/auth";
 import { atLeast, useOrg } from "../../lib/org";
+import { useT } from "../../lib/i18n";
+import { LanguageSwitcher } from "../ui/LanguageSwitcher";
+import { ThemeToggle } from "../ui/ThemeToggle";
+import { Wordmark } from "../ui/Wordmark";
 
 const navItemClasses = ({ isActive }: { isActive: boolean }) =>
   clsx(
-    "flex items-center gap-2.5 rounded-lg px-3.5 py-2 font-sans text-sm font-medium transition-colors",
-    isActive ? "bg-surface-hover text-text-primary" : "text-text-secondary hover:text-text-primary",
+    "flex items-center gap-2 px-3 py-1.5 font-sans text-sm transition-colors",
+    isActive ? "bg-surface-hover text-primary-text" : "text-text-secondary hover:text-text-primary",
   );
 
-function NavDot({ active }: { active: boolean }) {
+function NavItem({ to, end, onNavigate, children }: { to: string; end?: boolean; onNavigate?: () => void; children: string }) {
   return (
-    <span
-      className={clsx("h-1.5 w-1.5 rounded-full", active ? "bg-primary" : "bg-transparent")}
-    />
+    <NavLink to={to} end={end} onClick={onNavigate} className={navItemClasses}>
+      {({ isActive }) => (
+        <>
+          <span aria-hidden className="w-2">
+            {isActive ? ">" : ""}
+          </span>
+          {children}
+        </>
+      )}
+    </NavLink>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onOpenPalette, onNavigate }: { onOpenPalette: () => void; onNavigate?: () => void }) {
   const { user, logout } = useAuth();
   const { orgs, current, setCurrent } = useOrg();
+  const t = useT();
 
   return (
-    <div className="flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-sidebar p-4">
-      <div className="flex items-center gap-2.5 px-2 pb-5">
-        <img src={logo} alt="Hatchery" className="h-8 w-8 rounded-lg object-cover" />
-        <span className="font-display text-lg font-bold text-text-primary">Hatchery</span>
+    <div className="flex h-full w-[240px] shrink-0 flex-col border-r border-border bg-sidebar p-4">
+      <div className="px-2 pb-5 text-lg">
+        <Wordmark />
       </div>
+
+      <button
+        onClick={onOpenPalette}
+        className="mx-2 mb-4 flex items-center justify-between border border-border px-3 py-1.5 font-sans text-xs text-text-tertiary hover:border-border-strong hover:text-text-secondary"
+      >
+        <span>{t("nav.search")}</span>
+        <span>Ctrl K</span>
+      </button>
 
       {orgs.length > 0 && (
         <div className="px-2 pb-4">
-          <label htmlFor="org-switcher" className="mb-1 block font-sans text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
-            Organização
+          <label htmlFor="org-switcher" className="mb-1 block font-sans text-[11px] uppercase tracking-wide text-text-tertiary">
+            {t("nav.organization")}
           </label>
           <select
             id="org-switcher"
             value={current?.slug ?? ""}
             onChange={(e) => setCurrent(e.target.value)}
-            className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
           >
             {orgs.map((o) => (
               <option key={o.slug} value={o.slug}>
@@ -50,57 +68,57 @@ export function Sidebar() {
       )}
 
       <nav className="flex flex-col gap-0.5">
-        <NavLink to="/" end className={navItemClasses}>
-          {({ isActive }) => (<><NavDot active={isActive} />Servidores</>)}
-        </NavLink>
+        <NavItem to="/" end onNavigate={onNavigate}>
+          {t("nav.servers")}
+        </NavItem>
         {current && (
-          <NavLink to="/eggs" className={navItemClasses}>
-            {({ isActive }) => (<><NavDot active={isActive} />Eggs</>)}
-          </NavLink>
+          <NavItem to="/eggs" onNavigate={onNavigate}>
+            {t("nav.eggs")}
+          </NavItem>
         )}
         {current && (
-          <NavLink to="/members" className={navItemClasses}>
-            {({ isActive }) => (<><NavDot active={isActive} />Membros</>)}
-          </NavLink>
+          <NavItem to="/members" onNavigate={onNavigate}>
+            {t("nav.members")}
+          </NavItem>
         )}
         {atLeast(current?.role, "admin") && (
-          <NavLink to="/audit" className={navItemClasses}>
-            {({ isActive }) => (<><NavDot active={isActive} />Auditoria</>)}
-          </NavLink>
+          <NavItem to="/audit" onNavigate={onNavigate}>
+            {t("nav.audit")}
+          </NavItem>
         )}
         {user?.isAdmin && (
           <>
-            <div className="mt-4 px-3.5 pb-1 font-sans text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
-              Plataforma
-            </div>
-            <NavLink to="/orgs" className={navItemClasses}>
-              {({ isActive }) => (<><NavDot active={isActive} />Organizações</>)}
-            </NavLink>
-            <NavLink to="/users" className={navItemClasses}>
-              {({ isActive }) => (<><NavDot active={isActive} />Usuários</>)}
-            </NavLink>
+            <div className="mt-4 px-3 pb-1 font-sans text-[11px] uppercase tracking-wide text-text-tertiary">{t("nav.platform")}</div>
+            <NavItem to="/orgs" onNavigate={onNavigate}>
+              {t("nav.orgs")}
+            </NavItem>
+            <NavItem to="/users" onNavigate={onNavigate}>
+              {t("nav.users")}
+            </NavItem>
           </>
         )}
       </nav>
 
       <div className="grow" />
 
+      <div className="px-2 pb-3">
+        <LanguageSwitcher />
+      </div>
+
       <div className="flex items-center gap-2.5 border-t border-border px-2 pt-3">
-        <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-primary font-display text-sm font-bold text-white">
+        <div className="flex h-[28px] w-[28px] items-center justify-center bg-primary font-display text-sm font-bold text-on-primary">
           {user?.username.slice(0, 1).toUpperCase()}
         </div>
         <div className="flex min-w-0 flex-col">
           <span className="truncate font-sans text-sm font-semibold text-text-primary">{user?.username}</span>
-          <span className="font-sans text-xs text-text-tertiary">
-            {user?.isAdmin ? "Administrador" : "Usuário"}
-          </span>
+          <span className="font-sans text-xs text-text-tertiary">{user?.isAdmin ? t("nav.roleAdmin") : t("nav.roleUser")}</span>
         </div>
-        <button
-          onClick={() => void logout()}
-          className="ml-auto font-sans text-xs font-medium text-text-tertiary hover:text-text-primary"
-        >
-          Sair
-        </button>
+        <div className="ml-auto flex items-center gap-3">
+          <ThemeToggle />
+          <button onClick={() => void logout()} className="font-sans text-xs text-text-tertiary hover:text-text-primary">
+            {t("nav.logout")}
+          </button>
+        </div>
       </div>
     </div>
   );
