@@ -76,7 +76,7 @@ func newFileManagerTestServer(t *testing.T, state gameserversv1alpha1.GameServer
 	t.Helper()
 	gs, secret := newTestGameServerWithSecret("gs-files-"+string(state), state)
 	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: gs.Name, Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: gs.Name, Namespace: testOrgNS()},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
@@ -128,7 +128,7 @@ func TestOpenFileSFTPClientMaintenanceModeCreatesPod(t *testing.T) {
 	defer conn.Close()
 
 	var pod corev1.Pod
-	if err := srv.Client.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: maintenancePodName(gs.Name)}, &pod); err != nil {
+	if err := srv.Client.Get(context.Background(), client.ObjectKey{Namespace: testOrgNS(), Name: maintenancePodName(gs.Name)}, &pod); err != nil {
 		t.Fatalf("expected maintenance pod to exist: %v", err)
 	}
 }
