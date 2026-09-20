@@ -58,7 +58,7 @@ func TestServerCheckOrigin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{AllowedOrigins: tt.allowedOrigins}
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/gameservers/default/foo/console", nil)
+			req := httptest.NewRequest(http.MethodGet, orgURL("/gameservers/foo/console"), nil)
 			if tt.origin != "" {
 				req.Header.Set("Origin", tt.origin)
 			}
