@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -34,7 +33,7 @@ import (
 
 func newTestGameServerWithSecret(name string, state gameserversv1alpha1.GameServerState) (*gameserversv1alpha1.GameServer, *corev1.Secret) {
 	gs := &gameserversv1alpha1.GameServer{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", UID: types.UID("uid-" + name)},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testOrgNS(), UID: types.UID("uid-" + name)},
 		Spec: gameserversv1alpha1.GameServerSpec{
 			EggRef:  gameserversv1alpha1.GameServerEggRef{Name: "minecraft"},
 			State:   state,
@@ -42,7 +41,7 @@ func newTestGameServerWithSecret(name string, state gameserversv1alpha1.GameServ
 		},
 	}
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name + "-sftp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: name + "-sftp", Namespace: testOrgNS()},
 		Data:       map[string][]byte{"hmac-key": []byte("0123456789abcdef0123456789abcdef")},
 	}
 	return gs, secret
@@ -53,7 +52,7 @@ func TestSFTPSessionRunningUsesSidecarMode(t *testing.T) {
 	srv := newTestServer(t, gs, secret)
 	token := adminToken(t, srv)
 
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-running/sftp-session", token, nil)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-running/sftp-session"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -70,7 +69,7 @@ func TestSFTPSessionRunningUsesSidecarMode(t *testing.T) {
 
 	// No maintenance Pod should have been created for a Running server.
 	var pod corev1.Pod
-	err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: maintenancePodName("gs-running")}, &pod)
+	err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: maintenancePodName("gs-running")}, &pod)
 	if err == nil {
 		t.Fatal("expected no maintenance pod to exist for a Running GameServer")
 	}
@@ -79,7 +78,7 @@ func TestSFTPSessionRunningUsesSidecarMode(t *testing.T) {
 func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 	gs, secret := newTestGameServerWithSecret("gs-stopped", gameserversv1alpha1.GameServerStateStopped)
 	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "gs-stopped", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "gs-stopped", Namespace: testOrgNS()},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			VolumeName:  "pv-gs-stopped",
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -105,7 +104,7 @@ func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 	srv := newTestServer(t, gs, secret, pvc, pv)
 	token := adminToken(t, srv)
 
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-stopped/sftp-session", token, nil)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-stopped/sftp-session"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -118,7 +117,7 @@ func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 	}
 
 	var pod corev1.Pod
-	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: maintenancePodName("gs-stopped")}, &pod); err != nil {
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: maintenancePodName("gs-stopped")}, &pod); err != nil {
 		t.Fatalf("expected maintenance pod to exist: %v", err)
 	}
 	if pod.Spec.ActiveDeadlineSeconds == nil || *pod.Spec.ActiveDeadlineSeconds <= 0 {
@@ -130,9 +129,12 @@ func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 	if pod.Spec.Affinity == nil || pod.Spec.Affinity.NodeAffinity == nil {
 		t.Fatal("expected the maintenance pod to inherit the PV's node affinity")
 	}
+	if pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
+		t.Fatal("the maintenance pod must not mount a ServiceAccount token")
+	}
 
 	// Calling again should reuse the existing pod, not fail or duplicate it.
-	rec = doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-stopped/sftp-session", token, nil)
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-stopped/sftp-session"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("second call: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -146,7 +148,7 @@ func TestSFTPSessionStoppedCreatesMaintenancePod(t *testing.T) {
 func TestSFTPSessionReplacesStaleMaintenancePod(t *testing.T) {
 	gs, secret := newTestGameServerWithSecret("gs-stale", gameserversv1alpha1.GameServerStateStopped)
 	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "gs-stale", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "gs-stale", Namespace: testOrgNS()},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
@@ -157,7 +159,7 @@ func TestSFTPSessionReplacesStaleMaintenancePod(t *testing.T) {
 	stale := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      maintenancePodName("gs-stale"),
-			Namespace: "default",
+			Namespace: testOrgNS(),
 			Labels:    gameserversv1alpha1.GameServerLabels("gs-stale"),
 		},
 		Spec:   corev1.PodSpec{Containers: []corev1.Container{{Name: "sftp-agent", Image: "old"}}},
@@ -166,13 +168,13 @@ func TestSFTPSessionReplacesStaleMaintenancePod(t *testing.T) {
 	srv := newTestServer(t, gs, secret, pvc, stale)
 	token := adminToken(t, srv)
 
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-stale/sftp-session", token, nil)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-stale/sftp-session"), token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var pod corev1.Pod
-	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: maintenancePodName("gs-stale")}, &pod); err != nil {
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: maintenancePodName("gs-stale")}, &pod); err != nil {
 		t.Fatalf("expected a fresh maintenance pod to exist: %v", err)
 	}
 	if pod.Status.Phase == corev1.PodFailed {
@@ -186,36 +188,25 @@ func TestSFTPSessionReplacesStaleMaintenancePod(t *testing.T) {
 func TestSFTPSessionMissingGameServer(t *testing.T) {
 	srv := newTestServer(t)
 	token := adminToken(t, srv)
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/does-not-exist/sftp-session", token, nil)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/does-not-exist/sftp-session"), token, nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
 
-func TestSFTPSessionRequiresGameServerAccess(t *testing.T) {
+func TestSFTPSessionRequiresOrgMembership(t *testing.T) {
 	gs, secret := newTestGameServerWithSecret("gs-scoped", gameserversv1alpha1.GameServerStateRunning)
 	srv := newTestServer(t, gs, secret)
 
-	withoutGrant := newUserToken(t, srv, "no-grant-user", false)
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-scoped/sftp-session", withoutGrant, nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without a grant, got %d: %s", rec.Code, rec.Body.String())
+	outsider := newUserToken(t, srv, "not-in-org", false)
+	rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-scoped/sftp-session"), outsider, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("a non-member must get 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	granted, err := srv.DB.CreateUser(t.Context(), "granted-user", "password", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.DB.GrantGameServerAccess(t.Context(), granted.ID, paneldb.GameServerRef{Namespace: "default", Name: "gs-scoped"}); err != nil {
-		t.Fatal(err)
-	}
-	token, _, err := srv.DB.CreateSession(t.Context(), granted.ID, time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	rec = doRequest(t, srv, http.MethodPost, "/api/v1/gameservers/default/gs-scoped/sftp-session", token, nil)
+	member := newMemberToken(t, srv, "in-org", paneldb.RoleMember)
+	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-scoped/sftp-session"), member, nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 with a grant, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("a member must get 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
