@@ -196,6 +196,42 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(updated.Finalizers).To(ContainElement(gameserversv1alpha1.GameServerFinalizer))
 	})
 
+	It("resolves an Egg with scope Catalog from the catalog namespace", func() {
+		err := k8sClient.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: gameserversv1alpha1.CatalogNamespace}})
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
+		egg := &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "ctrl-catalog-egg", Namespace: gameserversv1alpha1.CatalogNamespace},
+			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/catalog-game:1", StartCommand: "run"},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, egg) })
+
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "uses-catalog-ctrl", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.GameServerSpec{
+				EggRef:  gameserversv1alpha1.GameServerEggRef{Name: egg.Name, Scope: gameserversv1alpha1.EggScopeCatalog},
+				State:   gameserversv1alpha1.GameServerStateRunning,
+				Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+
+		key := types.NamespacedName{Name: gs.Name, Namespace: resourceNamespace}
+		reconciler := &GameServerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), SFTPAgentImage: testSFTPAgentImage}
+		DeferCleanup(func() { deleteAndFinalize(reconciler, gs, key) })
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key}) // finalizer
+		Expect(err).NotTo(HaveOccurred())
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var pod corev1.Pod
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		Expect(pod.Spec.Containers[0].Image).To(Equal("example.com/catalog-game:1"))
+	})
+
 	It("deletes the Pod but keeps the PVC when the desired state is Stopped", func() {
 		By("creating the Egg the GameServer will reference")
 		egg := &gameserversv1alpha1.Egg{
