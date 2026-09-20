@@ -98,6 +98,16 @@ func tenantNetworkPolicies(ns, panelNamespace string, extraExcept []string) []*n
 				}},
 			}},
 		}),
+		np("allow-same-namespace", networkingv1.NetworkPolicySpec{
+			PodSelector: all,
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
+			}},
+			Egress: []networkingv1.NetworkPolicyEgressRule{{
+				To: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
+			}},
+		}),
 	}
 
 	if panelNamespace != "" {
