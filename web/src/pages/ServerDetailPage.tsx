@@ -7,9 +7,10 @@ import { Button } from "../components/ui/Button";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { ServerConsole } from "../components/console/ServerConsole";
 import { ServerLogs } from "../components/console/ServerLogs";
+import { FileManager } from "../components/files/FileManager";
 import clsx from "clsx";
 
-type Tab = "console" | "logs";
+type Tab = "console" | "logs" | "files";
 
 export function ServerDetailPage() {
   const { namespace = "", name = "" } = useParams();
@@ -83,7 +84,7 @@ export function ServerDetailPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        {(["console", "logs"] as const).map((t) => (
+        {(["console", "logs", "files"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -94,7 +95,7 @@ export function ServerDetailPage() {
                 : "border-transparent text-text-tertiary hover:text-text-secondary",
             )}
           >
-            {t === "console" ? "Console" : "Logs"}
+            {t === "console" ? "Console" : t === "logs" ? "Logs" : "Arquivos"}
           </button>
         ))}
       </div>
@@ -102,8 +103,10 @@ export function ServerDetailPage() {
       <div className="min-h-0 grow">
         {tab === "console" ? (
           <ServerConsole namespace={namespace} name={name} />
-        ) : (
+        ) : tab === "logs" ? (
           <ServerLogs namespace={namespace} name={name} />
+        ) : (
+          <FileManager namespace={namespace} name={name} />
         )}
       </div>
     </div>
