@@ -3,11 +3,11 @@ import { Card } from "./ui/Card";
 import { StatusBadge } from "./ui/StatusBadge";
 import type { GameServer } from "../lib/types";
 
-export function ServerCard({ server }: { server: GameServer }) {
+export function ServerCard({ org, server }: { org: string; server: GameServer }) {
   const { metadata, spec, status } = server;
 
   return (
-    <Link to={`/servers/${metadata.namespace}/${metadata.name}`}>
+    <Link to={`/orgs/${org}/servers/${metadata.name}`}>
       <Card className="flex w-[300px] flex-col gap-3 p-[18px] transition-colors hover:border-border-strong">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
