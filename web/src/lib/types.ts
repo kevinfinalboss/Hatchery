@@ -109,3 +109,11 @@ export interface CreateGameServerRequest {
   namespace: string;
   spec: GameServerSpec;
 }
+
+export interface FileEntry {
+  name: string;
+  size: number;
+  mode: string;
+  isDir: boolean;
+  modTime: string;
+}
