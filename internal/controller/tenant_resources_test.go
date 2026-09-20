@@ -93,6 +93,27 @@ func TestTenantNetworkPolicies(t *testing.T) {
 	}
 }
 
+func TestTenantNetworkPoliciesAllowSameNamespace(t *testing.T) {
+	p := policyByName(t, tenantNetworkPolicies("hatchery-acme", "hatchery-panel", nil), "allow-same-namespace")
+	if len(p.Spec.PolicyTypes) != 2 {
+		t.Errorf("must declare both policy types, got %v", p.Spec.PolicyTypes)
+	}
+	if len(p.Spec.Ingress) != 1 || len(p.Spec.Ingress[0].From) != 1 || len(p.Spec.Ingress[0].Ports) != 0 {
+		t.Fatalf("want one all-ports ingress rule with one peer, got %+v", p.Spec.Ingress)
+	}
+	if len(p.Spec.Egress) != 1 || len(p.Spec.Egress[0].To) != 1 || len(p.Spec.Egress[0].Ports) != 0 {
+		t.Fatalf("want one all-ports egress rule with one peer, got %+v", p.Spec.Egress)
+	}
+	for _, peer := range []networkingv1.NetworkPolicyPeer{p.Spec.Ingress[0].From[0], p.Spec.Egress[0].To[0]} {
+		if peer.PodSelector == nil || len(peer.PodSelector.MatchLabels) != 0 || len(peer.PodSelector.MatchExpressions) != 0 {
+			t.Errorf("peer must have a non-nil empty PodSelector, got %+v", peer.PodSelector)
+		}
+		if peer.NamespaceSelector != nil || peer.IPBlock != nil {
+			t.Errorf("peer must have nil NamespaceSelector and IPBlock (else it widens beyond this namespace), got %+v", peer)
+		}
+	}
+}
+
 func TestTenantNetworkPoliciesWithoutPanelHaveNoSFTPRule(t *testing.T) {
 	for _, p := range tenantNetworkPolicies("hatchery-acme", "", nil) {
 		if p.Name == "allow-panel-sftp" {
