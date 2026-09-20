@@ -2,7 +2,6 @@ import type { JSX } from "react";
 import clsx from "clsx";
 import { LOCALES, type Locale, useI18n } from "../../lib/i18n";
 
-// SVG em vez de emoji: no Chrome do Windows as bandeiras em emoji aparecem como as letras "BR"/"US".
 function FlagBR() {
   return (
     <svg viewBox="0 0 28 20" className="h-full w-full" aria-hidden>
