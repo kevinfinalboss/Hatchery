@@ -494,3 +494,124 @@ func addFileToZip(zw *zip.Writer, conn *sftpConn, srcPath, zipName string) error
 	_, err = io.Copy(entry, f)
 	return err
 }
+
+type compressRequest struct {
+	Paths []string `json:"paths"`
+	Dest  string   `json:"dest"`
+}
+
+func (s *Server) handleCompressFiles(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+	gs, ok := s.targetGameServer(w, r)
+	if !ok {
+		return
+	}
+	var req compressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Paths) == 0 || req.Dest == "" {
+		writeError(w, http.StatusBadRequest, "paths and dest are required")
+		return
+	}
+	conn, err := s.openFileSFTPClient(r.Context(), gs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	destFile, err := conn.Create(req.Dest)
+	if err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+	defer destFile.Close()
+
+	zw := zip.NewWriter(destFile)
+	if err := writeZipEntries(zw, conn, req.Paths); err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+	if err := zw.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+type decompressRequest struct {
+	Path string `json:"path"`
+	Dest string `json:"dest"`
+}
+
+func (s *Server) handleDecompressFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGameServerAccess(w, r) {
+		return
+	}
+	gs, ok := s.targetGameServer(w, r)
+	if !ok {
+		return
+	}
+	var req decompressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" || req.Dest == "" {
+		writeError(w, http.StatusBadRequest, "path and dest are required")
+		return
+	}
+	conn, err := s.openFileSFTPClient(r.Context(), gs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	srcFile, err := conn.Open(req.Path)
+	if err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+	defer srcFile.Close()
+	stat, err := srcFile.Stat()
+	if err != nil {
+		writeError(w, statusForSFTP(err), err.Error())
+		return
+	}
+
+	zr, err := zip.NewReader(srcFile, stat.Size())
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "not a valid zip file: "+err.Error())
+		return
+	}
+	for _, f := range zr.File {
+		destPath := path.Join(req.Dest, f.Name)
+		if f.FileInfo().IsDir() {
+			if err := conn.MkdirAll(destPath); err != nil {
+				writeError(w, statusForSFTP(err), err.Error())
+				return
+			}
+			continue
+		}
+		if err := conn.MkdirAll(path.Dir(destPath)); err != nil {
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+		rc, err := f.Open()
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		destFile, err := conn.Create(destPath)
+		if err != nil {
+			rc.Close()
+			writeError(w, statusForSFTP(err), err.Error())
+			return
+		}
+		_, copyErr := io.Copy(destFile, rc)
+		rc.Close()
+		destFile.Close()
+		if copyErr != nil {
+			writeError(w, http.StatusBadGateway, copyErr.Error())
+			return
+		}
+	}
+	w.WriteHeader(http.StatusCreated)
+}

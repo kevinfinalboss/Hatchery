@@ -171,3 +171,26 @@ func TestFilesUploadAndDownload(t *testing.T) {
 		t.Fatalf("expected 2 entries in zip, got %d", len(zr.File))
 	}
 }
+
+func TestFilesCompressAndDecompress(t *testing.T) {
+	srv, gs, token := newFileManagerTestServer(t, gameserversv1alpha1.GameServerStateRunning)
+	base := "/api/v1/gameservers/default/" + gs.Name
+
+	doRequest(t, srv, http.MethodPost, base+"/files/mkdir", token, mkdirRequest{Path: "/src"})
+	doRawRequest(t, srv, http.MethodPut, base+"/files/content?path=/src/a.txt", token, []byte("hi"))
+
+	rec := doRequest(t, srv, http.MethodPost, base+"/files/compress", token, compressRequest{Paths: []string{"/src"}, Dest: "/archive.zip"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("compress: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodPost, base+"/files/decompress", token, decompressRequest{Path: "/archive.zip", Dest: "/extracted"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("decompress: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = doRequest(t, srv, http.MethodGet, base+"/files/content?path=/extracted/src/a.txt", token, nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "hi" {
+		t.Fatalf("extracted file: expected 200/hi, got %d/%s", rec.Code, rec.Body.String())
+	}
+}

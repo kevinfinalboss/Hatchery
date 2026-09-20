@@ -97,6 +97,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/copy", s.requireAuth(http.HandlerFunc(s.handleCopyFile)))
 	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/upload", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /api/v1/gameservers/{namespace}/{name}/files/download", s.requireAuth(http.HandlerFunc(s.handleDownloadFiles)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/compress", s.requireAuth(http.HandlerFunc(s.handleCompressFiles)))
+	mux.Handle("POST /api/v1/gameservers/{namespace}/{name}/files/decompress", s.requireAuth(http.HandlerFunc(s.handleDecompressFile)))
 
 	return mux
 }
