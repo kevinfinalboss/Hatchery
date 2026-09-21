@@ -69,6 +69,9 @@ func (v *GameServerValidator) ValidateCreate(ctx context.Context, obj *gameserve
 	if err := validateDisplayName(obj.Spec.DisplayName); err != nil {
 		return nil, err
 	}
+	if err := validateImage(egg, obj); err != nil {
+		return nil, err
+	}
 	return nil, validateVariables(egg, obj)
 }
 
@@ -91,14 +94,24 @@ func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 	if err := validateDisplayName(newObj.Spec.DisplayName); err != nil {
 		return nil, err
 	}
-	// Variables are only re-checked when they changed: the controller updates finalizers and
-	// annotations on this object, and those must not start failing because the Egg's rules moved.
-	if !equality.Semantic.DeepEqual(oldObj.Spec.Variables, newObj.Spec.Variables) {
+	// Variables and the image are only re-checked when they changed: the controller updates
+	// finalizers and annotations on this object, and those must not start failing because the Egg
+	// moved on.
+	varsChanged := !equality.Semantic.DeepEqual(oldObj.Spec.Variables, newObj.Spec.Variables)
+	imageChanged := oldObj.Spec.ImageName != newObj.Spec.ImageName
+	if varsChanged || imageChanged {
 		egg, err := v.lookupEgg(ctx, newObj)
 		if err != nil {
 			return nil, err
 		}
-		return nil, validateVariables(egg, newObj)
+		if imageChanged {
+			if err := validateImage(egg, newObj); err != nil {
+				return nil, err
+			}
+		}
+		if varsChanged {
+			return nil, validateVariables(egg, newObj)
+		}
 	}
 	return nil, nil
 }
@@ -116,6 +129,13 @@ func validateDisplayName(name string) error {
 		if unicode.IsControl(r) {
 			return fmt.Errorf("spec.displayName: must not contain control characters")
 		}
+	}
+	return nil
+}
+
+func validateImage(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) error {
+	if _, ok := egg.ResolveImage(gs.Spec.ImageName); !ok {
+		return fmt.Errorf("spec.imageName: egg %q does not declare image %q", egg.Name, gs.Spec.ImageName)
 	}
 	return nil
 }
