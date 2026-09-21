@@ -10,11 +10,16 @@ spec:
   image: itzg/minecraft-server:latest
   startCommand: "/image/scripts/start"
   stopSignal: SIGTERM
+  recommendedResources:
+    cpu: "2"
+    memory: 2Gi
+    disk: 5Gi
   variables:
     - name: EULA
       description: "Accepts the Minecraft EULA (https://aka.ms/MinecraftEULA). Required to start the server."
       default: "TRUE"
       required: true
+      userEditable: true
     - name: MEMORY
       description: "JVM heap size, e.g. 1G, 2G."
       default: "1G"
