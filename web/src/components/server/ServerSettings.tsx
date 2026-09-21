@@ -25,6 +25,12 @@ export function ServerSettings({
   canEdit,
   canDelete,
   deleting,
+  reinstalling,
+  onReinstall,
+  isPlatformAdmin,
+  suspending,
+  onSuspend,
+  onUnsuspend,
   saving,
   saveMessage,
   onSave,
@@ -36,6 +42,12 @@ export function ServerSettings({
   canEdit: boolean;
   canDelete: boolean;
   deleting: boolean;
+  reinstalling: boolean;
+  onReinstall: () => void;
+  isPlatformAdmin: boolean;
+  suspending: boolean;
+  onSuspend: (reason: string) => void;
+  onUnsuspend: () => void;
   saving: boolean;
   saveMessage: { ok: boolean; text: string } | null;
   onSave: (body: UpdateGameServerRequest) => void;
@@ -50,6 +62,7 @@ export function ServerSettings({
   const current = {
     name: spec.displayName ?? "",
     image: spec.imageName || images[0]?.name || "",
+    cmd: spec.startCommand ?? "",
     values: Object.fromEntries(
       variables.map((v) => [v.name, spec.variables?.find((o) => o.name === v.name)?.value ?? v.default ?? ""]),
     ) as Record<string, string>,
@@ -59,28 +72,36 @@ export function ServerSettings({
 
   const [nameEdit, setNameEdit] = useState<string | null>(null);
   const [imageEdit, setImageEdit] = useState<string | null>(null);
+  const [cmdEdit, setCmdEdit] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const [valueEdits, setValueEdits] = useState<Record<string, string>>({});
   const [cpuEdit, setCpuEdit] = useState<string | null>(null);
   const [memEdit, setMemEdit] = useState<ByteQuantity | null>(null);
 
   const name = nameEdit ?? current.name;
   const image = imageEdit ?? current.image;
+  const eggCmd = egg?.spec.startCommand ?? "";
+  const cmd = cmdEdit ?? (current.cmd || eggCmd);
+  const storedCmd = cmd.trim() === "" || cmd === eggCmd ? "" : cmd;
+  const customCmd = storedCmd !== "";
   const values = { ...current.values, ...valueEdits };
   const cpu = cpuEdit ?? current.cpu;
   const mem = memEdit ?? current.mem;
 
   const nameChanged = nameEdit !== null && nameEdit !== current.name;
+  const cmdChanged = egg !== undefined && cmdEdit !== null && storedCmd !== current.cmd;
   const imageChanged = imageEdit !== null && imageEdit !== current.image;
   const varsChanged = Object.keys(valueEdits).some((k) => valueEdits[k] !== current.values[k]);
   const cpuChanged = cpuEdit !== null && cpuEdit !== current.cpu;
   const memChanged = memEdit !== null && joinBytes(memEdit) !== joinBytes(current.mem);
-  const dirty = nameChanged || imageChanged || varsChanged || cpuChanged || memChanged;
+  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged;
   const valid = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null) && cpu !== "" && Number.isFinite(mem.value);
 
   const save = () => {
     const body: UpdateGameServerRequest = {};
     if (nameChanged) body.displayName = name.trim();
     if (imageChanged) body.imageName = image;
+    if (cmdChanged) body.startCommand = storedCmd;
     if (varsChanged) {
       // The override list is replaced as a whole: keep what is already set (including EULA, which
       // this screen does not show) and apply the edits on top.
@@ -124,6 +145,33 @@ export function ServerSettings({
           </Field>
         )}
 
+        <Field label={t("server.startCommand")} htmlFor="set-cmd">
+          <div className="flex gap-2">
+            <Input
+              id="set-cmd"
+              className="min-w-0 grow font-mono text-xs"
+              value={cmd}
+              disabled={!canEdit || egg === undefined}
+              maxLength={4096}
+              onChange={(e) => setCmdEdit(e.target.value)}
+            />
+            {canEdit && customCmd && (
+              <Button type="button" variant="ghost" onClick={() => setCmdEdit(eggCmd)}>
+                {t("server.startCommandReset")}
+              </Button>
+            )}
+          </div>
+          <span className={`font-sans text-xs ${customCmd ? "text-primary-text" : "text-text-tertiary"}`}>
+            {customCmd ? t("server.startCommandCustom") : t("server.startCommandDefault")}
+          </span>
+          <span className="font-prose text-xs text-text-tertiary">{t("server.startCommandHint")}</span>
+          {(egg?.spec.variables?.length ?? 0) > 0 && (
+            <span className="break-all font-mono text-xs text-text-tertiary">
+              {t("server.startCommandVars", { vars: (egg?.spec.variables ?? []).map((v) => `{{${v.name}}}`).join(" ") })}
+            </span>
+          )}
+        </Field>
+
         <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("server.variables")}</div>
         {variables.length === 0 && <div className="font-prose text-sm text-text-tertiary">{t("server.noVariables")}</div>}
         <VariableFields
@@ -158,9 +206,58 @@ export function ServerSettings({
         )}
       </form>
 
-      {canDelete && (
+      {(canDelete || isPlatformAdmin) && (
         <div>
           <div className="mb-2 font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("server.dangerZone")}</div>
+          {isPlatformAdmin && (
+            <div className="mb-3 flex flex-col gap-2">
+              {spec.suspended ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-prose text-sm text-text-secondary">{spec.suspendReason}</span>
+                  <Button
+                    variant="secondary"
+                    disabled={suspending}
+                    onClick={() => {
+                      if (confirm(t("server.unsuspendConfirm", { name: spec.displayName || metadata.name }))) onUnsuspend();
+                    }}
+                  >
+                    {t("server.unsuspend")}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label={t("server.suspendReasonLabel")} htmlFor="suspend-reason">
+                    <Input id="suspend-reason" value={reason} maxLength={256} onChange={(e) => setReason(e.target.value)} />
+                  </Field>
+                  <Button
+                    variant="danger"
+                    disabled={suspending || reason.trim() === ""}
+                    onClick={() => {
+                      if (confirm(t("server.suspendConfirm", { name: spec.displayName || metadata.name }))) onSuspend(reason.trim());
+                    }}
+                  >
+                    {t("server.suspend")}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          {canDelete && (<>
+          <div className="mb-3 flex flex-col gap-1.5">
+            <div>
+              <Button
+                variant="secondary"
+                disabled={reinstalling}
+                onClick={() => {
+                  const key = spec.state === "Running" ? "server.reinstallConfirmRunning" : "server.reinstallConfirmStopped";
+                  if (confirm(t(key, { name: server.spec.displayName || metadata.name }))) onReinstall();
+                }}
+              >
+                {t("server.reinstall")}
+              </Button>
+            </div>
+            <span className="font-prose text-xs text-text-tertiary">{t("server.reinstallHint")}</span>
+          </div>
           <Button
             variant="danger"
             disabled={deleting}
@@ -170,6 +267,7 @@ export function ServerSettings({
           >
             {t("server.deleteServer")}
           </Button>
+          </>)}
         </div>
       )}
     </div>
