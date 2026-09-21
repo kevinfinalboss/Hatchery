@@ -317,6 +317,38 @@ func (s *Server) handleRestartGameServer(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusAccepted, gs)
 }
 
+// handleReinstallGameServer makes the Egg's install script run again: it bumps spec.installRevision,
+// which the install container compares with the marker on the data volume. A running server is
+// restarted so the new revision takes effect now; a stopped one picks it up on its next start.
+// Files are not deleted; only the script runs again.
+func (s *Server) handleReinstallGameServer(w http.ResponseWriter, r *http.Request) {
+	const attempts = 4
+	for attempt := 1; ; attempt++ {
+		var gs gameserversv1alpha1.GameServer
+		if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
+			writeError(w, statusFor(err), err.Error())
+			return
+		}
+		gs.Spec.InstallRevision++
+		if gs.Spec.State == gameserversv1alpha1.GameServerStateRunning {
+			if gs.Annotations == nil {
+				gs.Annotations = map[string]string{}
+			}
+			gs.Annotations[gameserversv1alpha1.RestartAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+		}
+		err := s.Client.Update(r.Context(), &gs)
+		if err == nil {
+			writeJSON(w, http.StatusAccepted, gs)
+			return
+		}
+		if apierrors.IsConflict(err) && attempt < attempts {
+			continue
+		}
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+}
+
 func gameServerKey(r *http.Request) client.ObjectKey {
 	return client.ObjectKey{Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
 }
