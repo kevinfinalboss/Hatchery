@@ -109,6 +109,10 @@ type GameServerSpec struct {
 	// +optional
 	DisplayName string `json:"displayName,omitempty"`
 
+	// ImageName picks one of the Egg's images by name. Empty means the Egg's first (default) image.
+	// +optional
+	ImageName string `json:"imageName,omitempty"`
+
 	// Variables overrides Egg-declared variables for this specific server
 	// instance.
 	// +optional
