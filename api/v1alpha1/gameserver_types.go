@@ -39,6 +39,10 @@ const SpecHashAnnotation = "gameservers.hatchery.io/spec-hash"
 // ConditionRestartRequired is True while the running Pod was built from an older spec.
 const ConditionRestartRequired = "RestartRequired"
 
+// ConditionReady is True once the game reported it finished booting (Egg startupDetection). It is
+// False with reason StartupTimeout when the regex never matched and the server was treated as up.
+const ConditionReady = "Ready"
+
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
 // owns the object (the Panel API, or a human via kubectl).
 // +kubebuilder:validation:Enum=Running;Stopped
@@ -109,6 +113,11 @@ type GameServerSpec struct {
 	// +optional
 	DisplayName string `json:"displayName,omitempty"`
 
+	// InstallRevision is bumped to make the install script run again ("Reinstall"). The Egg's
+	// install script only runs when the marker on the data volume differs from this number.
+	// +optional
+	InstallRevision int64 `json:"installRevision,omitempty"`
+
 	// ImageName picks one of the Egg's images by name. Empty means the Egg's first (default) image.
 	// +optional
 	ImageName string `json:"imageName,omitempty"`
@@ -136,6 +145,7 @@ type GameServerPhase string
 const (
 	GameServerPhasePending    GameServerPhase = "Pending"
 	GameServerPhaseInstalling GameServerPhase = "Installing"
+	GameServerPhaseStarting   GameServerPhase = "Starting"
 	GameServerPhaseRunning    GameServerPhase = "Running"
 	GameServerPhaseStopping   GameServerPhase = "Stopping"
 	GameServerPhaseStopped    GameServerPhase = "Stopped"
