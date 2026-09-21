@@ -12,6 +12,8 @@ export type GameServerPhase =
   | ""
   | "Pending"
   | "Installing"
+  | "Starting"
+  | "Suspended"
   | "Running"
   | "Stopping"
   | "Stopped"
@@ -24,6 +26,10 @@ export interface GameServerVariable {
 
 export interface GameServerSpec {
   displayName?: string;
+  suspended?: boolean;
+  suspendReason?: string;
+  backupTarget?: BackupTarget;
+  startCommand?: string;
   imageName?: string;
   eggRef: { name: string; scope?: EggScope };
   state: GameServerState;
@@ -103,6 +109,8 @@ export interface CreateGameServerRequest {
 
 export interface UpdateGameServerRequest {
   displayName?: string;
+  backupTarget?: BackupTarget;
+  startCommand?: string;
   imageName?: string;
   variables?: GameServerVariable[];
   resources?: { limits?: Record<string, string> };
@@ -129,11 +137,66 @@ export interface OrgSummary {
   role: OrgRole;
 }
 
+export interface BackupLimits {
+  maxPerServer: number;
+  maxPerOrg: number;
+  retentionDays: number;
+}
+
 export interface OrgQuota {
   cpu: string;
   memory: string;
   storage: string;
   maxGameServers: number;
+  backups?: BackupLimits;
+}
+
+export interface BackupTarget {
+  connection: string;
+  bucket?: string;
+  prefix?: string;
+}
+
+export interface BackupRestore {
+  name: string;
+  phase: string;
+  createdAt: string;
+}
+
+export interface BackupItem {
+  name: string;
+  createdAt: string;
+  phase: string;
+  destination: string;
+  bucket?: string;
+  prefix?: string;
+  expiresAt?: string;
+  completionTime?: string;
+  deleting?: boolean;
+  restore?: BackupRestore;
+}
+
+export interface BackupList {
+  items: BackupItem[];
+  usage: { server: number; org: number };
+}
+
+export interface BackupConnection {
+  name: string;
+  endpoint?: string;
+  buckets: string[];
+}
+
+export interface BackupSettings {
+  platform: { available: boolean; limits?: BackupLimits };
+  connections: BackupConnection[];
+}
+
+export interface BackupConnectionRequest {
+  endpoint: string;
+  buckets: string[];
+  accessKey?: string;
+  secretKey?: string;
 }
 
 export interface OrgDetail extends OrgSummary {
