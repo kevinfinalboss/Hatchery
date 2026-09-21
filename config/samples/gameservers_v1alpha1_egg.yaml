@@ -11,6 +11,9 @@ spec:
     - name: default
       image: itzg/minecraft-server:latest
   startCommand: "/image/scripts/start"
+  stopTimeoutSeconds: 90
+  startupDetection:
+    regex: "\\)! For help, type "
   stopSignal: SIGTERM
   recommendedResources:
     cpu: "2"
