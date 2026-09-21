@@ -52,6 +52,12 @@ spec:
           spec:
             description: spec defines the desired state of GameServer
             properties:
+              displayName:
+                description: |-
+                  DisplayName is the human-friendly name shown in the Panel. Unlike metadata.name (which names
+                  the Pod, Service and PVC and never changes), it can be edited at any time.
+                maxLength: 64
+                type: string
               eggRef:
                 description: |-
                   EggRef points at the Egg that defines this server's image, start command and
@@ -61,13 +67,6 @@ spec:
                     description: Name of the Egg resource.
                     type: string
                   scope:
-                    default: Namespace
-                    description: |-
-                      Scope says where Name is looked up: the GameServer's own namespace
-                      (a private Egg, the default) or the global catalog.
-                    enum:
-                    - Namespace
-                    - Catalog
                     type: string
                 required:
                 - name
