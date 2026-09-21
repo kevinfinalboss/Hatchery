@@ -19,7 +19,10 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,11 +62,18 @@ type GameServerValidator struct {
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type GameServer.
 func (v *GameServerValidator) ValidateCreate(ctx context.Context, obj *gameserversv1alpha1.GameServer) (admission.Warnings, error) {
 	gameserverlog.Info("Validation for GameServer upon creation", "name", obj.GetName())
-	return nil, v.validateEggExists(ctx, obj)
+	egg, err := v.lookupEgg(ctx, obj)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateDisplayName(obj.Spec.DisplayName); err != nil {
+		return nil, err
+	}
+	return nil, validateVariables(egg, obj)
 }
 
 // ValidateUpdate implements admission.Validator so a webhook will be registered for the type GameServer.
-func (v *GameServerValidator) ValidateUpdate(_ context.Context, _, newObj *gameserversv1alpha1.GameServer) (admission.Warnings, error) {
+func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj *gameserversv1alpha1.GameServer) (admission.Warnings, error) {
 	gameserverlog.Info("Validation for GameServer upon update", "name", newObj.GetName())
 	// eggRef is immutable (enforced via CEL on the CRD), so if it existed at
 	// create time it still refers to the same object; no need to re-check here.
@@ -78,6 +88,18 @@ func (v *GameServerValidator) ValidateUpdate(_ context.Context, _, newObj *games
 		newObj.Annotations[gameserversv1alpha1.RestoringAnnotation] == "true" {
 		return nil, fmt.Errorf("spec.state: cannot start this GameServer while a restore is in progress")
 	}
+	if err := validateDisplayName(newObj.Spec.DisplayName); err != nil {
+		return nil, err
+	}
+	// Variables are only re-checked when they changed: the controller updates finalizers and
+	// annotations on this object, and those must not start failing because the Egg's rules moved.
+	if !equality.Semantic.DeepEqual(oldObj.Spec.Variables, newObj.Spec.Variables) {
+		egg, err := v.lookupEgg(ctx, newObj)
+		if err != nil {
+			return nil, err
+		}
+		return nil, validateVariables(egg, newObj)
+	}
 	return nil, nil
 }
 
@@ -89,7 +111,25 @@ func (v *GameServerValidator) ValidateDelete(_ context.Context, obj *gameservers
 	return nil, nil
 }
 
-func (v *GameServerValidator) validateEggExists(ctx context.Context, gs *gameserversv1alpha1.GameServer) error {
+func validateDisplayName(name string) error {
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("spec.displayName: must not contain control characters")
+		}
+	}
+	return nil
+}
+
+func validateVariables(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) error {
+	if msgs := gameserversv1alpha1.ValidateVariableOverrides(egg, gs.Spec.Variables); len(msgs) > 0 {
+		return fmt.Errorf("spec.variables: %s", strings.Join(msgs, "; "))
+	}
+	return nil
+}
+
+// lookupEgg fetches the Egg the GameServer references, with an admission-friendly error when it
+// does not exist.
+func (v *GameServerValidator) lookupEgg(ctx context.Context, gs *gameserversv1alpha1.GameServer) (*gameserversv1alpha1.Egg, error) {
 	var egg gameserversv1alpha1.Egg
 	ns := gs.EggNamespace()
 	key := types.NamespacedName{Namespace: ns, Name: gs.Spec.EggRef.Name}
@@ -99,9 +139,9 @@ func (v *GameServerValidator) validateEggExists(ctx context.Context, gs *gameser
 	}
 	if err := v.Client.Get(ctx, key, &egg); err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("spec.eggRef.name: egg %q not found in %s", gs.Spec.EggRef.Name, where)
+			return nil, fmt.Errorf("spec.eggRef.name: egg %q not found in %s", gs.Spec.EggRef.Name, where)
 		}
-		return fmt.Errorf("spec.eggRef.name: looking up egg %q: %w", gs.Spec.EggRef.Name, err)
+		return nil, fmt.Errorf("spec.eggRef.name: looking up egg %q: %w", gs.Spec.EggRef.Name, err)
 	}
-	return nil
+	return &egg, nil
 }
