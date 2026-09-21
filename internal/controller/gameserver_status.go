@@ -63,8 +63,11 @@ func readyCondition(gs *gameserversv1alpha1.GameServer, status metav1.ConditionS
 func (r *GameServerReconciler) observe(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, pod *corev1.Pod) observation {
 	notReady := func(reason string) metav1.Condition { return readyCondition(gs, metav1.ConditionFalse, reason) }
 
+	stopped := gs.Spec.State == gameserversv1alpha1.GameServerStateStopped || gs.Spec.Suspended
 	switch {
-	case pod == nil && gs.Spec.State == gameserversv1alpha1.GameServerStateStopped:
+	case pod == nil && gs.Spec.Suspended:
+		return observation{phase: gameserversv1alpha1.GameServerPhaseSuspended, ready: notReady("Suspended")}
+	case pod == nil && stopped:
 		return observation{phase: gameserversv1alpha1.GameServerPhaseStopped, ready: notReady("NotRunning")}
 	case pod == nil:
 		return observation{phase: gameserversv1alpha1.GameServerPhasePending, ready: notReady("NotRunning")}
@@ -72,7 +75,7 @@ func (r *GameServerReconciler) observe(ctx context.Context, gs *gameserversv1alp
 
 	// A Pod that is going away — being stopped, or replaced for a restart — is Stopping. The
 	// controller has just deleted it in the same reconcile, so the local object may not show it yet.
-	if !pod.DeletionTimestamp.IsZero() || gs.Spec.State == gameserversv1alpha1.GameServerStateStopped || restartRequested(gs, pod) {
+	if !pod.DeletionTimestamp.IsZero() || stopped || restartRequested(gs, pod) {
 		return observation{phase: gameserversv1alpha1.GameServerPhaseStopping, podName: pod.Name, ready: notReady("Stopping")}
 	}
 
