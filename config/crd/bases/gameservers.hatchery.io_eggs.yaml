@@ -46,6 +46,24 @@ spec:
           spec:
             description: spec defines the desired state of Egg
             properties:
+              configure:
+                description: Configure runs on every start after Install; see EggConfigure.
+                properties:
+                  entrypoint:
+                    description: Entrypoint defaults to ["/bin/sh", "-c"].
+                    items:
+                      type: string
+                    type: array
+                  image:
+                    description: Image defaults to the image the server runs with.
+                    type: string
+                  script:
+                    description: Script is passed to the entrypoint as its last argument.
+                    minLength: 1
+                    type: string
+                required:
+                - script
+                type: object
               images:
                 description: |-
                   Images are the container images the game server process can run with. The first is the
@@ -158,6 +176,25 @@ spec:
                   below using {{VARIABLE_NAME}} placeholders, resolved by the GameServer
                   controller before the container starts.
                 type: string
+              startupDetection:
+                description: StartupDetection lets the Panel tell "starting" from
+                  "online".
+                properties:
+                  regex:
+                    description: Regex is matched against the recent console output
+                      (RE2 syntax).
+                    minLength: 1
+                    type: string
+                  timeoutSeconds:
+                    description: |-
+                      TimeoutSeconds is how long to wait for a match before treating the server as running anyway
+                      (Ready=False, reason StartupTimeout). Defaults to 600.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                required:
+                - regex
+                type: object
               stopCommand:
                 description: |-
                   StopCommand, when set, is written to the server process's stdin to request a
@@ -169,6 +206,14 @@ spec:
                   StopSignal is the OS signal sent to the container when StopCommand is empty
                   or does not terminate the process within the grace period, e.g. "SIGTERM".
                 type: string
+              stopTimeoutSeconds:
+                description: |-
+                  StopTimeoutSeconds is how long the server gets to stop gracefully (StopCommand or StopSignal)
+                  before it is killed. Defaults to 60.
+                format: int32
+                maximum: 3600
+                minimum: 1
+                type: integer
               variables:
                 description: Variables declares the environment variables this Egg
                   understands.
