@@ -13,13 +13,14 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { type DashboardView, ViewToggle } from "../components/ui/ViewToggle";
 
-type StatusFilter = "all" | "running" | "installing" | "stopped" | "failed";
+type StatusFilter = "all" | "running" | "installing" | "stopped" | "suspended" | "failed";
 
 const STATUS_FILTERS: { value: StatusFilter; label: TKey }[] = [
   { value: "all", label: "dashboard.filterAll" },
   { value: "running", label: "status.running" },
   { value: "installing", label: "status.installing" },
   { value: "stopped", label: "status.stopped" },
+  { value: "suspended", label: "status.suspended" },
   { value: "failed", label: "status.failed" },
 ];
 
@@ -31,9 +32,11 @@ function matchesStatus(server: GameServer, filter: StatusFilter): boolean {
     case "running":
       return phase === "Running";
     case "installing":
-      return phase === "Installing" || phase === "Pending" || phase === "";
+      return phase === "Installing" || phase === "Starting" || phase === "Pending" || phase === "";
     case "stopped":
       return phase === "Stopped" || phase === "Stopping";
+    case "suspended":
+      return phase === "Suspended";
     case "failed":
       return phase === "Failed";
   }
