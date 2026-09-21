@@ -1,6 +1,11 @@
 import type {
   AuditPage,
+  BackupItem,
+  BackupList,
+  BackupRestore,
+  BackupSettings,
   ConsoleTicketResponse,
+  BackupConnectionRequest,
   CreateGameServerRequest,
   EggEntry,
   EggSpec,
@@ -225,6 +230,23 @@ export const api = {
     request<User>("/users", { method: "POST", body: JSON.stringify(body) }),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
 
+  getBackupSettings: (org: string) => request<BackupSettings>(`/orgs/${org}/backup-settings`),
+  putBackupConnection: (org: string, name: string, body: BackupConnectionRequest) =>
+    request<BackupSettings>(`/orgs/${org}/backup-connections/${name}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBackupConnection: (org: string, name: string) =>
+    request<void>(`/orgs/${org}/backup-connections/${name}`, { method: "DELETE" }),
+  listBackups: (org: string, name: string) => request<BackupList>(`${gs(org, name)}/backups`),
+  createBackup: (org: string, name: string) => request<BackupItem>(`${gs(org, name)}/backups`, { method: "POST" }),
+  deleteBackup: (org: string, name: string, backup: string) =>
+    request<void>(`${gs(org, name)}/backups/${backup}`, { method: "DELETE" }),
+  restoreBackup: (org: string, name: string, backup: string) =>
+    request<BackupRestore>(`${gs(org, name)}/backups/${backup}/restore`, { method: "POST" }),
+  suspendGameServer: (org: string, name: string, reason: string) =>
+    request<GameServer>(`${gs(org, name)}/suspend`, { method: "POST", body: JSON.stringify({ reason }) }),
+  unsuspendGameServer: (org: string, name: string) =>
+    request<GameServer>(`${gs(org, name)}/unsuspend`, { method: "POST" }),
+  reinstallGameServer: (org: string, name: string) =>
+    request<GameServer>(`${gs(org, name)}/reinstall`, { method: "POST" }),
   restartGameServer: (org: string, name: string) =>
     request<GameServer>(`${gs(org, name)}/restart`, { method: "POST" }),
 
@@ -233,8 +255,8 @@ export const api = {
 
   getRuntime: (org: string, name: string) => request<RuntimeResponse>(`${gs(org, name)}/runtime`),
 
-  logsPath: (org: string, name: string, tailLines?: number) =>
-    `${API_BASE}${gs(org, name)}/logs?${tailLines ? `tailLines=${tailLines}&` : ""}follow=true`,
+  logsPath: (org: string, name: string, tailLines?: number, container?: "install" | "configure") =>
+    `${API_BASE}${gs(org, name)}/logs?${tailLines ? `tailLines=${tailLines}&` : ""}${container ? `container=${container}&` : ""}follow=true`,
   
   consoleTicket: (org: string, name: string) =>
     request<ConsoleTicketResponse>(`${gs(org, name)}/console-ticket`, { method: "POST" }),
