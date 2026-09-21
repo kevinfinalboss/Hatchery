@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useSetServerState } from "../lib/serverActions";
 import { useT } from "../lib/i18n";
+import { serverTitle } from "../lib/gameserver";
 import type { GameServer } from "../lib/types";
 import { Card } from "./ui/Card";
 import { StatusBadge } from "./ui/StatusBadge";
@@ -21,7 +22,7 @@ function ServerRow({ org, server }: { org: string; server: GameServer }) {
       onClick={() => navigate(path)}
     >
       <Link to={path} onClick={(e) => e.stopPropagation()} className="truncate font-sans text-sm font-semibold text-text-primary">
-        {metadata.name}
+        {serverTitle(server)}
       </Link>
       <StatusBadge phase={status?.phase ?? ""} />
       <span className="hidden truncate font-sans text-sm text-text-secondary md:block">{spec.eggRef.name}</span>
