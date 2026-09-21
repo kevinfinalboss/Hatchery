@@ -71,11 +71,16 @@ spec:
         echo -e "Downloading MC server.properties"
         curl --user-agent "${USER_AGENT}" -o server.properties https://raw.githubusercontent.com/pterodactyl/game-eggs/main/minecraft/java/server.properties
       fi
+  recommendedResources:
+    cpu: "2"
+    memory: 4Gi
+    disk: 10Gi
   variables:
     - name: EULA
       description: "Aceita a EULA da Mojang (https://aka.ms/MinecraftEULA). Obrigatório pro Paper iniciar."
       default: "TRUE"
       required: true
+      userEditable: true
     - name: MINECRAFT_VERSION
       description: "Versão do Minecraft a instalar. 'latest' pega sempre a mais recente; versão inválida cai pra latest."
       default: "latest"
