@@ -153,6 +153,10 @@ func main() {
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
 	srv.TrustedProxies = proxyNets
 
+	metricsStore := panelcache.NewRedisMetricsStore(rdb)
+	srv.Metrics = metricsStore
+	go panelapi.NewMetricsSampler(c, clientset, metricsStore).Run(ctx)
+
 	log.Info("starting panel-api", "bindAddress", bindAddr)
 	if err := http.ListenAndServe(bindAddr, srv.Routes()); err != nil {
 		log.Error(err, "panel-api server stopped")
