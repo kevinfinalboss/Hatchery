@@ -96,7 +96,7 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 		}
 		req.Name = uniqueSlug(slugify(req.Spec.DisplayName), taken)
 	}
-	if err := s.checkVariables(r.Context(), ns, req.Spec.EggRef, req.Spec.Variables); err != nil {
+	if err := s.checkAgainstEgg(r.Context(), ns, req.Spec.EggRef, req.Spec.ImageName, req.Spec.Variables); err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -128,6 +128,7 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 // deliberately absent: it is fixed at creation.
 type updateGameServerRequest struct {
 	DisplayName *string                                   `json:"displayName"`
+	ImageName   *string                                   `json:"imageName"`
 	Variables   *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
 	Resources   *corev1.ResourceRequirements              `json:"resources"`
 }
@@ -138,41 +139,62 @@ func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
+
+	const attempts = 4
+	for attempt := 1; ; attempt++ {
+		gs, code, err := s.applyGameServerUpdate(r, req)
+		if err == nil {
+			writeJSON(w, http.StatusOK, gs)
+			return
+		}
+		if apierrors.IsConflict(err) && attempt < attempts {
+			continue
+		}
+		writeError(w, code, err.Error())
+		return
+	}
+}
+
+// applyGameServerUpdate reads the server, applies the requested changes and writes it back. On error
+// the int is the HTTP status to answer with.
+func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequest) (*gameserversv1alpha1.GameServer, int, error) {
 	acc := orgAccessFromContext(r.Context())
 	ns := r.PathValue("namespace")
 
 	var gs gameserversv1alpha1.GameServer
 	if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
-		writeError(w, statusFor(err), err.Error())
-		return
+		return nil, statusFor(err), err
 	}
 	if req.DisplayName != nil {
 		if err := validateDisplayName(*req.DisplayName); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
+			return nil, http.StatusBadRequest, err
 		}
 		gs.Spec.DisplayName = *req.DisplayName
 	}
-	if req.Variables != nil {
-		if err := s.checkVariables(r.Context(), ns, gs.Spec.EggRef, *req.Variables); err != nil {
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
-			return
+	if req.ImageName != nil || req.Variables != nil {
+		imageName, vars := gs.Spec.ImageName, gs.Spec.Variables
+		if req.ImageName != nil {
+			imageName = *req.ImageName
 		}
-		gs.Spec.Variables = *req.Variables
+		if req.Variables != nil {
+			vars = *req.Variables
+		}
+		if err := s.checkAgainstEgg(r.Context(), ns, gs.Spec.EggRef, imageName, vars); err != nil {
+			return nil, http.StatusUnprocessableEntity, err
+		}
+		gs.Spec.ImageName, gs.Spec.Variables = imageName, vars
 	}
 	if req.Resources != nil {
 		gs.Spec.Resources = *req.Resources
 		normalizeResources(&gs.Spec.Resources)
 		if err := s.checkQuotaForUpdate(r.Context(), acc.Org.Slug, ns, gs.Name, gs.Spec); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
+			return nil, http.StatusConflict, err
 		}
 	}
 	if err := s.Client.Update(r.Context(), &gs); err != nil {
-		writeError(w, statusFor(err), err.Error())
-		return
+		return nil, statusFor(err), err
 	}
-	writeJSON(w, http.StatusOK, gs)
+	return &gs, http.StatusOK, nil
 }
 
 const maxDisplayNameRunes = 64
@@ -197,9 +219,9 @@ func normalizeResources(r *corev1.ResourceRequirements) {
 	}
 }
 
-// checkVariables validates variable overrides against the referenced Egg so a bad value gets a
-// clear 422. An Egg that cannot be found is left to the admission webhook, which is the authority.
-func (s *Server) checkVariables(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, vars []gameserversv1alpha1.GameServerVariable) error {
+// checkAgainstEgg validates the chosen image and the variable overrides against the referenced Egg
+// so a bad value gets a clear 422. An Egg that cannot be found is left to the admission webhook, which is the authority.
+func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, imageName string, vars []gameserversv1alpha1.GameServerVariable) error {
 	eggNS := ns
 	if ref.Scope == gameserversv1alpha1.EggScopeCatalog {
 		eggNS = gameserversv1alpha1.CatalogNamespace
@@ -211,7 +233,12 @@ func (s *Server) checkVariables(ctx context.Context, ns string, ref gameserversv
 		}
 		return err
 	}
-	if msgs := gameserversv1alpha1.ValidateVariableOverrides(&egg, vars); len(msgs) > 0 {
+	var msgs []string
+	if _, ok := egg.ResolveImage(imageName); !ok {
+		msgs = append(msgs, fmt.Sprintf("image %q is not declared by egg %q", imageName, egg.Name))
+	}
+	msgs = append(msgs, gameserversv1alpha1.ValidateVariableOverrides(&egg, vars)...)
+	if len(msgs) > 0 {
 		return fmt.Errorf("%s", strings.Join(msgs, "; "))
 	}
 	return nil
