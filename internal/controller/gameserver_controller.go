@@ -337,7 +337,7 @@ func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameservers
 
 	// A Pod that is being deleted is still returned, so the status can say Stopping while its
 	// preStop hook gives the game time to shut down.
-	if gs.Spec.State == gameserversv1alpha1.GameServerStateStopped {
+	if gs.Spec.State == gameserversv1alpha1.GameServerStateStopped || gs.Spec.Suspended {
 		if exists {
 			if pod.DeletionTimestamp.IsZero() {
 				if err := r.Delete(ctx, &pod); err != nil {
@@ -388,7 +388,8 @@ func specHash(gs *gameserversv1alpha1.GameServer) string {
 		Variables []gameserversv1alpha1.GameServerVariable `json:"v"`
 		Resources corev1.ResourceRequirements              `json:"r"`
 		ImageName string                                   `json:"i"`
-	}{vars, gs.Spec.Resources, gs.Spec.ImageName})
+		StartCmd  string                                   `json:"c"`
+	}{vars, gs.Spec.Resources, gs.Spec.ImageName, gs.Spec.StartCommand})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])
 }
@@ -589,7 +590,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				// console access writes to PID 1's stdin, and StopSignal is
 				// delivered to PID 1. Without "exec" both would silently hit
 				// the shell instead of the game server.
-				Command:      []string{"/bin/sh", "-c", "exec " + renderStartCommand(egg.Spec.StartCommand, vars)},
+				Command:      []string{"/bin/sh", "-c", "exec " + renderStartCommand(egg.EffectiveStartCommand(gs.Spec.StartCommand), vars)},
 				WorkingDir:   dataMountPath,
 				Env:          serverEnv,
 				Lifecycle:    stopLifecycle(egg),
