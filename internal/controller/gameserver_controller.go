@@ -131,6 +131,11 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	if _, ok := egg.ResolveImage(gs.Spec.ImageName); !ok {
+		log.Info("the Egg does not declare the requested image", "egg", eggKey.Name, "imageName", gs.Spec.ImageName)
+		return r.setPhase(ctx, &gs, gameserversv1alpha1.GameServerPhaseFailed)
+	}
+
 	if err := r.reconcilePVC(ctx, &gs); err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling pvc: %w", err)
 	}
@@ -366,7 +371,8 @@ func specHash(gs *gameserversv1alpha1.GameServer) string {
 	raw, _ := json.Marshal(struct {
 		Variables []gameserversv1alpha1.GameServerVariable `json:"v"`
 		Resources corev1.ResourceRequirements              `json:"r"`
-	}{vars, gs.Spec.Resources})
+		ImageName string                                   `json:"i"`
+	}{vars, gs.Spec.Resources, gs.Spec.ImageName})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])
 }
@@ -505,11 +511,16 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 	}
 	mounts := []corev1.VolumeMount{{Name: dataVolumeName, MountPath: dataMountPath}}
 
+	serverImage, ok := egg.ResolveImage(gs.Spec.ImageName)
+	if !ok {
+		return nil, fmt.Errorf("egg %q does not declare image %q", egg.Name, gs.Spec.ImageName)
+	}
+
 	var initContainers []corev1.Container
 	if egg.Spec.Install != nil {
 		image := egg.Spec.Install.Image
 		if image == "" {
-			image = egg.Spec.Image
+			image = serverImage
 		}
 		initContainers = append(initContainers, corev1.Container{
 			Name:            "install",
@@ -540,7 +551,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			SecurityContext: sftpagent.PodSecurityContext(),
 			Containers: []corev1.Container{{
 				Name:  "server",
-				Image: egg.Spec.Image,
+				Image: serverImage,
 				// "exec" makes a POSIX shell replace itself with the target
 				// process instead of forking it, so the server binary — not
 				// /bin/sh — ends up as the container's PID 1. That matters for
