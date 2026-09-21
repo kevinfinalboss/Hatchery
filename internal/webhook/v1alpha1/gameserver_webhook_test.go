@@ -56,7 +56,7 @@ var _ = Describe("GameServer Webhook", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "webhook-valid-egg", Namespace: namespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 			},
 		}
@@ -72,7 +72,7 @@ var _ = Describe("GameServer Webhook", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "webhook-restoring-egg", Namespace: namespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 			},
 		}
@@ -97,7 +97,7 @@ var _ = Describe("GameServer Webhook", func() {
 		ensureNamespace("hatchery-catalog")
 		catalogEgg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "catalog-egg", Namespace: "hatchery-catalog"},
-			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/g:1", StartCommand: "run"},
+			Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}}, StartCommand: "run"},
 		}
 		Expect(k8sClient.Create(ctx, catalogEgg)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, catalogEgg) })
@@ -116,7 +116,7 @@ var _ = Describe("GameServer Webhook", func() {
 		ensureNamespace("hatchery-catalog")
 		only := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "only-in-catalog", Namespace: "hatchery-catalog"},
-			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/g:1", StartCommand: "run"},
+			Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}}, StartCommand: "run"},
 		}
 		Expect(k8sClient.Create(ctx, only)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, only) })
@@ -135,7 +135,7 @@ var _ = Describe("GameServer Webhook: variables and displayName", func() {
 		egg = &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "webhook-vars-egg", Namespace: namespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 				Variables: []gameserversv1alpha1.EggVariable{
 					{Name: "MOTD", UserEditable: true, Default: "hi"},
@@ -153,6 +153,27 @@ var _ = Describe("GameServer Webhook: variables and displayName", func() {
 		gs.Spec.Variables = vars
 		return gs
 	}
+
+	It("rejects an imageName the Egg does not declare, and admits one it does", func() {
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(egg), egg)).To(Succeed())
+		egg.Spec.Images = append(egg.Spec.Images, gameserversv1alpha1.EggImage{Name: "Java 17", Image: "example.com/game:17"})
+		Expect(k8sClient.Update(ctx, egg)).To(Succeed())
+
+		bad := build("img-bad")
+		bad.Spec.ImageName = "Java 99"
+		err := k8sClient.Create(ctx, bad)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(`image "Java 99"`))
+
+		ok := build("img-ok")
+		ok.Spec.ImageName = "Java 17"
+		Expect(k8sClient.Create(ctx, ok)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, ok) })
+
+		By("switching an existing server to an undeclared image is rejected too")
+		ok.Spec.ImageName = "Java 99"
+		Expect(k8sClient.Update(ctx, ok)).NotTo(Succeed())
+	})
 
 	It("rejects an undeclared variable", func() {
 		err := k8sClient.Create(ctx, build("vars-unknown", gameserversv1alpha1.GameServerVariable{Name: "NOPE", Value: "1"}))
