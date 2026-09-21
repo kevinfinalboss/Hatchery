@@ -27,7 +27,17 @@ function sleep(ms: number, signal: AbortSignal) {
   });
 }
 
-export function ServerConsole({ org, name, running }: { org: string; name: string; running: boolean }) {
+export function ServerConsole({
+  org,
+  name,
+  running,
+  installing,
+}: {
+  org: string;
+  name: string;
+  running: boolean;
+  installing: boolean;
+}) {
   const t = useT();
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +85,7 @@ export function ServerConsole({ org, name, running }: { org: string; name: strin
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    if (!running) {
+    if (!running && !installing) {
       setStream("idle");
       return;
     }
@@ -88,7 +98,7 @@ export function ServerConsole({ org, name, running }: { org: string; name: strin
         setStream(first ? "connecting" : "reconnecting");
         try {
           const token = getAuthToken();
-          const res = await fetch(api.logsPath(org, name), {
+          const res = await fetch(api.logsPath(org, name, undefined, installing ? "install" : undefined), {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             signal: controller.signal,
           });
@@ -111,7 +121,7 @@ export function ServerConsole({ org, name, running }: { org: string; name: strin
     })();
 
     return () => controller.abort();
-  }, [org, name, running]);
+  }, [org, name, running, installing]);
 
   useEffect(() => {
     if (!running) {
@@ -185,7 +195,9 @@ export function ServerConsole({ org, name, running }: { org: string; name: strin
     }
   }
 
-  const statusText = !running
+  const statusText = installing
+    ? t("console.installing")
+    : !running
     ? t("console.stopped")
     : stream === "live"
       ? t("console.live")
