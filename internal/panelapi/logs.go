@@ -35,8 +35,20 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	namespace := r.PathValue("namespace")
 	name := r.PathValue("name")
 
+	// The install and configure init containers are readable too, so the console can show
+	// progress while a server installs; the sftp-agent sidecar is not exposed.
+	container := r.URL.Query().Get("container")
+	switch container {
+	case "":
+		container = "server"
+	case "server", "install", "configure":
+	default:
+		writeError(w, http.StatusBadRequest, `container must be "server", "install" or "configure"`)
+		return
+	}
+
 	opts := &corev1.PodLogOptions{
-		Container:  "server",
+		Container:  container,
 		Follow:     r.URL.Query().Get("follow") == "true",
 		Timestamps: true,
 	}
