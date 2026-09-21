@@ -86,6 +86,11 @@ export function Sidebar({ onOpenPalette, onNavigate }: { onOpenPalette: () => vo
             {t("nav.audit")}
           </NavItem>
         )}
+        {atLeast(current?.role, "admin") && (
+          <NavItem to="/settings" onNavigate={onNavigate}>
+            {t("nav.settings")}
+          </NavItem>
+        )}
         {user?.isAdmin && (
           <>
             <div className="mt-4 px-3 pb-1 font-sans text-[11px] uppercase tracking-wide text-text-tertiary">{t("nav.platform")}</div>
