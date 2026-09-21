@@ -165,4 +165,31 @@ var _ = Describe("GameServer status phases", func() {
 		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseStarting))
 		Expect(readyOf(gs).Status).To(Equal(metav1.ConditionFalse))
 	})
+
+	It("stops a suspended server, then reports Suspended", func() {
+		r, _, key, gs := setup("status-suspend", nil)
+		setPodStatus(key, serverRunning(time.Minute))
+		reconcileOnce(r, key)
+		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseRunning))
+
+		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+		gs.Spec.Suspended = true
+		gs.Spec.SuspendReason = "unpaid invoice"
+		gs.Spec.State = gameserversv1alpha1.GameServerStateStopped
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+
+		reconcileOnce(r, key) // deletes the Pod
+		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseStopping))
+		reconcileOnce(r, key)
+		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseSuspended))
+		Expect(k8sClient.Get(ctx, key, &corev1.Pod{})).NotTo(Succeed())
+
+		By("unsuspending does not start it: it goes back to Stopped")
+		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+		gs.Spec.Suspended = false
+		gs.Spec.SuspendReason = ""
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+		reconcileOnce(r, key)
+		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseStopped))
+	})
 })
