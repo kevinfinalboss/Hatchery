@@ -99,9 +99,25 @@ type EggResources struct {
 	Disk   *resource.Quantity `json:"disk,omitempty"`
 }
 
-type EggSpec struct {
-	// Image is the container image used to run the game server process.
+// EggImage is one container image an Egg can run its server with, under a name the user picks by
+// (e.g. "Java 21"): the game version often dictates the runtime image.
+type EggImage struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	Name string `json:"name"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	Image string `json:"image"`
+}
+
+type EggSpec struct {
+	// Images are the container images the game server process can run with. The first is the
+	// default; a GameServer picks another by name through spec.imageName.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +listType=map
+	// +listMapKey=name
+	Images []EggImage `json:"images"`
 
 	// StartCommand starts the server process. It may reference variables declared
 	// below using {{VARIABLE_NAME}} placeholders, resolved by the GameServer
@@ -162,7 +178,7 @@ type EggStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.images[0].image`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Egg is the Schema for the eggs API
