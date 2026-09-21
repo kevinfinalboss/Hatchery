@@ -4,9 +4,11 @@ import type { GameServerPhase } from "../../lib/types";
 const phaseConfig: Record<string, { label: TKey; glyph: string; color: string }> = {
   Running: { label: "status.running", glyph: "●", color: "text-status-running" },
   Installing: { label: "status.installing", glyph: "◐", color: "text-status-installing" },
+  Starting: { label: "status.starting", glyph: "◐", color: "text-status-installing" },
   Pending: { label: "status.pending", glyph: "◐", color: "text-status-installing" },
   Stopping: { label: "status.stopping", glyph: "◐", color: "text-text-secondary" },
   Stopped: { label: "status.stopped", glyph: "○", color: "text-status-stopped" },
+  Suspended: { label: "status.suspended", glyph: "⏸", color: "text-status-failed" },
   Failed: { label: "status.failed", glyph: "✕", color: "text-status-failed" },
 };
 
