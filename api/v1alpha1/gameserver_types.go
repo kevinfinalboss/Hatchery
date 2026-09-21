@@ -32,6 +32,13 @@ const GameServerFinalizer = "gameservers.hatchery.io/finalizer"
 // that differs from the previous one — a timestamp by convention.
 const RestartAnnotation = "gameservers.hatchery.io/restart-at"
 
+// SpecHashAnnotation stamps a Pod with a hash of the GameServer spec (variables and resources) it
+// was built from, so the controller can tell when the running Pod is out of date.
+const SpecHashAnnotation = "gameservers.hatchery.io/spec-hash"
+
+// ConditionRestartRequired is True while the running Pod was built from an older spec.
+const ConditionRestartRequired = "RestartRequired"
+
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
 // owns the object (the Panel API, or a human via kubectl).
 // +kubebuilder:validation:Enum=Running;Stopped
@@ -95,6 +102,12 @@ type GameServerSpec struct {
 	// +kubebuilder:default=Running
 	// +optional
 	State GameServerState `json:"state,omitempty"`
+
+	// DisplayName is the human-friendly name shown in the Panel. Unlike metadata.name (which names
+	// the Pod, Service and PVC and never changes), it can be edited at any time.
+	// +kubebuilder:validation:MaxLength=64
+	// +optional
+	DisplayName string `json:"displayName,omitempty"`
 
 	// Variables overrides Egg-declared variables for this specific server
 	// instance.
