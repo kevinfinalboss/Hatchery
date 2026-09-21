@@ -19,13 +19,18 @@ package controller
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -353,6 +358,38 @@ func restartRequested(gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) bool 
 	return want != "" && want != pod.Annotations[gameserversv1alpha1.RestartAnnotation]
 }
 
+// specHash fingerprints the parts of a GameServer's spec that only take effect when its Pod is
+// (re)created. displayName is deliberately excluded: renaming never needs a restart.
+func specHash(gs *gameserversv1alpha1.GameServer) string {
+	vars := append([]gameserversv1alpha1.GameServerVariable(nil), gs.Spec.Variables...)
+	sort.Slice(vars, func(i, j int) bool { return vars[i].Name < vars[j].Name })
+	raw, _ := json.Marshal(struct {
+		Variables []gameserversv1alpha1.GameServerVariable `json:"v"`
+		Resources corev1.ResourceRequirements              `json:"r"`
+	}{vars, gs.Spec.Resources})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:8])
+}
+
+// restartRequiredCondition reports whether the running Pod was built from an older spec than the
+// GameServer's current one. A Pod without a hash stamp (created before this existed) is not flagged.
+func restartRequiredCondition(gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) metav1.Condition {
+	cond := metav1.Condition{
+		Type:               gameserversv1alpha1.ConditionRestartRequired,
+		Status:             metav1.ConditionFalse,
+		Reason:             "UpToDate",
+		ObservedGeneration: gs.Generation,
+	}
+	if pod != nil {
+		if h := pod.Annotations[gameserversv1alpha1.SpecHashAnnotation]; h != "" && h != specHash(gs) {
+			cond.Status = metav1.ConditionTrue
+			cond.Reason = "SpecChanged"
+			cond.Message = "the running server was started before the last variable or resource change"
+		}
+	}
+	return cond
+}
+
 // updateStatus recomputes GameServerStatus from the live Pod (if any) and
 // patches it when it drifted from what's stored.
 func (r *GameServerReconciler) updateStatus(ctx context.Context, gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) (ctrl.Result, error) {
@@ -375,7 +412,8 @@ func (r *GameServerReconciler) updateStatus(ctx context.Context, gs *gameservers
 		podName = pod.Name
 	}
 
-	if gs.Status.Phase == phase && gs.Status.PodName == podName && gs.Status.ObservedGeneration == gs.Generation {
+	condChanged := apimeta.SetStatusCondition(&gs.Status.Conditions, restartRequiredCondition(gs, pod))
+	if !condChanged && gs.Status.Phase == phase && gs.Status.PodName == podName && gs.Status.ObservedGeneration == gs.Generation {
 		return ctrl.Result{}, nil
 	}
 
@@ -540,10 +578,11 @@ func gameContainerSecurityContext() *corev1.SecurityContext {
 // podAnnotations stamps the Pod with the GameServer's current RestartAnnotation, so a
 // restart that was already served isn't served again by the Pod that replaced the old one.
 func podAnnotations(gs *gameserversv1alpha1.GameServer) map[string]string {
+	ann := map[string]string{gameserversv1alpha1.SpecHashAnnotation: specHash(gs)}
 	if v := gs.Annotations[gameserversv1alpha1.RestartAnnotation]; v != "" {
-		return map[string]string{gameserversv1alpha1.RestartAnnotation: v}
+		ann[gameserversv1alpha1.RestartAnnotation] = v
 	}
-	return nil
+	return ann
 }
 
 func installCommand(install *gameserversv1alpha1.EggInstall) []string {
