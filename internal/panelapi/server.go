@@ -47,6 +47,8 @@ type Server struct {
 
 	Metrics panelcache.MetricsStore
 
+	Backup BackupConfig
+
 	// TrustedProxies are the peers whose X-Forwarded-For header is believed
 	// when working out the client IP (see clientIP in clientip.go).
 	TrustedProxies []*net.IPNet
@@ -90,6 +92,15 @@ func (s *Server) Routes() http.Handler {
 		}
 		return s.requireOrgRole(min, inner)
 	}
+	// gsRoute is orgRoute for routes that act on one GameServer: a suspended server is locked for the
+	// organization (423 with the admin's reason); platform admins pass.
+	gsRoute := func(min paneldb.Role, action string, h http.HandlerFunc) http.Handler {
+		var inner http.Handler = s.unlessSuspended(h)
+		if action != "" {
+			inner = s.audited(action, inner)
+		}
+		return s.requireOrgRole(min, inner)
+	}
 	const org = "/api/v1/orgs/{org}"
 	const gs = org + "/gameservers/{name}"
 
@@ -119,29 +130,38 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET "+org+"/gameservers", orgRoute(paneldb.RoleMember, "", s.handleListGameServers))
 	mux.Handle("POST "+org+"/gameservers", orgRoute(paneldb.RoleAdmin, "", s.handleCreateGameServer))
 	mux.Handle("GET "+gs, orgRoute(paneldb.RoleMember, "", s.handleGetGameServer))
-	mux.Handle("PATCH "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.update", s.handleUpdateGameServer))
-	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
-	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
-	mux.Handle("POST "+gs+"/reinstall", orgRoute(paneldb.RoleAdmin, "gameserver.reinstall", s.handleReinstallGameServer))
-	mux.Handle("POST "+gs+"/restart", orgRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
-	mux.Handle("GET "+gs+"/metrics", orgRoute(paneldb.RoleMember, "", s.handleMetrics))
-	mux.Handle("GET "+gs+"/runtime", orgRoute(paneldb.RoleMember, "", s.handleRuntime))
-	mux.Handle("GET "+gs+"/logs", orgRoute(paneldb.RoleMember, "", s.handleLogs))
-	mux.Handle("POST "+gs+"/sftp-session", orgRoute(paneldb.RoleMember, "gameserver.sftp-session", s.handleSFTPSession))
+	mux.Handle("PATCH "+gs, gsRoute(paneldb.RoleAdmin, "gameserver.update", s.handleUpdateGameServer))
+	mux.Handle("DELETE "+gs, gsRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
+	mux.Handle("PATCH "+gs+"/state", gsRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
+	mux.Handle("POST "+gs+"/suspend", s.requireAdmin(orgRoute(paneldb.RoleOwner, "gameserver.suspend", s.handleSuspendGameServer)))
+	mux.Handle("POST "+gs+"/unsuspend", s.requireAdmin(orgRoute(paneldb.RoleOwner, "gameserver.unsuspend", s.handleUnsuspendGameServer)))
+	mux.Handle("GET "+org+"/backup-settings", orgRoute(paneldb.RoleMember, "", s.handleGetBackupSettings))
+	mux.Handle("PUT "+org+"/backup-connections/{connection}", orgRoute(paneldb.RoleAdmin, "", s.handlePutBackupConnection))
+	mux.Handle("DELETE "+org+"/backup-connections/{connection}", orgRoute(paneldb.RoleAdmin, "", s.handleDeleteBackupConnection))
+	mux.Handle("GET "+gs+"/backups", gsRoute(paneldb.RoleMember, "", s.handleListBackups))
+	mux.Handle("POST "+gs+"/backups", gsRoute(paneldb.RoleAdmin, "backup.create", s.handleCreateBackup))
+	mux.Handle("DELETE "+gs+"/backups/{backup}", gsRoute(paneldb.RoleAdmin, "backup.delete", s.handleDeleteBackup))
+	mux.Handle("POST "+gs+"/backups/{backup}/restore", gsRoute(paneldb.RoleAdmin, "backup.restore", s.handleRestoreBackup))
+	mux.Handle("POST "+gs+"/reinstall", gsRoute(paneldb.RoleAdmin, "gameserver.reinstall", s.handleReinstallGameServer))
+	mux.Handle("POST "+gs+"/restart", gsRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
+	mux.Handle("GET "+gs+"/metrics", gsRoute(paneldb.RoleMember, "", s.handleMetrics))
+	mux.Handle("GET "+gs+"/runtime", gsRoute(paneldb.RoleMember, "", s.handleRuntime))
+	mux.Handle("GET "+gs+"/logs", gsRoute(paneldb.RoleMember, "", s.handleLogs))
+	mux.Handle("POST "+gs+"/sftp-session", gsRoute(paneldb.RoleMember, "gameserver.sftp-session", s.handleSFTPSession))
 
-	mux.Handle("GET "+gs+"/files", orgRoute(paneldb.RoleMember, "", s.handleListFiles))
-	mux.Handle("GET "+gs+"/files/content", orgRoute(paneldb.RoleMember, "", s.handleGetFileContent))
-	mux.Handle("PUT "+gs+"/files/content", orgRoute(paneldb.RoleMember, "file.write", s.handlePutFileContent))
-	mux.Handle("POST "+gs+"/files/mkdir", orgRoute(paneldb.RoleMember, "file.mkdir", s.handleMkdir))
-	mux.Handle("POST "+gs+"/files/rename", orgRoute(paneldb.RoleMember, "file.rename", s.handleRenameFile))
-	mux.Handle("POST "+gs+"/files/delete", orgRoute(paneldb.RoleMember, "file.delete", s.handleDeleteFiles))
-	mux.Handle("POST "+gs+"/files/copy", orgRoute(paneldb.RoleMember, "file.copy", s.handleCopyFile))
-	mux.Handle("POST "+gs+"/files/upload", orgRoute(paneldb.RoleMember, "file.upload", s.handleUploadFile))
-	mux.Handle("GET "+gs+"/files/download", orgRoute(paneldb.RoleMember, "", s.handleDownloadFiles))
-	mux.Handle("POST "+gs+"/files/compress", orgRoute(paneldb.RoleMember, "file.compress", s.handleCompressFiles))
-	mux.Handle("POST "+gs+"/files/decompress", orgRoute(paneldb.RoleMember, "file.decompress", s.handleDecompressFile))
+	mux.Handle("GET "+gs+"/files", gsRoute(paneldb.RoleMember, "", s.handleListFiles))
+	mux.Handle("GET "+gs+"/files/content", gsRoute(paneldb.RoleMember, "", s.handleGetFileContent))
+	mux.Handle("PUT "+gs+"/files/content", gsRoute(paneldb.RoleMember, "file.write", s.handlePutFileContent))
+	mux.Handle("POST "+gs+"/files/mkdir", gsRoute(paneldb.RoleMember, "file.mkdir", s.handleMkdir))
+	mux.Handle("POST "+gs+"/files/rename", gsRoute(paneldb.RoleMember, "file.rename", s.handleRenameFile))
+	mux.Handle("POST "+gs+"/files/delete", gsRoute(paneldb.RoleMember, "file.delete", s.handleDeleteFiles))
+	mux.Handle("POST "+gs+"/files/copy", gsRoute(paneldb.RoleMember, "file.copy", s.handleCopyFile))
+	mux.Handle("POST "+gs+"/files/upload", gsRoute(paneldb.RoleMember, "file.upload", s.handleUploadFile))
+	mux.Handle("GET "+gs+"/files/download", gsRoute(paneldb.RoleMember, "", s.handleDownloadFiles))
+	mux.Handle("POST "+gs+"/files/compress", gsRoute(paneldb.RoleMember, "file.compress", s.handleCompressFiles))
+	mux.Handle("POST "+gs+"/files/decompress", gsRoute(paneldb.RoleMember, "file.decompress", s.handleDecompressFile))
 
-	mux.Handle("POST "+gs+"/console-ticket", orgRoute(paneldb.RoleMember, "gameserver.console-ticket", s.handleConsoleTicket))
+	mux.Handle("POST "+gs+"/console-ticket", gsRoute(paneldb.RoleMember, "gameserver.console-ticket", s.handleConsoleTicket))
 	mux.Handle("GET "+gs+"/console", s.requireConsoleTicket(http.HandlerFunc(s.handleConsole)))
 
 	mux.Handle("GET "+org+"/audit", orgRoute(paneldb.RoleAdmin, "", s.handleListOrgAudit))
