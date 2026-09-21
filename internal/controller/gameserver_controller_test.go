@@ -24,6 +24,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -309,6 +311,91 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
 		Expect(pod.UID).NotTo(Equal(secondUID))
 		Expect(pod.Annotations).To(HaveKeyWithValue(gameserversv1alpha1.RestartAnnotation, "restart-2"))
+	})
+
+	It("hashes only what needs a restart to take effect", func() {
+		a := &gameserversv1alpha1.GameServer{}
+		a.Spec.Variables = []gameserversv1alpha1.GameServerVariable{{Name: "A", Value: "1"}, {Name: "B", Value: "2"}}
+
+		reordered := a.DeepCopy()
+		reordered.Spec.Variables = []gameserversv1alpha1.GameServerVariable{{Name: "B", Value: "2"}, {Name: "A", Value: "1"}}
+		Expect(specHash(reordered)).To(Equal(specHash(a)), "variable order must not change the hash")
+
+		changed := a.DeepCopy()
+		changed.Spec.Variables[0].Value = "3"
+		Expect(specHash(changed)).NotTo(Equal(specHash(a)))
+
+		resized := a.DeepCopy()
+		resized.Spec.Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")}
+		Expect(specHash(resized)).NotTo(Equal(specHash(a)))
+
+		renamed := a.DeepCopy()
+		renamed.Spec.DisplayName = "renamed"
+		Expect(specHash(renamed)).To(Equal(specHash(a)), "renaming never needs a restart")
+	})
+
+	It("flags RestartRequired when the spec changes under a running Pod, and clears it after a restart", func() {
+		egg := &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-pending", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.EggSpec{
+				Image:        "example.com/game:latest",
+				StartCommand: "start {{MOTD}}",
+				Variables:    []gameserversv1alpha1.EggVariable{{Name: "MOTD", Default: "hi", UserEditable: true}},
+			},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg)).To(Succeed()) })
+
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-gameserver-pending", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.GameServerSpec{
+				EggRef:  gameserversv1alpha1.GameServerEggRef{Name: egg.Name},
+				State:   gameserversv1alpha1.GameServerStateRunning,
+				Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		key := types.NamespacedName{Name: gs.Name, Namespace: resourceNamespace}
+		reconciler := &GameServerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), SFTPAgentImage: testSFTPAgentImage}
+		DeferCleanup(func() { deleteAndFinalize(reconciler, gs, key) })
+
+		reconcileOnce := func() {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		restartRequired := func() metav1.ConditionStatus {
+			Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+			cond := apimeta.FindStatusCondition(gs.Status.Conditions, gameserversv1alpha1.ConditionRestartRequired)
+			Expect(cond).NotTo(BeNil())
+			return cond.Status
+		}
+
+		reconcileOnce() // finalizer
+		reconcileOnce() // resources
+		var pod corev1.Pod
+		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
+		Expect(pod.Annotations).To(HaveKey(gameserversv1alpha1.SpecHashAnnotation))
+		Expect(restartRequired()).To(Equal(metav1.ConditionFalse))
+
+		By("changing a variable while the Pod runs")
+		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+		gs.Spec.Variables = []gameserversv1alpha1.GameServerVariable{{Name: "MOTD", Value: "new"}}
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+		reconcileOnce()
+		Expect(restartRequired()).To(Equal(metav1.ConditionTrue))
+
+		By("the Pod is not touched until someone restarts it")
+		var same corev1.Pod
+		Expect(k8sClient.Get(ctx, key, &same)).To(Succeed())
+		Expect(same.UID).To(Equal(pod.UID))
+
+		By("a restart recreates the Pod from the new spec and clears the flag")
+		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+		gs.Annotations = map[string]string{gameserversv1alpha1.RestartAnnotation: "r1"}
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+		reconcileOnce() // deletes the Pod
+		reconcileOnce() // recreates it
+		Expect(restartRequired()).To(Equal(metav1.ConditionFalse))
 	})
 
 	It("deletes the Pod but keeps the PVC when the desired state is Stopped", func() {
