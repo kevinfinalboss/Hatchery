@@ -57,6 +57,35 @@ spec:
               quota:
                 description: Quota is the tenant's resource budget.
                 properties:
+                  backups:
+                    description: |-
+                      Backups limits what the organization may keep on the platform's own backup storage. Without
+                      it the platform destination is unavailable to the organization. It does not apply to a
+                      destination the organization brings itself.
+                    properties:
+                      maxPerOrg:
+                        description: MaxPerOrg is how many backups the whole organization
+                          may have at the same time.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      maxPerServer:
+                        description: MaxPerServer is how many backups one server may
+                          have at the same time.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      retentionDays:
+                        description: RetentionDays is how long a backup is kept before
+                          the operator deletes it.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    required:
+                    - maxPerOrg
+                    - maxPerServer
+                    - retentionDays
+                    type: object
                   cpu:
                     anyOf:
                     - type: integer
