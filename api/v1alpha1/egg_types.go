@@ -110,6 +110,34 @@ type EggImage struct {
 	Image string `json:"image"`
 }
 
+// EggStartupDetection tells the operator how to recognise that the game finished booting: a regex
+// matched against the console output.
+type EggStartupDetection struct {
+	// Regex is matched against the recent console output (RE2 syntax).
+	// +kubebuilder:validation:MinLength=1
+	Regex string `json:"regex"`
+
+	// TimeoutSeconds is how long to wait for a match before treating the server as running anyway
+	// (Ready=False, reason StartupTimeout). Defaults to 600.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+}
+
+// EggConfigure is a step that runs on every start, after install and before the game, to (re)write
+// configuration files from the server's variables. It must not download anything.
+type EggConfigure struct {
+	// Image defaults to the image the server runs with.
+	// +optional
+	Image string `json:"image,omitempty"`
+	// Entrypoint defaults to ["/bin/sh", "-c"].
+	// +optional
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	// Script is passed to the entrypoint as its last argument.
+	// +kubebuilder:validation:MinLength=1
+	Script string `json:"script"`
+}
+
 type EggSpec struct {
 	// Images are the container images the game server process can run with. The first is the
 	// default; a GameServer picks another by name through spec.imageName.
@@ -147,6 +175,21 @@ type EggSpec struct {
 	// Ports declares the network ports this Egg's process listens on.
 	// +optional
 	Ports []EggPort `json:"ports,omitempty"`
+
+	// StopTimeoutSeconds is how long the server gets to stop gracefully (StopCommand or StopSignal)
+	// before it is killed. Defaults to 60.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600
+	// +optional
+	StopTimeoutSeconds *int32 `json:"stopTimeoutSeconds,omitempty"`
+
+	// StartupDetection lets the Panel tell "starting" from "online".
+	// +optional
+	StartupDetection *EggStartupDetection `json:"startupDetection,omitempty"`
+
+	// Configure runs on every start after Install; see EggConfigure.
+	// +optional
+	Configure *EggConfigure `json:"configure,omitempty"`
 
 	// RecommendedResources pre-fills the create-server form; the user may change them.
 	// +optional
