@@ -13,6 +13,9 @@ spec:
   startCommand: "./TerrariaServer.bin.x86_64 -config serverconfig.txt"
   stopCommand: "exit"
   stopSignal: SIGTERM
+  stopTimeoutSeconds: 60
+  startupDetection:
+    regex: "Server started"
   install:
     image: ghcr.io/ptero-eggs/installers:debian
     entrypoint: ["bash", "-c"]
@@ -65,6 +68,18 @@ spec:
       fi
 
       mkdir -p /data/saves/Worlds
+
+      chown -R 1000:1000 /data
+
+      echo "Install complete"
+  # Runs on every start, after install and before the game, without downloading anything: editing
+  # a variable such as MAX_PLAYERS takes effect on the next start without a reinstall.
+  configure:
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      cd /data
+      mkdir -p /data/saves/Worlds
       touch serverconfig.txt
 
       setkey() {
@@ -85,10 +100,6 @@ spec:
       setkey seed "${WORLD_SEED}"
       setkey password "${PASSWORD}"
       setkey npcstream "${NPCSTREAM}"
-
-      chown -R 1000:1000 /data
-
-      echo "Install complete"
   recommendedResources:
     cpu: "1"
     memory: 1Gi
