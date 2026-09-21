@@ -74,6 +74,10 @@ spec:
                 x-kubernetes-validations:
                 - message: eggRef is immutable
                   rule: self == oldSelf
+              imageName:
+                description: ImageName picks one of the Egg's images by name. Empty
+                  means the Egg's first (default) image.
+                type: string
               resources:
                 description: Resources are the compute resource requirements for the
                   server container.
