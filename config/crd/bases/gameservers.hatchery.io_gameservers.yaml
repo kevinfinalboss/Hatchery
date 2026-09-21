@@ -52,6 +52,29 @@ spec:
           spec:
             description: spec defines the desired state of GameServer
             properties:
+              backupTarget:
+                description: BackupTarget is where this server's backups go. Required
+                  before its first backup.
+                properties:
+                  bucket:
+                    description: Bucket is one of the connection's buckets. Unused
+                      for the platform, which decides it.
+                    maxLength: 63
+                    type: string
+                  connection:
+                    description: |-
+                      Connection is the name of one of the organization's S3 connections, or "platform" for the
+                      platform's own storage.
+                    maxLength: 32
+                    type: string
+                  prefix:
+                    description: Prefix is the folder inside the bucket. Empty means
+                      the server's name. Unused for the platform.
+                    maxLength: 256
+                    type: string
+                required:
+                - connection
+                type: object
               displayName:
                 description: |-
                   DisplayName is the human-friendly name shown in the Panel. Unlike metadata.name (which names
@@ -144,6 +167,12 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              startCommand:
+                description: |-
+                  StartCommand overrides the Egg's start command for this server. Empty means the Egg's. It may
+                  use {{VARIABLE}} placeholders for the Egg's variables and runs as `exec <command>`.
+                maxLength: 4096
+                type: string
               state:
                 default: Running
                 description: |-
@@ -172,6 +201,16 @@ spec:
                 x-kubernetes-validations:
                 - message: storage is immutable in the MVP
                   rule: self == oldSelf
+              suspendReason:
+                description: SuspendReason is the admin's explanation, shown to the
+                  organization.
+                maxLength: 256
+                type: string
+              suspended:
+                description: |-
+                  Suspended is set by a platform admin (through the Panel) to block a server: its Pod is stopped,
+                  its data stays, and it cannot start until unsuspended.
+                type: boolean
               variables:
                 description: |-
                   Variables overrides Egg-declared variables for this specific server
