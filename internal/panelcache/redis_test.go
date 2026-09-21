@@ -131,3 +131,25 @@ func TestRedisLoginLimiter(t *testing.T) {
 		t.Error("success must reset the user+IP counter")
 	}
 }
+
+func TestRedisMetricsStoreAppendIsIdempotentAndRangeFilters(t *testing.T) {
+	rdb, prefix := testRedis(t)
+	s := newRedisMetricsStore(rdb, prefix)
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+
+	old := MetricSample{T: now - 3600_000, CPUMillicores: 1, MemoryBytes: 1}
+	recent := MetricSample{T: now - 1000, CPUMillicores: 250, MemoryBytes: 1 << 30}
+	for _, smp := range []MetricSample{old, recent, recent} {
+		if err := s.Append(ctx, "ns", "mc", smp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Range(ctx, "ns", "mc", now-60_000)
+	if err != nil || len(got) != 1 || got[0] != recent {
+		t.Fatalf("Range = %+v, %v; want just %+v", got, err, recent)
+	}
+	if got, _ := s.Range(ctx, "ns", "other", 0); len(got) != 0 {
+		t.Fatalf("series must be per server, got %+v", got)
+	}
+}
