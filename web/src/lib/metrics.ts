@@ -18,6 +18,30 @@ export interface MetricsResponse {
   points: MetricPoint[];
 }
 
+export interface RuntimeTermination {
+  container: "server" | "install";
+  reason?: string;
+  exitCode: number;
+  finishedAt?: string;
+}
+
+export interface RuntimeResponse {
+  startedAt?: string;
+  terminated?: RuntimeTermination;
+  disk?: { usedBytes: number; totalBytes?: number };
+}
+
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}min`;
+  if (m > 0) return `${m}min`;
+  return `${s}s`;
+}
+
 const MEMORY_UNITS: Record<string, number> = {
   "": 1,
   Ki: 2 ** 10,
