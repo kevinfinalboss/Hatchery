@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { api } from "../lib/api";
 import { atLeast, roleOf, useOrg } from "../lib/org";
+import { useAuth } from "../lib/auth";
 import { useRestartServer, useSetServerState } from "../lib/serverActions";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
@@ -11,25 +12,27 @@ import { StatusBadge } from "../components/ui/StatusBadge";
 import { ServerConsole } from "../components/console/ServerConsole";
 import { FileManager } from "../components/files/FileManager";
 import { ServerMetrics } from "../components/server/ServerMetrics";
+import { ServerBackups } from "../components/server/ServerBackups";
 import { ServerSettings } from "../components/server/ServerSettings";
 import { restartRequired, serverTitle } from "../lib/gameserver";
 import { errorMessage } from "../lib/errors";
 import type { UpdateGameServerRequest } from "../lib/types";
 
-type Section = "console" | "metrics" | "files" | "settings";
+type Section = "console" | "metrics" | "files" | "backups" | "settings";
 
 const SECTIONS: {
   id: Section;
-  label: "server.sectionConsole" | "server.sectionMetrics" | "server.sectionFiles" | "server.sectionSettings";
+  label: "server.sectionConsole" | "server.sectionMetrics" | "server.sectionFiles" | "server.sectionBackups" | "server.sectionSettings";
 }[] = [
   { id: "console", label: "server.sectionConsole" },
   { id: "metrics", label: "server.sectionMetrics" },
   { id: "files", label: "server.sectionFiles" },
+  { id: "backups", label: "server.sectionBackups" },
   { id: "settings", label: "server.sectionSettings" },
 ];
 
 function sectionOf(raw: string | null): Section {
-  return raw === "metrics" || raw === "files" || raw === "settings" ? raw : "console";
+  return raw === "metrics" || raw === "files" || raw === "backups" || raw === "settings" ? raw : "console";
 }
 
 export function ServerDetailPage() {
@@ -38,6 +41,8 @@ export function ServerDetailPage() {
   const [params, setParams] = useSearchParams();
   const section = sectionOf(params.get("s"));
   const { orgs } = useOrg();
+  const { user } = useAuth();
+  const isPlatformAdmin = !!user?.isAdmin;
   const canDelete = atLeast(roleOf(orgs, org), "admin");
   const canEdit = canDelete; // admin and owner may edit; members only read
   const navigate = useNavigate();
@@ -66,6 +71,24 @@ export function ServerDetailPage() {
     onError: (err) => setSaveMessage({ ok: false, text: errorMessage(err, t("server.saveFailed")) }),
   });
 
+  const reinstall = useMutation({
+    mutationFn: () => api.reinstallGameServer(org, name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["gameserver", org, name] });
+      void queryClient.invalidateQueries({ queryKey: ["gameservers", org] });
+    },
+    onError: (err) => setSaveMessage({ ok: false, text: errorMessage(err, t("server.reinstallFailed")) }),
+  });
+
+  const suspension = useMutation({
+    mutationFn: (reason: string | null) => (reason === null ? api.unsuspendGameServer(org, name) : api.suspendGameServer(org, name, reason)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["gameserver", org, name] });
+      void queryClient.invalidateQueries({ queryKey: ["gameservers", org] });
+    },
+    onError: (err) => setSaveMessage({ ok: false, text: errorMessage(err, t("server.suspendFailed")) }),
+  });
+
   const deleteServer = useMutation({
     mutationFn: () => api.deleteGameServer(org, name),
     onSuccess: () => {
@@ -79,7 +102,11 @@ export function ServerDetailPage() {
   }
 
   const desiredRunning = server.spec.state === "Running";
-  const podRunning = server.status?.phase === "Running";
+  const phase = server.status?.phase;
+  const podRunning = phase === "Running" || phase === "Starting"; // the game container is up
+  const installing = phase === "Installing";
+  const suspended = !!server.spec.suspended;
+  const locked = suspended && !isPlatformAdmin;
 
   return (
     <div className="flex h-full flex-col gap-5">
@@ -95,7 +122,7 @@ export function ServerDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {desiredRunning && (
+          {!locked && desiredRunning && (
             <Button
               variant="secondary"
               disabled={restart.isPending}
@@ -106,6 +133,7 @@ export function ServerDetailPage() {
               {t("server.restart")}
             </Button>
           )}
+          {!locked && (
           <Button
             variant={desiredRunning ? "secondary" : "primary"}
             disabled={setState.isPending}
@@ -113,10 +141,17 @@ export function ServerDetailPage() {
           >
             {desiredRunning ? t("server.stop") : t("server.start")}
           </Button>
+          )}
         </div>
       </div>
 
-      {restartRequired(server) && desiredRunning && (
+      {suspended && (
+        <div className="border border-status-failed bg-surface px-4 py-2.5 font-sans text-sm text-status-failed">
+          {t("server.suspendedBanner", { reason: server.spec.suspendReason ?? "" })}
+        </div>
+      )}
+
+      {!locked && restartRequired(server) && desiredRunning && (
         <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface px-4 py-2.5 font-sans text-sm text-text-primary">
           <span>{t("server.restartPending")}</span>
           <Button
@@ -151,25 +186,35 @@ export function ServerDetailPage() {
         </nav>
 
         <div className="min-h-0 min-w-0 grow">
-          {section === "console" ? (
-            <ServerConsole org={org} name={name} running={podRunning} />
+          {locked && section !== "settings" ? (
+            <div className="font-prose text-sm text-text-secondary">{t("server.suspendedLocked")}</div>
+          ) : section === "console" ? (
+            <ServerConsole org={org} name={name} running={podRunning} installing={installing} />
           ) : section === "metrics" ? (
             <ServerMetrics org={org} name={name} server={server} running={podRunning} />
           ) : section === "files" ? (
             <FileManager org={org} name={name} />
+          ) : section === "backups" ? (
+            <ServerBackups org={org} name={name} server={server} canManage={canEdit} />
           ) : (
             <ServerSettings
               org={org}
               server={server}
               egg={egg}
-              canEdit={canEdit}
+              canEdit={canEdit && !locked}
+              isPlatformAdmin={isPlatformAdmin}
+              suspending={suspension.isPending}
+              onSuspend={(reason) => suspension.mutate(reason)}
+              onUnsuspend={() => suspension.mutate(null)}
               saving={update.isPending}
               saveMessage={saveMessage}
               onSave={(body) => {
                 setSaveMessage(null);
                 update.mutate(body);
               }}
-              canDelete={canDelete}
+              canDelete={canDelete && !locked}
+              reinstalling={reinstall.isPending}
+              onReinstall={() => reinstall.mutate()}
               deleting={deleteServer.isPending}
               onDelete={() => deleteServer.mutate()}
             />
