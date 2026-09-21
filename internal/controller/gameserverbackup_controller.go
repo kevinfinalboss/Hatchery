@@ -85,9 +85,32 @@ func (r *GameServerBackupReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	case gameserversv1alpha1.GameServerBackupPhaseRunning:
 		return r.pollJob(ctx, &bkp)
 	default:
-		log.V(1).Info("backup already in a terminal phase, nothing to do", "phase", bkp.Status.Phase)
+		log.V(1).Info("backup already in a terminal phase", "phase", bkp.Status.Phase)
+		return r.enforceRetention(ctx, &bkp)
+	}
+}
+
+// maxRetentionWait caps how long the controller sleeps before looking at a backup's expiry again.
+const maxRetentionWait = time.Hour
+
+// enforceRetention deletes a finished backup once its expires-at annotation has passed (the
+// finalizer then prunes the snapshot), and otherwise asks to be woken up around the expiry. A backup
+// without a valid annotation is kept for good.
+func (r *GameServerBackupReconciler) enforceRetention(ctx context.Context, bkp *gameserversv1alpha1.GameServerBackup) (ctrl.Result, error) {
+	raw := bkp.Annotations[gameserversv1alpha1.BackupExpiresAtAnnotation]
+	if raw == "" {
 		return ctrl.Result{}, nil
 	}
+	expiresAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		logf.FromContext(ctx).Info("ignoring an unparsable expires-at annotation", "value", raw)
+		return ctrl.Result{}, nil
+	}
+	if remaining := time.Until(expiresAt); remaining > 0 {
+		return ctrl.Result{RequeueAfter: min(remaining+time.Second, maxRetentionWait)}, nil
+	}
+	logf.FromContext(ctx).Info("deleting an expired backup", "backup", bkp.Name, "expiredAt", raw)
+	return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, bkp))
 }
 
 // startJob validates the target GameServer's PVC exists and creates the
