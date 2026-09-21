@@ -32,6 +32,18 @@ type GameServerRef struct {
 // GameServerBackupFinalizer is set on every GameServerBackup so the
 // controller can prune the remote snapshot before the object is actually
 // removed — Kubernetes garbage collection has no idea an S3 bucket exists.
+// BackupExpiresAtAnnotation (RFC 3339) makes the operator delete the backup once that time has
+// passed; the finalizer then removes the snapshot from the storage. Set by the Panel on backups
+// kept on the platform's storage, from the organization's retention.
+const BackupExpiresAtAnnotation = "gameservers.hatchery.io/expires-at"
+
+// BackupGameServerLabel and BackupDestinationLabel let the Panel list an organization's backups by
+// server and by where they are stored.
+const (
+	BackupGameServerLabel  = "gameservers.hatchery.io/gameserver"
+	BackupDestinationLabel = "gameservers.hatchery.io/backup-destination"
+)
+
 const GameServerBackupFinalizer = "gameservers.hatchery.io/backup-finalizer"
 
 // S3Destination points a backup at an S3-compatible bucket. restic (the tool
