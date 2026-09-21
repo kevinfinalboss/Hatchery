@@ -96,7 +96,7 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 		}
 		req.Name = uniqueSlug(slugify(req.Spec.DisplayName), taken)
 	}
-	if err := s.checkAgainstEgg(r.Context(), ns, req.Spec.EggRef, req.Spec.ImageName, req.Spec.Variables); err != nil {
+	if err := s.checkAgainstEgg(r.Context(), ns, req.Spec.EggRef, req.Spec.ImageName, req.Spec.StartCommand, req.Spec.Variables); err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -127,10 +127,12 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 // nil field is left as it is; Variables replaces the whole override list. Disk (spec.storage) is
 // deliberately absent: it is fixed at creation.
 type updateGameServerRequest struct {
-	DisplayName *string                                   `json:"displayName"`
-	ImageName   *string                                   `json:"imageName"`
-	Variables   *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
-	Resources   *corev1.ResourceRequirements              `json:"resources"`
+	DisplayName  *string                                   `json:"displayName"`
+	ImageName    *string                                   `json:"imageName"`
+	StartCommand *string                                   `json:"startCommand"`
+	BackupTarget *gameserversv1alpha1.BackupTarget         `json:"backupTarget"`
+	Variables    *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
+	Resources    *corev1.ResourceRequirements              `json:"resources"`
 }
 
 func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) {
@@ -171,18 +173,28 @@ func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequ
 		}
 		gs.Spec.DisplayName = *req.DisplayName
 	}
-	if req.ImageName != nil || req.Variables != nil {
-		imageName, vars := gs.Spec.ImageName, gs.Spec.Variables
+	if req.ImageName != nil || req.Variables != nil || req.StartCommand != nil {
+		imageName, startCommand, vars := gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables
 		if req.ImageName != nil {
 			imageName = *req.ImageName
+		}
+		if req.StartCommand != nil {
+			startCommand = *req.StartCommand
 		}
 		if req.Variables != nil {
 			vars = *req.Variables
 		}
-		if err := s.checkAgainstEgg(r.Context(), ns, gs.Spec.EggRef, imageName, vars); err != nil {
+		if err := s.checkAgainstEgg(r.Context(), ns, gs.Spec.EggRef, imageName, startCommand, vars); err != nil {
 			return nil, http.StatusUnprocessableEntity, err
 		}
-		gs.Spec.ImageName, gs.Spec.Variables = imageName, vars
+		gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables = imageName, startCommand, vars
+	}
+	if req.BackupTarget != nil {
+		target, code, err := s.validateBackupTarget(r.Context(), ns, acc.Org.Slug, req.BackupTarget)
+		if err != nil {
+			return nil, code, err
+		}
+		gs.Spec.BackupTarget = target
 	}
 	if req.Resources != nil {
 		gs.Spec.Resources = *req.Resources
@@ -221,7 +233,7 @@ func normalizeResources(r *corev1.ResourceRequirements) {
 
 // checkAgainstEgg validates the chosen image and the variable overrides against the referenced Egg
 // so a bad value gets a clear 422. An Egg that cannot be found is left to the admission webhook, which is the authority.
-func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, imageName string, vars []gameserversv1alpha1.GameServerVariable) error {
+func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, imageName, startCommand string, vars []gameserversv1alpha1.GameServerVariable) error {
 	eggNS := ns
 	if ref.Scope == gameserversv1alpha1.EggScopeCatalog {
 		eggNS = gameserversv1alpha1.CatalogNamespace
@@ -237,6 +249,7 @@ func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameservers
 	if _, ok := egg.ResolveImage(imageName); !ok {
 		msgs = append(msgs, fmt.Sprintf("image %q is not declared by egg %q", imageName, egg.Name))
 	}
+	msgs = append(msgs, gameserversv1alpha1.ValidateStartCommand(&egg, startCommand)...)
 	msgs = append(msgs, gameserversv1alpha1.ValidateVariableOverrides(&egg, vars)...)
 	if len(msgs) > 0 {
 		return fmt.Errorf("%s", strings.Join(msgs, "; "))
@@ -315,6 +328,92 @@ func (s *Server) handleRestartGameServer(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, gs)
+}
+
+// unlessSuspended locks a suspended server for the organization: 423 with the admin's reason. Platform
+// admins are not locked out, since they need to investigate and clean up.
+func (s *Server) unlessSuspended(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u := userFromContext(r.Context()); u == nil || !u.IsAdmin {
+			var gs gameserversv1alpha1.GameServer
+			if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err == nil && gs.Spec.Suspended {
+				msg := "this server is suspended"
+				if gs.Spec.SuspendReason != "" {
+					msg += ": " + gs.Spec.SuspendReason
+				}
+				writeError(w, http.StatusLocked, msg)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type suspendRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleSuspendGameServer (platform admin only) blocks a server: it is stopped and the organization
+// can do nothing with it until it is unsuspended.
+func (s *Server) handleSuspendGameServer(w http.ResponseWriter, r *http.Request) {
+	var req suspendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		writeError(w, http.StatusBadRequest, "a reason is required")
+		return
+	}
+	if utf8.RuneCountInString(reason) > 256 {
+		writeError(w, http.StatusBadRequest, "reason must have at most 256 characters")
+		return
+	}
+	for _, c := range reason {
+		if unicode.IsControl(c) {
+			writeError(w, http.StatusBadRequest, "reason must not contain control characters")
+			return
+		}
+	}
+	s.mutateGameServer(w, r, http.StatusAccepted, func(gs *gameserversv1alpha1.GameServer) {
+		gs.Spec.Suspended = true
+		gs.Spec.SuspendReason = reason
+		gs.Spec.State = gameserversv1alpha1.GameServerStateStopped
+	})
+}
+
+// handleUnsuspendGameServer lifts the block. It does not start the server: it stays stopped until
+// someone in the organization starts it.
+func (s *Server) handleUnsuspendGameServer(w http.ResponseWriter, r *http.Request) {
+	s.mutateGameServer(w, r, http.StatusAccepted, func(gs *gameserversv1alpha1.GameServer) {
+		gs.Spec.Suspended = false
+		gs.Spec.SuspendReason = ""
+	})
+}
+
+// mutateGameServer reads the server, applies mutate and writes it back, retrying when the controller
+// wrote in between (the edit is field-level, so re-applying it is safe).
+func (s *Server) mutateGameServer(w http.ResponseWriter, r *http.Request, okStatus int, mutate func(*gameserversv1alpha1.GameServer)) {
+	const attempts = 4
+	for attempt := 1; ; attempt++ {
+		var gs gameserversv1alpha1.GameServer
+		if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
+			writeError(w, statusFor(err), err.Error())
+			return
+		}
+		mutate(&gs)
+		err := s.Client.Update(r.Context(), &gs)
+		if err == nil {
+			writeJSON(w, okStatus, gs)
+			return
+		}
+		if apierrors.IsConflict(err) && attempt < attempts {
+			continue
+		}
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
 }
 
 // handleReinstallGameServer makes the Egg's install script run again: it bumps spec.installRevision,
