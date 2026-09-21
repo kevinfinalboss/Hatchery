@@ -18,6 +18,9 @@ spec:
     -servername "$SERVER_NAME" -adminusername "$ADMIN_USER" -adminpassword "$ADMIN_PASSWORD"'
   stopCommand: "quit"
   stopSignal: SIGTERM
+  stopTimeoutSeconds: 120
+  startupDetection:
+    regex: "SERVER STARTED"
   install:
     image: ghcr.io/ptero-eggs/installers:debian
     entrypoint: ["bash", "-c"]
