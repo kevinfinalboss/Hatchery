@@ -78,6 +78,12 @@ spec:
                 description: ImageName picks one of the Egg's images by name. Empty
                   means the Egg's first (default) image.
                 type: string
+              installRevision:
+                description: |-
+                  InstallRevision is bumped to make the install script run again ("Reinstall"). The Egg's
+                  install script only runs when the marker on the data volume differs from this number.
+                format: int64
+                type: integer
               resources:
                 description: Resources are the compute resource requirements for the
                   server container.
