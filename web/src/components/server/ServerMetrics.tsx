@@ -14,6 +14,8 @@ import {
 import type { GameServer } from "../../lib/types";
 import { usePersistedChoice } from "../../lib/usePersistedChoice";
 import { useServerMetrics } from "../../lib/useServerMetrics";
+import { useServerRuntime } from "../../lib/useServerRuntime";
+import { RuntimeCards } from "./RuntimeCards";
 import { Card } from "../ui/Card";
 import { LineChart } from "../ui/LineChart";
 
@@ -83,8 +85,16 @@ export function ServerMetrics({
     limits: { cpu: cpuLimit, memory: memLimit },
   });
 
+  const runtime = useServerRuntime(org, name, server.status?.phase);
+  const runtimeCards = runtime.data ? <RuntimeCards runtime={runtime.data} now={runtime.dataUpdatedAt} /> : null;
+
   if (!running) {
-    return <div className="font-prose text-sm text-text-secondary">{t("metrics.stopped")}</div>;
+    return (
+      <div className="flex flex-col gap-4">
+        {runtimeCards}
+        <div className="font-prose text-sm text-text-secondary">{t("metrics.stopped")}</div>
+      </div>
+    );
   }
 
   const raw = metrics.status === "ready" ? metrics.data.points : [];
@@ -121,6 +131,7 @@ export function ServerMetrics({
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto">
+      {runtimeCards}
       <div className="flex flex-wrap items-center gap-3">
         <div role="group" aria-label={t("metrics.rangeLabel")} className="flex divide-x divide-border border border-border">
           {METRICS_RANGES.map((r) => (
