@@ -46,6 +46,7 @@ func main() {
 	var adminSecretName string
 	var allowedOrigins string
 	var redisURL, trustedProxies string
+	var backupEndpoint, backupBucket, backupSecret string
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -64,6 +65,13 @@ func main() {
 	flag.StringVar(&trustedProxies, "trusted-proxies", os.Getenv("PANEL_TRUSTED_PROXIES"),
 		"Comma-separated CIDRs of reverse proxies whose X-Forwarded-For header is trusted when working out the client IP "+
 			"(rate limiting, audit). Empty trusts no proxy. Defaults to $PANEL_TRUSTED_PROXIES.")
+	flag.StringVar(&backupEndpoint, "backup-s3-endpoint", os.Getenv("PANEL_BACKUP_S3_ENDPOINT"),
+		"Endpoint of the platform's own S3-compatible backup storage (empty for AWS S3). Defaults to $PANEL_BACKUP_S3_ENDPOINT.")
+	flag.StringVar(&backupBucket, "backup-s3-bucket", os.Getenv("PANEL_BACKUP_S3_BUCKET"),
+		"Bucket of the platform's backup storage. Empty turns the platform storage off (organizations can still bring their own S3). "+
+			"Defaults to $PANEL_BACKUP_S3_BUCKET.")
+	flag.StringVar(&backupSecret, "backup-s3-secret", os.Getenv("PANEL_BACKUP_S3_SECRET"),
+		"<namespace>/<name> of the Secret holding the platform's S3 access-key and secret-key. Defaults to $PANEL_BACKUP_S3_SECRET.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -152,6 +160,16 @@ func main() {
 	srv.Tickets = panelcache.NewRedisTicketStore(rdb)
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
 	srv.TrustedProxies = proxyNets
+
+	if backupBucket != "" {
+		ns, name, ok := strings.Cut(backupSecret, "/")
+		if !ok || ns == "" || name == "" {
+			log.Error(nil, "--backup-s3-bucket needs --backup-s3-secret=<namespace>/<name>")
+			os.Exit(1)
+		}
+		srv.Backup = panelapi.BackupConfig{Endpoint: backupEndpoint, Bucket: backupBucket, SecretNamespace: ns, SecretName: name}
+		log.Info("platform backup storage enabled", "bucket", backupBucket, "endpoint", backupEndpoint)
+	}
 
 	metricsStore := panelcache.NewRedisMetricsStore(rdb)
 	srv.Metrics = metricsStore
