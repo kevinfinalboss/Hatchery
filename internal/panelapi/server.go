@@ -122,6 +122,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PATCH "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.update", s.handleUpdateGameServer))
 	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
 	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
+	mux.Handle("POST "+gs+"/reinstall", orgRoute(paneldb.RoleAdmin, "gameserver.reinstall", s.handleReinstallGameServer))
 	mux.Handle("POST "+gs+"/restart", orgRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
 	mux.Handle("GET "+gs+"/metrics", orgRoute(paneldb.RoleMember, "", s.handleMetrics))
 	mux.Handle("GET "+gs+"/runtime", orgRoute(paneldb.RoleMember, "", s.handleRuntime))
