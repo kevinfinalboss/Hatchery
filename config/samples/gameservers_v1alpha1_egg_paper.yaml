@@ -7,7 +7,21 @@ metadata:
   name: minecraft-paper
   namespace: hatchery-catalog
 spec:
-  image: ghcr.io/ptero-eggs/yolks:java_25
+  images:
+    - name: "Java 25"
+      image: ghcr.io/ptero-eggs/yolks:java_25
+    - name: "Java 22"
+      image: ghcr.io/ptero-eggs/yolks:java_22
+    - name: "Java 21"
+      image: ghcr.io/ptero-eggs/yolks:java_21
+    - name: "Java 17"
+      image: ghcr.io/ptero-eggs/yolks:java_17
+    - name: "Java 16"
+      image: ghcr.io/ptero-eggs/yolks:java_16
+    - name: "Java 11"
+      image: ghcr.io/ptero-eggs/yolks:java_11
+    - name: "Java 8"
+      image: ghcr.io/ptero-eggs/yolks:java_8
   startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}"
   stopCommand: "stop"
   stopSignal: SIGTERM
