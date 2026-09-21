@@ -3,6 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { RequireAdmin, RequireAuth, RequireOrgAdmin } from "./components/RequireAuth";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { NewServerPage } from "./pages/NewServerPage";
 import { ServerDetailPage } from "./pages/ServerDetailPage";
 import { EggsPage } from "./pages/EggsPage";
 import { MembersPage } from "./pages/MembersPage";
@@ -22,6 +23,7 @@ export function App() {
         <Route path="/members" element={<AppShell><MembersPage /></AppShell>} />
 
         <Route element={<RequireOrgAdmin />}>
+          <Route path="/new-server" element={<AppShell><NewServerPage /></AppShell>} />
           <Route path="/audit" element={<AppShell><AuditPage /></AppShell>} />
         </Route>
 
