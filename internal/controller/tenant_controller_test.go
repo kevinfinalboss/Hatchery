@@ -106,7 +106,7 @@ var _ = Describe("Tenant Controller", func() {
 
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "e", Namespace: "hatchery-ns-del"},
-			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/g:1", StartCommand: "run"},
+			Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}}, StartCommand: "run"},
 		}
 		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
 		gs := &gameserversv1alpha1.GameServer{
