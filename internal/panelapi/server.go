@@ -97,6 +97,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v1/orgs", s.requireAdmin(http.HandlerFunc(s.handleCreateOrg)))
 	mux.Handle("GET "+org, orgRoute(paneldb.RoleMember, "", s.handleGetOrg))
 	mux.Handle("DELETE "+org, orgRoute(paneldb.RoleOwner, "", s.handleDeleteOrg))
+	mux.Handle("GET "+org+"/quota", orgRoute(paneldb.RoleMember, "", s.handleGetQuota))
 	mux.Handle("PATCH "+org+"/quota", s.requireAdmin(orgRoute(paneldb.RoleOwner, "", s.handleUpdateQuota)))
 
 	mux.Handle("GET "+org+"/members", orgRoute(paneldb.RoleMember, "", s.handleListMembers))
@@ -118,6 +119,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET "+org+"/gameservers", orgRoute(paneldb.RoleMember, "", s.handleListGameServers))
 	mux.Handle("POST "+org+"/gameservers", orgRoute(paneldb.RoleAdmin, "", s.handleCreateGameServer))
 	mux.Handle("GET "+gs, orgRoute(paneldb.RoleMember, "", s.handleGetGameServer))
+	mux.Handle("PATCH "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.update", s.handleUpdateGameServer))
 	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
 	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
 	mux.Handle("POST "+gs+"/restart", orgRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
