@@ -175,6 +175,49 @@ var _ = Describe("GameServer Webhook: variables and displayName", func() {
 		Expect(k8sClient.Update(ctx, ok)).NotTo(Succeed())
 	})
 
+	It("rejects starting a suspended server, but admits suspending it", func() {
+		gs := build("susp")
+		gs.Spec.State = gameserversv1alpha1.GameServerStateStopped
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, gs) })
+
+		gs.Spec.Suspended = true
+		gs.Spec.SuspendReason = "abuse report"
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+
+		gs.Spec.State = gameserversv1alpha1.GameServerStateRunning
+		err := k8sClient.Update(ctx, gs)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("suspended"))
+
+		By("creating a server that is already suspended and Running is refused too")
+		bad := build("susp-create")
+		bad.Spec.Suspended = true
+		bad.Spec.State = gameserversv1alpha1.GameServerStateRunning
+		Expect(k8sClient.Create(ctx, bad)).NotTo(Succeed())
+	})
+
+	It("validates the server's own start command against the Egg", func() {
+		bad := build("cmd-bad")
+		bad.Spec.StartCommand = "run {{NOPE}}"
+		err := k8sClient.Create(ctx, bad)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("{{NOPE}}"))
+
+		multi := build("cmd-multi")
+		multi.Spec.StartCommand = "run\nrm -rf /"
+		Expect(k8sClient.Create(ctx, multi)).NotTo(Succeed())
+
+		ok := build("cmd-ok")
+		ok.Spec.StartCommand = "run --motd {{MOTD}}"
+		Expect(k8sClient.Create(ctx, ok)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, ok) })
+
+		By("changing it to something invalid on an existing server is rejected")
+		ok.Spec.StartCommand = "run {{GONE}}"
+		Expect(k8sClient.Update(ctx, ok)).NotTo(Succeed())
+	})
+
 	It("rejects an undeclared variable", func() {
 		err := k8sClient.Create(ctx, build("vars-unknown", gameserversv1alpha1.GameServerVariable{Name: "NOPE", Value: "1"}))
 		Expect(err).To(HaveOccurred())
