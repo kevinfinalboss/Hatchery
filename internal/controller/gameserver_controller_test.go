@@ -462,6 +462,22 @@ var _ = Describe("GameServer Controller", func() {
 			Expect(v).To(Equal("3"))
 		})
 
+		It("runs the server's own start command instead of the Egg's, and falls back when it has none", func() {
+			egg := newEgg()
+			egg.Spec.StartCommand = "egg-default {{PORT}}"
+			egg.Spec.Variables = []gameserversv1alpha1.EggVariable{{Name: "PORT", Default: "25565"}}
+
+			def, err := buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(serverOf(def).Command[2]).To(Equal("exec egg-default 25565"))
+
+			gs := newServer()
+			gs.Spec.StartCommand = "custom --port {{PORT}}"
+			own, err := buildPod(gs, egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(serverOf(own).Command[2]).To(Equal("exec custom --port 25565"))
+		})
+
 		It("runs the configure step after install, on the game image by default", func() {
 			egg := newEgg()
 			egg.Spec.Install = &gameserversv1alpha1.EggInstall{Script: "true"}
@@ -492,6 +508,10 @@ var _ = Describe("GameServer Controller", func() {
 		resized := a.DeepCopy()
 		resized.Spec.Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")}
 		Expect(specHash(resized)).NotTo(Equal(specHash(a)))
+
+		restyled := a.DeepCopy()
+		restyled.Spec.StartCommand = "other"
+		Expect(specHash(restyled)).NotTo(Equal(specHash(a)), "a different start command needs a restart")
 
 		reimaged := a.DeepCopy()
 		reimaged.Spec.ImageName = "Java 17"
