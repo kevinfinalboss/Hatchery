@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
@@ -378,6 +379,104 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(k8sClient.Get(ctx, key, &corev1.Pod{})).NotTo(Succeed(), "no Pod may be created from an unknown image")
 	})
 
+	Describe("pod lifecycle wiring", func() {
+		newServer := func() *gameserversv1alpha1.GameServer {
+			return &gameserversv1alpha1.GameServer{
+				ObjectMeta: metav1.ObjectMeta{Name: "life", Namespace: "default"},
+				Spec:       gameserversv1alpha1.GameServerSpec{Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"}},
+			}
+		}
+		newEgg := func() *gameserversv1alpha1.Egg {
+			return &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "img:1"}},
+				StartCommand: "run",
+			}}
+		}
+		serverOf := func(pod *corev1.Pod) corev1.Container { return pod.Spec.Containers[0] }
+		envOf := func(c corev1.Container, name string) (string, bool) {
+			for _, e := range c.Env {
+				if e.Name == name {
+					return e.Value, true
+				}
+			}
+			return "", false
+		}
+
+		It("stops through the stopCommand and gives the Egg's grace period", func() {
+			egg := newEgg()
+			egg.Spec.StopCommand = "stop"
+			egg.Spec.StopTimeoutSeconds = ptr.To(int32(120))
+			pod, err := buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(*pod.Spec.TerminationGracePeriodSeconds).To(Equal(int64(120)))
+			hook := serverOf(pod).Lifecycle.PreStop.Exec.Command
+			Expect(hook[len(hook)-1]).To(ContainSubstring("/proc/1/fd/0"))
+			Expect(hook[len(hook)-1]).To(ContainSubstring("kill -0 1"))
+			v, ok := envOf(serverOf(pod), "HATCHERY_STOP_COMMAND")
+			Expect(ok).To(BeTrue())
+			Expect(v).To(Equal("stop"))
+		})
+
+		It("defaults the grace period to 60s and adds no hook when there is nothing to send", func() {
+			pod, err := buildPod(newServer(), newEgg(), testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(*pod.Spec.TerminationGracePeriodSeconds).To(Equal(int64(60)))
+			Expect(serverOf(pod).Lifecycle).To(BeNil())
+		})
+
+		It("sends a non-default stopSignal itself, since lifecycle.stopSignal needs a feature gate", func() {
+			egg := newEgg()
+			egg.Spec.StopSignal = "SIGINT"
+			pod, err := buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			hook := serverOf(pod).Lifecycle.PreStop.Exec.Command
+			Expect(hook[len(hook)-1]).To(ContainSubstring("kill -INT 1"))
+
+			egg.Spec.StopSignal = "SIGTERM"
+			pod, err = buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(serverOf(pod).Lifecycle).To(BeNil(), "SIGTERM is what the kubelet sends anyway")
+
+			egg.Spec.StopSignal = "INT; rm -rf /"
+			pod, err = buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(serverOf(pod).Lifecycle).To(BeNil(), "an unsafe signal name is ignored, never interpolated")
+		})
+
+		It("wraps the install script so it only runs once per installRevision", func() {
+			egg := newEgg()
+			egg.Spec.Install = &gameserversv1alpha1.EggInstall{Entrypoint: []string{"bash", "-c"}, Script: "echo hi"}
+			gs := newServer()
+			gs.Spec.InstallRevision = 3
+			pod, err := buildPod(gs, egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+
+			install := pod.Spec.InitContainers[0]
+			Expect(install.Name).To(Equal("install"))
+			Expect(install.Command[:2]).To(Equal([]string{"/bin/sh", "-c"}))
+			Expect(install.Command[2]).To(ContainSubstring(".hatchery-installed"))
+			Expect(install.Command[len(install.Command)-3:]).To(Equal([]string{"bash", "-c", "echo hi"}), "the Egg's own entrypoint and script are passed through untouched")
+			v, ok := envOf(install, "HATCHERY_INSTALL_REVISION")
+			Expect(ok).To(BeTrue())
+			Expect(v).To(Equal("3"))
+		})
+
+		It("runs the configure step after install, on the game image by default", func() {
+			egg := newEgg()
+			egg.Spec.Install = &gameserversv1alpha1.EggInstall{Script: "true"}
+			egg.Spec.Configure = &gameserversv1alpha1.EggConfigure{Script: "echo conf"}
+			pod, err := buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pod.Spec.InitContainers).To(HaveLen(2))
+			configure := pod.Spec.InitContainers[1]
+			Expect(configure.Name).To(Equal("configure"))
+			Expect(configure.Image).To(Equal("img:1"))
+			Expect(configure.Command).To(Equal([]string{"/bin/sh", "-c", "echo conf"}))
+		})
+	})
+
 	It("hashes only what needs a restart to take effect", func() {
 		a := &gameserversv1alpha1.GameServer{}
 		a.Spec.Variables = []gameserversv1alpha1.GameServerVariable{{Name: "A", Value: "1"}, {Name: "B", Value: "2"}}
@@ -515,6 +614,11 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(k8sClient.Get(ctx, key, &pvc)).To(Succeed())
 
 		var updated gameserversv1alpha1.GameServer
+		Expect(k8sClient.Get(ctx, key, &updated)).To(Succeed())
+		Expect(updated.Status.Phase).To(Equal(gameserversv1alpha1.GameServerPhaseStopping), "the reconcile that deletes the Pod reports Stopping")
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
 		Expect(k8sClient.Get(ctx, key, &updated)).To(Succeed())
 		Expect(updated.Status.Phase).To(Equal(gameserversv1alpha1.GameServerPhaseStopped))
 	})
