@@ -7,7 +7,9 @@ metadata:
   name: terraria-vanilla
   namespace: hatchery-catalog
 spec:
-  image: ghcr.io/ptero-eggs/yolks:debian
+  images:
+    - name: default
+      image: ghcr.io/ptero-eggs/yolks:debian
   startCommand: "./TerrariaServer.bin.x86_64 -config serverconfig.txt"
   stopCommand: "exit"
   stopSignal: SIGTERM
