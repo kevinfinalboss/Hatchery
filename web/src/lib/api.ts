@@ -14,7 +14,9 @@ import type {
   OrgQuota,
   OrgRole,
   OrgSummary,
+  QuotaUsage,
   SFTPSessionResponse,
+  UpdateGameServerRequest,
   User,
 } from "./types";
 import type { MetricsRange, MetricsResponse, RuntimeResponse } from "./metrics";
@@ -137,6 +139,9 @@ export const api = {
   getGameServer: (org: string, name: string) => request<GameServer>(gs(org, name)),
   createGameServer: (org: string, body: CreateGameServerRequest) =>
     request<GameServer>(`/orgs/${org}/gameservers`, { method: "POST", body: JSON.stringify(body) }),
+  updateGameServer: (org: string, name: string, body: UpdateGameServerRequest) =>
+    request<GameServer>(gs(org, name), { method: "PATCH", body: JSON.stringify(body) }),
+  getQuota: (org: string) => request<QuotaUsage>(`/orgs/${org}/quota`),
   deleteGameServer: (org: string, name: string) => request<void>(gs(org, name), { method: "DELETE" }),
   setGameServerState: (org: string, name: string, state: GameServerState) =>
     request<GameServer>(`${gs(org, name)}/state`, { method: "PATCH", body: JSON.stringify({ state }) }),
