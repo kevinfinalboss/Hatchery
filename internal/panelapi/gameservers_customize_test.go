@@ -222,3 +222,69 @@ func TestGameServerImageNameIsCheckedAgainstTheEgg(t *testing.T) {
 		t.Fatalf("imageName not stored: %+v", got.Spec)
 	}
 }
+
+func TestReinstallGameServer(t *testing.T) {
+	running := editableServer()
+	running.Spec.State = gameserversv1alpha1.GameServerStateRunning
+	stopped := editableServer()
+	stopped.Name = "stopped-one"
+	stopped.Spec.State = gameserversv1alpha1.GameServerStateStopped
+	srv := newTestServer(t, customizeEgg(), running, stopped)
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+	member := newMemberToken(t, srv, "mem", paneldb.RoleMember)
+
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/edit-me/reinstall"), member, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("member: got %d, want 403", rec.Code)
+	}
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/missing/reinstall"), admin, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown server: got %d, want 404", rec.Code)
+	}
+
+	get := func(name string) gameserversv1alpha1.GameServer {
+		var gs gameserversv1alpha1.GameServer
+		if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: name}, &gs); err != nil {
+			t.Fatal(err)
+		}
+		return gs
+	}
+
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/edit-me/reinstall"), admin, nil); rec.Code != http.StatusAccepted {
+		t.Fatalf("running server: got %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	gs := get("edit-me")
+	if gs.Spec.InstallRevision != 1 {
+		t.Fatalf("installRevision = %d, want 1", gs.Spec.InstallRevision)
+	}
+	if gs.Annotations[gameserversv1alpha1.RestartAnnotation] == "" {
+		t.Fatal("a running server must be restarted so the new revision takes effect")
+	}
+
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers/stopped-one/reinstall"), admin, nil); rec.Code != http.StatusAccepted {
+		t.Fatalf("stopped server: got %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	gs = get("stopped-one")
+	if gs.Spec.InstallRevision != 1 || gs.Annotations[gameserversv1alpha1.RestartAnnotation] != "" {
+		t.Fatalf("a stopped server only gets the new revision, for its next start: %+v", gs.ObjectMeta.Annotations)
+	}
+}
+
+func TestLogsRejectsAnUnknownContainer(t *testing.T) {
+	srv := newTestServer(t, customizeEgg(), editableServer())
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers/edit-me/logs?container=sftp-agent"), admin, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEggWithAnInvalidStartupRegexIsRejected(t *testing.T) {
+	srv := newTestServer(t)
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+	body := map[string]any{"name": "bad", "spec": map[string]any{
+		"images":           []map[string]string{{"name": "default", "image": "x:1"}},
+		"startCommand":     "run",
+		"startupDetection": map[string]any{"regex": "(unclosed"},
+	}}
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/eggs"), admin, body); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("got %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+}
