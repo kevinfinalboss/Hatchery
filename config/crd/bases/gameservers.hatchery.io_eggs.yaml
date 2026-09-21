@@ -56,18 +56,23 @@ spec:
                     (e.g. "Java 21"): the game version often dictates the runtime image.
                   properties:
                     image:
+                      maxLength: 256
+                      minLength: 1
                       type: string
                     name:
+                      maxLength: 64
+                      minLength: 1
                       type: string
                   required:
                   - image
                   - name
                   type: object
+                maxItems: 16
                 minItems: 1
                 type: array
-                x-kubernetes-validations:
-                - message: image names must be unique
-                  rule: self.all(a, self.exists_one(b, b.name == a.name))
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               install:
                 description: |-
                   Install describes how to prepare the server files before the first start.
