@@ -151,6 +151,7 @@ var _ = Describe("GameServer status phases", func() {
 		logs.out = "Done"
 		setPodStatus(key, serverRunning(time.Minute))
 		reconcileOnce(r, key)
+		Expect(phaseOf(key, gs)).To(Equal(gameserversv1alpha1.GameServerPhaseRunning))
 		Expect(readyOf(gs).Status).To(Equal(metav1.ConditionTrue))
 
 		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
