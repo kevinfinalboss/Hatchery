@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -473,12 +474,13 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			image = egg.Spec.Image
 		}
 		initContainers = append(initContainers, corev1.Container{
-			Name:         "install",
-			Image:        image,
-			WorkingDir:   dataMountPath,
-			Command:      installCommand(egg.Spec.Install),
-			Env:          env,
-			VolumeMounts: mounts,
+			Name:            "install",
+			Image:           image,
+			WorkingDir:      dataMountPath,
+			Command:         installCommand(egg.Spec.Install),
+			Env:             env,
+			VolumeMounts:    mounts,
+			SecurityContext: gameContainerSecurityContext(),
 		})
 	}
 	automountToken := false
@@ -497,7 +499,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			// fsGroup lets the sftp-agent sidecar and the "server" container
 			// share files on the data volume regardless of which uid the
 			// Egg's image runs the server as — see sftpagent.SharedFSGroup.
-			SecurityContext: &corev1.PodSecurityContext{FSGroup: sftpagent.FSGroupPtr()},
+			SecurityContext: sftpagent.PodSecurityContext(),
 			Containers: []corev1.Container{{
 				Name:  "server",
 				Image: egg.Spec.Image,
@@ -518,9 +520,10 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				// container's console (pods/attach) and forward player/admin
 				// commands to the server process, mirroring how Wings' console
 				// works against a locally-run process.
-				Stdin:     true,
-				StdinOnce: false,
-				TTY:       false,
+				Stdin:           true,
+				StdinOnce:       false,
+				TTY:             false,
+				SecurityContext: gameContainerSecurityContext(),
 			},
 				sftpagent.Container(sftpAgentImage, secretName, string(gs.UID), dataVolumeName, dataMountPath),
 			},
@@ -528,6 +531,10 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 		},
 	}
 	return pod, nil
+}
+
+func gameContainerSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false)}
 }
 
 // podAnnotations stamps the Pod with the GameServer's current RestartAnnotation, so a
