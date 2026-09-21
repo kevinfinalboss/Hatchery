@@ -52,7 +52,7 @@ var _ = Describe("GameServer Controller", func() {
 	}
 
 	It("never mounts a ServiceAccount token into the game pod", func() {
-		egg := &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{Image: "example.com/g:1", StartCommand: "run"}}
+		egg := &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}}, StartCommand: "run"}}
 		gs := &gameserversv1alpha1.GameServer{
 			ObjectMeta: metav1.ObjectMeta{Name: "tok", Namespace: "default"},
 			Spec:       gameserversv1alpha1.GameServerSpec{Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"}},
@@ -68,7 +68,7 @@ var _ = Describe("GameServer Controller", func() {
 			return &gameserversv1alpha1.Egg{
 				ObjectMeta: metav1.ObjectMeta{Name: "np-egg", Namespace: ns},
 				Spec: gameserversv1alpha1.EggSpec{
-					Image:        "example.com/game:latest",
+					Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 					StartCommand: "run",
 					Ports:        []gameserversv1alpha1.EggPort{{Name: "game", ContainerPort: 25565}},
 				},
@@ -126,7 +126,7 @@ var _ = Describe("GameServer Controller", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-egg", Namespace: resourceNamespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start --port {{PORT}}",
 				Variables: []gameserversv1alpha1.EggVariable{
 					{Name: "PORT", Default: "25565"},
@@ -166,7 +166,7 @@ var _ = Describe("GameServer Controller", func() {
 		var pod corev1.Pod
 		Expect(k8sClient.Get(ctx, key, &pod)).To(Succeed())
 		Expect(pod.Spec.Containers).To(HaveLen(2))
-		Expect(pod.Spec.Containers[0].Image).To(Equal(egg.Spec.Image))
+		Expect(pod.Spec.Containers[0].Image).To(Equal(egg.Spec.Images[0].Image))
 		Expect(pod.Spec.Containers[0].Command).To(ContainElement("exec start --port 25565"))
 		Expect(pod.Spec.Containers[0].Stdin).To(BeTrue())
 
@@ -205,7 +205,7 @@ var _ = Describe("GameServer Controller", func() {
 		}
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "ctrl-catalog-egg", Namespace: gameserversv1alpha1.CatalogNamespace},
-			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/catalog-game:1", StartCommand: "run"},
+			Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/catalog-game:1"}}, StartCommand: "run"},
 		}
 		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, egg) })
@@ -239,7 +239,7 @@ var _ = Describe("GameServer Controller", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-restart", Namespace: resourceNamespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 			},
 		}
@@ -313,6 +313,71 @@ var _ = Describe("GameServer Controller", func() {
 		Expect(pod.Annotations).To(HaveKeyWithValue(gameserversv1alpha1.RestartAnnotation, "restart-2"))
 	})
 
+	It("runs the image the GameServer picks, and the Egg's first one by default", func() {
+		egg := &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{
+			Images:       []gameserversv1alpha1.EggImage{{Name: "Java 25", Image: "img:25"}, {Name: "Java 17", Image: "img:17"}},
+			StartCommand: "run",
+			Install:      &gameserversv1alpha1.EggInstall{Script: "true"},
+		}}
+		server := func(imageName string) *gameserversv1alpha1.GameServer {
+			return &gameserversv1alpha1.GameServer{
+				ObjectMeta: metav1.ObjectMeta{Name: "img", Namespace: "default"},
+				Spec: gameserversv1alpha1.GameServerSpec{
+					ImageName: imageName,
+					Storage:   gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+				},
+			}
+		}
+
+		def, err := buildPod(server(""), egg, testSFTPAgentImage)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(def.Spec.Containers[0].Image).To(Equal("img:25"))
+		Expect(def.Spec.InitContainers[0].Image).To(Equal("img:25"), "install falls back to the chosen image")
+
+		picked, err := buildPod(server("Java 17"), egg, testSFTPAgentImage)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(picked.Spec.Containers[0].Image).To(Equal("img:17"))
+
+		egg.Spec.Install.Image = "installer:1"
+		withInstaller, err := buildPod(server("Java 17"), egg, testSFTPAgentImage)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(withInstaller.Spec.InitContainers[0].Image).To(Equal("installer:1"), "an explicit install image wins")
+	})
+
+	It("fails a GameServer whose imageName the Egg does not declare", func() {
+		egg := &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-badimg", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.EggSpec{
+				Images:       []gameserversv1alpha1.EggImage{{Name: "only", Image: "img:1"}},
+				StartCommand: "run",
+			},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg)).To(Succeed()) })
+
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-gameserver-badimg", Namespace: resourceNamespace},
+			Spec: gameserversv1alpha1.GameServerSpec{
+				EggRef:    gameserversv1alpha1.GameServerEggRef{Name: egg.Name},
+				State:     gameserversv1alpha1.GameServerStateRunning,
+				ImageName: "gone",
+				Storage:   gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		key := types.NamespacedName{Name: gs.Name, Namespace: resourceNamespace}
+		reconciler := &GameServerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), SFTPAgentImage: testSFTPAgentImage}
+		DeferCleanup(func() { deleteAndFinalize(reconciler, gs, key) })
+
+		for range 2 {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		Expect(k8sClient.Get(ctx, key, gs)).To(Succeed())
+		Expect(gs.Status.Phase).To(Equal(gameserversv1alpha1.GameServerPhaseFailed))
+		Expect(k8sClient.Get(ctx, key, &corev1.Pod{})).NotTo(Succeed(), "no Pod may be created from an unknown image")
+	})
+
 	It("hashes only what needs a restart to take effect", func() {
 		a := &gameserversv1alpha1.GameServer{}
 		a.Spec.Variables = []gameserversv1alpha1.GameServerVariable{{Name: "A", Value: "1"}, {Name: "B", Value: "2"}}
@@ -329,6 +394,10 @@ var _ = Describe("GameServer Controller", func() {
 		resized.Spec.Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")}
 		Expect(specHash(resized)).NotTo(Equal(specHash(a)))
 
+		reimaged := a.DeepCopy()
+		reimaged.Spec.ImageName = "Java 17"
+		Expect(specHash(reimaged)).NotTo(Equal(specHash(a)), "a different image needs a restart")
+
 		renamed := a.DeepCopy()
 		renamed.Spec.DisplayName = "renamed"
 		Expect(specHash(renamed)).To(Equal(specHash(a)), "renaming never needs a restart")
@@ -338,7 +407,7 @@ var _ = Describe("GameServer Controller", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-pending", Namespace: resourceNamespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start {{MOTD}}",
 				Variables:    []gameserversv1alpha1.EggVariable{{Name: "MOTD", Default: "hi", UserEditable: true}},
 			},
@@ -403,7 +472,7 @@ var _ = Describe("GameServer Controller", func() {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-egg-stop", Namespace: resourceNamespace},
 			Spec: gameserversv1alpha1.EggSpec{
-				Image:        "example.com/game:latest",
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 			},
 		}
