@@ -13,7 +13,7 @@ import { Badge, ListRow, RowActions } from "../components/ui/List";
 import { Filtered } from "../components/ui/Filtered";
 
 const TEMPLATE: EggSpec = {
-  image: "",
+  images: [{ name: "default", image: "" }],
   startCommand: "",
   variables: [],
   ports: [{ name: "game", containerPort: 25565, protocol: "TCP", default: true }],
@@ -190,7 +190,7 @@ export function EggsPage() {
                     <span className="font-display text-[15px] font-semibold text-text-primary">{egg.name}</span>
                     <Badge>{egg.scope === "Catalog" ? t("eggs.scopeCatalog") : t("eggs.scopePrivate")}</Badge>
                   </div>
-                  <div className="truncate font-mono text-xs text-text-tertiary">{egg.spec.image}</div>
+                  <div className="truncate font-mono text-xs text-text-tertiary">{egg.spec.images?.map((i) => i.image).join(" · ")}</div>
                 </div>
                 {canWrite(egg) && (
                   <RowActions>
