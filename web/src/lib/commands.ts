@@ -81,6 +81,7 @@ export function useCommands(): Command[] {
   }
   if (atLeast(current?.role, "admin")) {
     commands.push({ id: "nav-audit", group: t("palette.groupGoTo"), label: t("palette.navAudit"), run: () => navigate("/audit") });
+    commands.push({ id: "nav-settings", group: t("palette.groupGoTo"), label: t("palette.navSettings"), run: () => navigate("/settings") });
   }
   if (user?.isAdmin) {
     commands.push({ id: "nav-orgs", group: t("palette.groupGoTo"), label: t("palette.navOrgs"), run: () => navigate("/orgs") });
