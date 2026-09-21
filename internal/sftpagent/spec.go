@@ -30,6 +30,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -100,6 +101,18 @@ func Container(image, secretName, serverUUID, dataVolumeName, dataMountPath stri
 			{Name: dataVolumeName, MountPath: dataMountPath},
 			{Name: secretVolumeName, MountPath: secretMountPath, ReadOnly: true},
 		},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		},
+	}
+}
+
+func PodSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
+		FSGroup:        FSGroupPtr(),
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 	}
 }
 
