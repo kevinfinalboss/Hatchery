@@ -19,6 +19,7 @@ package panelapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -121,6 +122,10 @@ func (s *Server) createEgg(w http.ResponseWriter, r *http.Request, ns, orgSlug, 
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if msgs := req.Spec.Validate(); len(msgs) > 0 {
+		writeError(w, http.StatusUnprocessableEntity, strings.Join(msgs, "; "))
+		return
+	}
 	egg := &gameserversv1alpha1.Egg{ObjectMeta: metav1.ObjectMeta{Name: req.Name, Namespace: ns}, Spec: req.Spec}
 	if err := s.Client.Create(r.Context(), egg); err != nil {
 		s.auditEvent(r, orgSlug, action, "egg", req.Name, "failed", nil)
@@ -134,6 +139,10 @@ func (s *Server) createEgg(w http.ResponseWriter, r *http.Request, ns, orgSlug, 
 func (s *Server) updateEgg(w http.ResponseWriter, r *http.Request, ns, orgSlug, action string) {
 	var req eggWriteRequest
 	if !decodeEggRequest(w, r, &req) {
+		return
+	}
+	if msgs := req.Spec.Validate(); len(msgs) > 0 {
+		writeError(w, http.StatusUnprocessableEntity, strings.Join(msgs, "; "))
 		return
 	}
 	name := r.PathValue("name")
