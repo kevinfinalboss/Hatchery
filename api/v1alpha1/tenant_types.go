@@ -67,6 +67,27 @@ type TenantQuota struct {
 	// MaxGameServers caps how many GameServer objects the tenant may have.
 	// +kubebuilder:validation:Minimum=0
 	MaxGameServers int32 `json:"maxGameServers"`
+
+	// Backups limits what the organization may keep on the platform's own backup storage. Without
+	// it the platform destination is unavailable to the organization. It does not apply to a
+	// destination the organization brings itself.
+	// +optional
+	Backups *TenantBackupQuota `json:"backups,omitempty"`
+}
+
+// TenantBackupQuota bounds an organization's use of the platform's backup storage.
+type TenantBackupQuota struct {
+	// MaxPerServer is how many backups one server may have at the same time.
+	// +kubebuilder:validation:Minimum=0
+	MaxPerServer int32 `json:"maxPerServer"`
+
+	// MaxPerOrg is how many backups the whole organization may have at the same time.
+	// +kubebuilder:validation:Minimum=0
+	MaxPerOrg int32 `json:"maxPerOrg"`
+
+	// RetentionDays is how long a backup is kept before the operator deletes it.
+	// +kubebuilder:validation:Minimum=1
+	RetentionDays int32 `json:"retentionDays"`
 }
 
 // TenantSpec defines the desired state of Tenant.
