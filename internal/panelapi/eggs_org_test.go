@@ -15,7 +15,7 @@ import (
 func egg(name, ns string) *gameserversv1alpha1.Egg {
 	return &gameserversv1alpha1.Egg{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/" + name + ":1", StartCommand: "run"},
+		Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/" + name + ":1"}}, StartCommand: "run"},
 	}
 }
 
