@@ -44,7 +44,7 @@ func statusFor(err error) int {
 	switch {
 	case apierrors.IsNotFound(err):
 		return http.StatusNotFound
-	case apierrors.IsAlreadyExists(err):
+	case apierrors.IsAlreadyExists(err), apierrors.IsConflict(err):
 		return http.StatusConflict
 	case apierrors.IsInvalid(err), apierrors.IsBadRequest(err):
 		return http.StatusUnprocessableEntity
