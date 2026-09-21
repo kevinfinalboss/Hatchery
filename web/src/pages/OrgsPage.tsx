@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useI18n, useT } from "../lib/i18n";
@@ -7,38 +8,10 @@ import type { OrgQuota, OrgSummary } from "../lib/types";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Field, Input } from "../components/ui/Input";
-import { Badge, RowActions } from "../components/ui/List";
+import { Badge } from "../components/ui/List";
+import { QuotaFields } from "../components/orgs/QuotaFields";
+import { DEFAULT_QUOTA } from "../lib/orgQuota";
 import { Filtered } from "../components/ui/Filtered";
-
-const DEFAULT_QUOTA: OrgQuota = { cpu: "4", memory: "8Gi", storage: "50Gi", maxGameServers: 3 };
-
-function QuotaFields({ quota, onChange }: { quota: OrgQuota; onChange: (q: OrgQuota) => void }) {
-  const t = useT();
-  return (
-    <>
-      <Field label="CPU" htmlFor="q-cpu">
-        <Input id="q-cpu" value={quota.cpu} onChange={(e) => onChange({ ...quota, cpu: e.target.value })} required className="w-24" />
-      </Field>
-      <Field label={t("orgs.quotaMemory")} htmlFor="q-mem">
-        <Input id="q-mem" value={quota.memory} onChange={(e) => onChange({ ...quota, memory: e.target.value })} required className="w-28" />
-      </Field>
-      <Field label="Storage" htmlFor="q-sto">
-        <Input id="q-sto" value={quota.storage} onChange={(e) => onChange({ ...quota, storage: e.target.value })} required className="w-28" />
-      </Field>
-      <Field label={t("orgs.quotaMaxServers")} htmlFor="q-max">
-        <Input
-          id="q-max"
-          type="number"
-          min={0}
-          value={quota.maxGameServers}
-          onChange={(e) => onChange({ ...quota, maxGameServers: Number(e.target.value) })}
-          required
-          className="w-28"
-        />
-      </Field>
-    </>
-  );
-}
 
 function CreateOrgForm({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -95,87 +68,29 @@ function CreateOrgForm({ onClose }: { onClose: () => void }) {
 
 function OrgRow({ org }: { org: OrgSummary }) {
   const t = useT();
-  const queryClient = useQueryClient();
   const { data: detail } = useQuery({ queryKey: ["org", org.slug], queryFn: () => api.getOrg(org.slug), refetchInterval: 10000 });
-  const [editing, setEditing] = useState(false);
-  const [quota, setQuota] = useState<OrgQuota>(DEFAULT_QUOTA);
-  const [error, setError] = useState<string | null>(null);
-
-  const saveQuota = useMutation({
-    mutationFn: () => api.updateOrgQuota(org.slug, quota),
-    onSuccess: () => {
-      setEditing(false);
-      setError(null);
-      void queryClient.invalidateQueries({ queryKey: ["org", org.slug] });
-    },
-    onError: (err) => setError(errorMessage(err, t("orgs.quotaUpdateFailed"))),
-  });
-  const remove = useMutation({
-    mutationFn: () => api.deleteOrg(org.slug),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["orgs"] }),
-    onError: (err) => setError(errorMessage(err, t("orgs.deleteFailed"))),
-  });
 
   return (
-    <div className="group flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-surface-hover">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-display text-[15px] font-semibold text-text-primary">{org.name}</span>
-            <span className="font-mono text-xs text-text-tertiary">{org.slug}</span>
-            {detail && <Badge>{detail.phase}</Badge>}
-          </div>
-          {detail?.quota && !editing && (
-            <div className="mt-1 font-mono text-xs text-text-secondary">
-              {t("orgs.quotaSummary", {
-                cpu: detail.quota.cpu,
-                memory: detail.quota.memory,
-                storage: detail.quota.storage,
-                max: detail.quota.maxGameServers,
-              })}
-            </div>
-          )}
-        </div>
-        <RowActions>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              if (detail?.quota) setQuota(detail.quota);
-              setEditing((v) => !v);
-            }}
-            disabled={!detail?.quota}
-          >
-            {t("orgs.quota")}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={remove.isPending}
-            onClick={() => {
-              if (confirm(t("orgs.deleteConfirm", { name: org.name }))) remove.mutate();
-            }}
-          >
-            {t("common.delete")}
-          </Button>
-        </RowActions>
+    <Link to={`/orgs/${org.slug}`} className="group flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-surface-hover">
+      <div className="flex items-center gap-2">
+        <span className="font-display text-[15px] font-semibold text-text-primary">{org.name}</span>
+        <span className="font-mono text-xs text-text-tertiary">{org.slug}</span>
+        {detail && <Badge>{detail.phase}</Badge>}
+        <span aria-hidden className="ml-auto font-sans text-text-tertiary group-hover:text-primary-text">
+          →
+        </span>
       </div>
-
-      {editing && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setError(null);
-            saveQuota.mutate();
-          }}
-          className="flex flex-wrap items-end gap-4"
-        >
-          <QuotaFields quota={quota} onChange={setQuota} />
-          <Button type="submit" disabled={saveQuota.isPending}>
-            {saveQuota.isPending ? t("common.saving") : t("orgs.saveQuota")}
-          </Button>
-        </form>
+      {detail?.quota && (
+        <div className="font-mono text-xs text-text-secondary">
+          {t("orgs.quotaSummary", {
+            cpu: detail.quota.cpu,
+            memory: detail.quota.memory,
+            storage: detail.quota.storage,
+            max: detail.quota.maxGameServers,
+          })}
+        </div>
       )}
-      {error && <div className="font-sans text-sm text-status-failed">{error}</div>}
-    </div>
+    </Link>
   );
 }
 
