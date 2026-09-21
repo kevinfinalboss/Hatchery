@@ -168,7 +168,7 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 			AutomountServiceAccountToken: &automountToken,
 			ActiveDeadlineSeconds:        &deadline,
 			Affinity:                     affinity,
-			SecurityContext:              &corev1.PodSecurityContext{FSGroup: sftpagent.FSGroupPtr()},
+			SecurityContext:              sftpagent.PodSecurityContext(),
 			Volumes: []corev1.Volume{
 				{
 					Name: sftpagent.DefaultDataVolumeName,
