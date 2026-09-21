@@ -118,10 +118,11 @@ func (s *Server) handleGetQuota(w http.ResponseWriter, r *http.Request) {
 
 // quotaRequest is the JSON shape of a tenant quota in the Panel API.
 type quotaRequest struct {
-	CPU            string `json:"cpu"`
-	Memory         string `json:"memory"`
-	Storage        string `json:"storage"`
-	MaxGameServers int32  `json:"maxGameServers"`
+	CPU            string        `json:"cpu"`
+	Memory         string        `json:"memory"`
+	Storage        string        `json:"storage"`
+	MaxGameServers int32         `json:"maxGameServers"`
+	Backups        *backupLimits `json:"backups,omitempty"`
 }
 
 // toQuota parses the quantities. Every field is required: an empty quantity
@@ -152,9 +153,22 @@ func (q quotaRequest) toQuota() (gameserversv1alpha1.TenantQuota, error) {
 		return out, fmt.Errorf("quota.maxGameServers must not be negative")
 	}
 	out.MaxGameServers = q.MaxGameServers
+	if b := q.Backups; b != nil {
+		if b.MaxPerServer < 0 || b.MaxPerOrg < 0 {
+			return out, fmt.Errorf("quota.backups limits must not be negative")
+		}
+		if b.RetentionDays < 1 {
+			return out, fmt.Errorf("quota.backups.retentionDays must be at least 1")
+		}
+		out.Backups = &gameserversv1alpha1.TenantBackupQuota{MaxPerServer: b.MaxPerServer, MaxPerOrg: b.MaxPerOrg, RetentionDays: b.RetentionDays}
+	}
 	return out, nil
 }
 
 func quotaResponseFrom(q gameserversv1alpha1.TenantQuota) quotaRequest {
-	return quotaRequest{CPU: q.CPU.String(), Memory: q.Memory.String(), Storage: q.Storage.String(), MaxGameServers: q.MaxGameServers}
+	out := quotaRequest{CPU: q.CPU.String(), Memory: q.Memory.String(), Storage: q.Storage.String(), MaxGameServers: q.MaxGameServers}
+	if b := q.Backups; b != nil {
+		out.Backups = &backupLimits{MaxPerServer: b.MaxPerServer, MaxPerOrg: b.MaxPerOrg, RetentionDays: b.RetentionDays}
+	}
+	return out
 }
