@@ -72,6 +72,12 @@ func (v *GameServerValidator) ValidateCreate(ctx context.Context, obj *gameserve
 	if err := validateImage(egg, obj); err != nil {
 		return nil, err
 	}
+	if err := validateStartCommand(egg, obj); err != nil {
+		return nil, err
+	}
+	if obj.Spec.Suspended && obj.Spec.State == gameserversv1alpha1.GameServerStateRunning {
+		return nil, fmt.Errorf("spec.state: a suspended GameServer cannot be Running")
+	}
 	return nil, validateVariables(egg, obj)
 }
 
@@ -91,6 +97,9 @@ func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 		newObj.Annotations[gameserversv1alpha1.RestoringAnnotation] == "true" {
 		return nil, fmt.Errorf("spec.state: cannot start this GameServer while a restore is in progress")
 	}
+	if newObj.Spec.Suspended && newObj.Spec.State == gameserversv1alpha1.GameServerStateRunning {
+		return nil, fmt.Errorf("spec.state: cannot start this GameServer while it is suspended")
+	}
 	if err := validateDisplayName(newObj.Spec.DisplayName); err != nil {
 		return nil, err
 	}
@@ -99,13 +108,21 @@ func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 	// moved on.
 	varsChanged := !equality.Semantic.DeepEqual(oldObj.Spec.Variables, newObj.Spec.Variables)
 	imageChanged := oldObj.Spec.ImageName != newObj.Spec.ImageName
-	if varsChanged || imageChanged {
+	cmdChanged := oldObj.Spec.StartCommand != newObj.Spec.StartCommand
+	if varsChanged || imageChanged || cmdChanged {
 		egg, err := v.lookupEgg(ctx, newObj)
 		if err != nil {
 			return nil, err
 		}
 		if imageChanged {
 			if err := validateImage(egg, newObj); err != nil {
+				return nil, err
+			}
+		}
+		if cmdChanged || varsChanged {
+			// A variable can be removed from the Egg-declared set the command refers to, so the
+			// command is re-checked whenever either changes.
+			if err := validateStartCommand(egg, newObj); err != nil {
 				return nil, err
 			}
 		}
@@ -129,6 +146,13 @@ func validateDisplayName(name string) error {
 		if unicode.IsControl(r) {
 			return fmt.Errorf("spec.displayName: must not contain control characters")
 		}
+	}
+	return nil
+}
+
+func validateStartCommand(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) error {
+	if msgs := gameserversv1alpha1.ValidateStartCommand(egg, gs.Spec.StartCommand); len(msgs) > 0 {
+		return fmt.Errorf("spec.startCommand: %s", strings.Join(msgs, "; "))
 	}
 	return nil
 }

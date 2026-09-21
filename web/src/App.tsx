@@ -8,6 +8,8 @@ import { ServerDetailPage } from "./pages/ServerDetailPage";
 import { EggsPage } from "./pages/EggsPage";
 import { MembersPage } from "./pages/MembersPage";
 import { AuditPage } from "./pages/AuditPage";
+import { OrgSettingsPage } from "./pages/OrgSettingsPage";
+import { OrgDetailPage } from "./pages/OrgDetailPage";
 import { OrgsPage } from "./pages/OrgsPage";
 import { UsersPage } from "./pages/UsersPage";
 
@@ -25,10 +27,12 @@ export function App() {
         <Route element={<RequireOrgAdmin />}>
           <Route path="/new-server" element={<AppShell><NewServerPage /></AppShell>} />
           <Route path="/audit" element={<AppShell><AuditPage /></AppShell>} />
+          <Route path="/settings" element={<AppShell><OrgSettingsPage /></AppShell>} />
         </Route>
 
         <Route element={<RequireAdmin />}>
           <Route path="/orgs" element={<AppShell><OrgsPage /></AppShell>} />
+          <Route path="/orgs/:slug" element={<AppShell><OrgDetailPage /></AppShell>} />
           <Route path="/users" element={<AppShell><UsersPage /></AppShell>} />
         </Route>
       </Route>
