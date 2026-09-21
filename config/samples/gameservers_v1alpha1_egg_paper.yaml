@@ -25,6 +25,9 @@ spec:
   startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}"
   stopCommand: "stop"
   stopSignal: SIGTERM
+  stopTimeoutSeconds: 90
+  startupDetection:
+    regex: "\\)! For help, type "
   install:
     image: ghcr.io/ptero-eggs/installers:alpine
     entrypoint: ["ash", "-c"]
