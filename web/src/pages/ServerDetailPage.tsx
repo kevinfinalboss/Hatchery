@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
@@ -11,6 +12,9 @@ import { ServerConsole } from "../components/console/ServerConsole";
 import { FileManager } from "../components/files/FileManager";
 import { ServerMetrics } from "../components/server/ServerMetrics";
 import { ServerSettings } from "../components/server/ServerSettings";
+import { restartRequired, serverTitle } from "../lib/gameserver";
+import { errorMessage } from "../lib/errors";
+import type { UpdateGameServerRequest } from "../lib/types";
 
 type Section = "console" | "metrics" | "files" | "settings";
 
@@ -35,6 +39,7 @@ export function ServerDetailPage() {
   const section = sectionOf(params.get("s"));
   const { orgs } = useOrg();
   const canDelete = atLeast(roleOf(orgs, org), "admin");
+  const canEdit = canDelete; // admin and owner may edit; members only read
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setState = useSetServerState();
@@ -44,6 +49,21 @@ export function ServerDetailPage() {
     queryKey: ["gameserver", org, name],
     queryFn: () => api.getGameServer(org, name),
     refetchInterval: 5000,
+  });
+
+  const { data: eggs } = useQuery({ queryKey: ["eggs", org], queryFn: () => api.listOrgEggs(org) });
+  const egg = server && eggs?.find((e) => e.name === server.spec.eggRef.name && e.scope === (server.spec.eggRef.scope ?? "Namespace"));
+
+  const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const update = useMutation({
+    mutationFn: (body: UpdateGameServerRequest) => api.updateGameServer(org, name, body),
+    onSuccess: () => {
+      setSaveMessage({ ok: true, text: t("server.saved") });
+      void queryClient.invalidateQueries({ queryKey: ["gameserver", org, name] });
+      void queryClient.invalidateQueries({ queryKey: ["gameservers", org] });
+      void queryClient.invalidateQueries({ queryKey: ["quota", org] });
+    },
+    onError: (err) => setSaveMessage({ ok: false, text: errorMessage(err, t("server.saveFailed")) }),
   });
 
   const deleteServer = useMutation({
@@ -66,11 +86,12 @@ export function ServerDetailPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <div className="font-display text-xl font-bold text-text-primary">{name}</div>
+            <div className="font-display text-xl font-bold text-text-primary">{serverTitle(server)}</div>
             <StatusBadge phase={server.status?.phase ?? ""} />
           </div>
           <div className="mt-0.5 font-sans text-xs text-text-secondary">
             {server.spec.eggRef.name} · {org} · {server.spec.storage.size}
+            {server.spec.displayName ? ` · ${name}` : ""}
           </div>
         </div>
         <div className="flex gap-2">
@@ -79,7 +100,7 @@ export function ServerDetailPage() {
               variant="secondary"
               disabled={restart.isPending}
               onClick={() => {
-                if (confirm(t("server.restartConfirm", { name }))) restart.mutate({ org, name });
+                if (confirm(t("server.restartConfirm", { name: serverTitle(server) }))) restart.mutate({ org, name });
               }}
             >
               {t("server.restart")}
@@ -94,6 +115,21 @@ export function ServerDetailPage() {
           </Button>
         </div>
       </div>
+
+      {restartRequired(server) && desiredRunning && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface px-4 py-2.5 font-sans text-sm text-text-primary">
+          <span>{t("server.restartPending")}</span>
+          <Button
+            variant="secondary"
+            disabled={restart.isPending}
+            onClick={() => {
+              if (confirm(t("server.restartConfirm", { name: serverTitle(server) }))) restart.mutate({ org, name });
+            }}
+          >
+            {t("server.restartNow")}
+          </Button>
+        </div>
+      )}
 
       <div className="flex min-h-0 grow flex-col gap-4 md:flex-row md:gap-6">
         <nav className="flex shrink-0 gap-1 border-b border-border pb-2 md:w-40 md:flex-col md:border-b-0 md:pb-0">
@@ -125,6 +161,14 @@ export function ServerDetailPage() {
             <ServerSettings
               org={org}
               server={server}
+              egg={egg}
+              canEdit={canEdit}
+              saving={update.isPending}
+              saveMessage={saveMessage}
+              onSave={(body) => {
+                setSaveMessage(null);
+                update.mutate(body);
+              }}
               canDelete={canDelete}
               deleting={deleteServer.isPending}
               onDelete={() => deleteServer.mutate()}
