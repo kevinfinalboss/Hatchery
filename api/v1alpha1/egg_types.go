@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -91,6 +92,13 @@ type EggInstall struct {
 }
 
 // EggSpec defines the desired state of Egg
+// EggResources are the resources the Panel pre-fills in the create-server form for an Egg.
+type EggResources struct {
+	CPU    *resource.Quantity `json:"cpu,omitempty"`
+	Memory *resource.Quantity `json:"memory,omitempty"`
+	Disk   *resource.Quantity `json:"disk,omitempty"`
+}
+
 type EggSpec struct {
 	// Image is the container image used to run the game server process.
 	Image string `json:"image"`
@@ -123,6 +131,10 @@ type EggSpec struct {
 	// Ports declares the network ports this Egg's process listens on.
 	// +optional
 	Ports []EggPort `json:"ports,omitempty"`
+
+	// RecommendedResources pre-fills the create-server form; the user may change them.
+	// +optional
+	RecommendedResources *EggResources `json:"recommendedResources,omitempty"`
 }
 
 // EggStatus defines the observed state of Egg.
