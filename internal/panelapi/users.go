@@ -76,6 +76,19 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	target, err := s.DB.GetUser(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, paneldb.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if target.Username == BootstrapAdminUsername {
+		writeError(w, http.StatusConflict, "the initial admin user cannot be deleted")
+		return
+	}
 	if err := s.DB.DeleteUser(r.Context(), id); err != nil {
 		if errors.Is(err, paneldb.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "user not found")
