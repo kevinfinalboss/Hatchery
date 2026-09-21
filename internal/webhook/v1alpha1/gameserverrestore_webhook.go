@@ -41,6 +41,7 @@ func SetupGameServerRestoreWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
+// +kubebuilder:webhook:path=/validate-gameservers-hatchery-io-v1alpha1-gameserverrestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=gameservers.hatchery.io,resources=gameserverrestores,verbs=create,versions=v1alpha1,name=vgameserverrestore-v1alpha1.kb.io,admissionReviewVersions=v1
 type GameServerRestoreValidator struct {
 	Client client.Client
 }
