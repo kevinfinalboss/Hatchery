@@ -94,6 +94,25 @@ type GameServerStorage struct {
 	StorageClassName *string `json:"storageClassName,omitempty"`
 }
 
+// BackupTarget says where a server's backups go. It is a Panel concern (the Pod never reads it) and
+// is what "Create backup" — and, later, scheduled backups — use.
+type BackupTarget struct {
+	// Connection is the name of one of the organization's S3 connections, or "platform" for the
+	// platform's own storage.
+	// +kubebuilder:validation:MaxLength=32
+	Connection string `json:"connection"`
+
+	// Bucket is one of the connection's buckets. Unused for the platform, which decides it.
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	Bucket string `json:"bucket,omitempty"`
+
+	// Prefix is the folder inside the bucket. Empty means the server's name. Unused for the platform.
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Prefix string `json:"prefix,omitempty"`
+}
+
 // GameServerSpec defines the desired state of GameServer
 type GameServerSpec struct {
 	// EggRef points at the Egg that defines this server's image, start command and
@@ -117,6 +136,26 @@ type GameServerSpec struct {
 	// install script only runs when the marker on the data volume differs from this number.
 	// +optional
 	InstallRevision int64 `json:"installRevision,omitempty"`
+
+	// Suspended is set by a platform admin (through the Panel) to block a server: its Pod is stopped,
+	// its data stays, and it cannot start until unsuspended.
+	// +optional
+	Suspended bool `json:"suspended,omitempty"`
+
+	// SuspendReason is the admin's explanation, shown to the organization.
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	SuspendReason string `json:"suspendReason,omitempty"`
+
+	// StartCommand overrides the Egg's start command for this server. Empty means the Egg's. It may
+	// use {{VARIABLE}} placeholders for the Egg's variables and runs as `exec <command>`.
+	// +kubebuilder:validation:MaxLength=4096
+	// +optional
+	StartCommand string `json:"startCommand,omitempty"`
+
+	// BackupTarget is where this server's backups go. Required before its first backup.
+	// +optional
+	BackupTarget *BackupTarget `json:"backupTarget,omitempty"`
 
 	// ImageName picks one of the Egg's images by name. Empty means the Egg's first (default) image.
 	// +optional
@@ -146,6 +185,7 @@ const (
 	GameServerPhasePending    GameServerPhase = "Pending"
 	GameServerPhaseInstalling GameServerPhase = "Installing"
 	GameServerPhaseStarting   GameServerPhase = "Starting"
+	GameServerPhaseSuspended  GameServerPhase = "Suspended"
 	GameServerPhaseRunning    GameServerPhase = "Running"
 	GameServerPhaseStopping   GameServerPhase = "Stopping"
 	GameServerPhaseStopped    GameServerPhase = "Stopped"
