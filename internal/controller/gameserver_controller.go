@@ -23,7 +23,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +65,10 @@ type GameServerReconciler struct {
 	// SFTPAgentImage is the container image used for the sftp-agent sidecar
 	// injected into every Running GameServer's Pod (see internal/sftpagent).
 	SFTPAgentImage string
+
+	// LogReader reads a game container's console so the startup regex of an Egg can be matched.
+	// nil disables startup detection: servers go straight from Pending to Running.
+	LogReader LogReader
 }
 
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameservers,verbs=get;list;watch;create;update;patch;delete
@@ -70,6 +76,7 @@ type GameServerReconciler struct {
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameservers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=eggs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -153,7 +160,7 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("reconciling pod: %w", err)
 	}
 
-	return r.updateStatus(ctx, &gs, pod)
+	return r.updateStatus(ctx, &gs, &egg, pod)
 }
 
 // reconcileDelete runs the finalizer's cleanup and then releases it. Pod,
@@ -328,16 +335,25 @@ func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameservers
 		return nil, err
 	}
 
+	// A Pod that is being deleted is still returned, so the status can say Stopping while its
+	// preStop hook gives the game time to shut down.
 	if gs.Spec.State == gameserversv1alpha1.GameServerStateStopped {
 		if exists {
-			return nil, r.Delete(ctx, &pod)
+			if pod.DeletionTimestamp.IsZero() {
+				if err := r.Delete(ctx, &pod); err != nil {
+					return nil, client.IgnoreNotFound(err)
+				}
+			}
+			return &pod, nil
 		}
 		return nil, nil
 	}
 
 	if exists {
 		if pod.DeletionTimestamp.IsZero() && restartRequested(gs, &pod) {
-			return nil, r.Delete(ctx, &pod)
+			if err := r.Delete(ctx, &pod); err != nil {
+				return nil, client.IgnoreNotFound(err)
+			}
 		}
 		return &pod, nil
 	}
@@ -398,40 +414,25 @@ func restartRequiredCondition(gs *gameserversv1alpha1.GameServer, pod *corev1.Po
 
 // updateStatus recomputes GameServerStatus from the live Pod (if any) and
 // patches it when it drifted from what's stored.
-func (r *GameServerReconciler) updateStatus(ctx context.Context, gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) (ctrl.Result, error) {
-	phase := gameserversv1alpha1.GameServerPhasePending
-	podName := ""
+func (r *GameServerReconciler) updateStatus(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, pod *corev1.Pod) (ctrl.Result, error) {
+	obs := r.observe(ctx, gs, egg, pod)
+	result := ctrl.Result{RequeueAfter: obs.requeue}
 
-	switch {
-	case gs.Spec.State == gameserversv1alpha1.GameServerStateStopped && pod == nil:
-		phase = gameserversv1alpha1.GameServerPhaseStopped
-	case pod == nil:
-		phase = gameserversv1alpha1.GameServerPhasePending
-	case pod.Status.Phase == corev1.PodRunning:
-		phase = gameserversv1alpha1.GameServerPhaseRunning
-		podName = pod.Name
-	case pod.Status.Phase == corev1.PodFailed:
-		phase = gameserversv1alpha1.GameServerPhaseFailed
-		podName = pod.Name
-	default:
-		phase = gameserversv1alpha1.GameServerPhasePending
-		podName = pod.Name
-	}
-
-	condChanged := apimeta.SetStatusCondition(&gs.Status.Conditions, restartRequiredCondition(gs, pod))
-	if !condChanged && gs.Status.Phase == phase && gs.Status.PodName == podName && gs.Status.ObservedGeneration == gs.Generation {
-		return ctrl.Result{}, nil
+	condChanged := apimeta.SetStatusCondition(&gs.Status.Conditions, obs.ready)
+	condChanged = apimeta.SetStatusCondition(&gs.Status.Conditions, restartRequiredCondition(gs, pod)) || condChanged
+	if !condChanged && gs.Status.Phase == obs.phase && gs.Status.PodName == obs.podName && gs.Status.ObservedGeneration == gs.Generation {
+		return result, nil
 	}
 
 	oldPhase := gs.Status.Phase
-	gs.Status.Phase = phase
-	gs.Status.PodName = podName
+	gs.Status.Phase = obs.phase
+	gs.Status.PodName = obs.podName
 	gs.Status.ObservedGeneration = gs.Generation
 	if err := r.Status().Update(ctx, gs); err != nil {
 		return ctrl.Result{}, err
 	}
-	recordGameServerPhase(gs, oldPhase, phase)
-	return ctrl.Result{}, nil
+	recordGameServerPhase(gs, oldPhase, obs.phase)
+	return result, nil
 }
 
 func (r *GameServerReconciler) setPhase(ctx context.Context, gs *gameserversv1alpha1.GameServer, phase gameserversv1alpha1.GameServerPhase) (ctrl.Result, error) {
@@ -526,13 +527,41 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			Name:            "install",
 			Image:           image,
 			WorkingDir:      dataMountPath,
-			Command:         installCommand(egg.Spec.Install),
+			Command:         onceInstallCommand(egg.Spec.Install),
+			Env:             append(append([]corev1.EnvVar{}, env...), corev1.EnvVar{Name: installRevisionEnv, Value: strconv.FormatInt(gs.Spec.InstallRevision, 10)}),
+			VolumeMounts:    mounts,
+			SecurityContext: gameContainerSecurityContext(),
+		})
+	}
+	if c := egg.Spec.Configure; c != nil {
+		image := c.Image
+		if image == "" {
+			image = serverImage
+		}
+		entrypoint := c.Entrypoint
+		if len(entrypoint) == 0 {
+			entrypoint = []string{"/bin/sh", "-c"}
+		}
+		initContainers = append(initContainers, corev1.Container{
+			Name:            "configure",
+			Image:           image,
+			WorkingDir:      dataMountPath,
+			Command:         append(append([]string{}, entrypoint...), c.Script),
 			Env:             env,
 			VolumeMounts:    mounts,
 			SecurityContext: gameContainerSecurityContext(),
 		})
 	}
 	automountToken := false
+
+	serverEnv := env
+	if egg.Spec.StopCommand != "" {
+		serverEnv = append(append([]corev1.EnvVar{}, env...), corev1.EnvVar{Name: stopCommandEnv, Value: egg.Spec.StopCommand})
+	}
+	graceSeconds := int64(defaultStopTimeoutSeconds)
+	if t := egg.Spec.StopTimeoutSeconds; t != nil {
+		graceSeconds = int64(*t)
+	}
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -542,9 +571,10 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			Annotations: podAnnotations(gs),
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:                corev1.RestartPolicyNever,
-			AutomountServiceAccountToken: &automountToken,
-			InitContainers:               initContainers,
+			RestartPolicy:                 corev1.RestartPolicyNever,
+			AutomountServiceAccountToken:  &automountToken,
+			TerminationGracePeriodSeconds: &graceSeconds,
+			InitContainers:                initContainers,
 			// fsGroup lets the sftp-agent sidecar and the "server" container
 			// share files on the data volume regardless of which uid the
 			// Egg's image runs the server as — see sftpagent.SharedFSGroup.
@@ -561,7 +591,8 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				// the shell instead of the game server.
 				Command:      []string{"/bin/sh", "-c", "exec " + renderStartCommand(egg.Spec.StartCommand, vars)},
 				WorkingDir:   dataMountPath,
-				Env:          env,
+				Env:          serverEnv,
+				Lifecycle:    stopLifecycle(egg),
 				Ports:        containerPorts,
 				Resources:    gs.Spec.Resources,
 				VolumeMounts: mounts,
@@ -594,6 +625,55 @@ func podAnnotations(gs *gameserversv1alpha1.GameServer) map[string]string {
 		ann[gameserversv1alpha1.RestartAnnotation] = v
 	}
 	return ann
+}
+
+const (
+	// installRevisionEnv carries spec.installRevision into the install container.
+	installRevisionEnv = "HATCHERY_INSTALL_REVISION"
+	// stopCommandEnv carries the Egg's stopCommand into the game container, so the preStop hook
+	// never has to interpolate it into a shell string.
+	stopCommandEnv = "HATCHERY_STOP_COMMAND"
+	// defaultStopTimeoutSeconds is how long a server may take to stop when the Egg does not say.
+	defaultStopTimeoutSeconds = 60
+	// installMarker on the data volume records which installRevision was last installed.
+	installMarker = dataMountPath + "/.hatchery-installed"
+)
+
+// onceInstallCommand wraps the Egg's install command so it only runs when the marker on the data
+// volume differs from the server's installRevision. The marker is written only when the script
+// succeeds, so a failed install is retried on the next start. The Egg's own entrypoint and script
+// are passed through untouched, as "$@".
+func onceInstallCommand(install *gameserversv1alpha1.EggInstall) []string {
+	wrapper := fmt.Sprintf(`if [ "$(cat %[1]s 2>/dev/null)" = "$%[2]s" ]; then
+  echo "install already done (revision $%[2]s), skipping"
+  exit 0
+fi
+"$@" || exit $?
+printf '%%s' "$%[2]s" > %[1]s
+`, installMarker, installRevisionEnv)
+	return append([]string{"/bin/sh", "-c", wrapper, "hatchery-install"}, installCommand(install)...)
+}
+
+var signalName = regexp.MustCompile(`^[A-Z0-9]{1,10}$`)
+
+// stopLifecycle builds the preStop hook that stops the game gracefully before the kubelet's own
+// SIGTERM: it writes the Egg's stopCommand to the game's stdin (PID 1), or, without a command,
+// sends a non-default stopSignal, then waits for the process to exit. lifecycle.stopSignal is not
+// used because it needs a feature gate that is off on many clusters. nil means "nothing to do".
+func stopLifecycle(egg *gameserversv1alpha1.Egg) *corev1.Lifecycle {
+	const wait = `while kill -0 1 2>/dev/null; do sleep 1; done`
+	var script string
+	switch sig := strings.TrimPrefix(strings.ToUpper(egg.Spec.StopSignal), "SIG"); {
+	case egg.Spec.StopCommand != "":
+		script = `printf '%s\n' "$` + stopCommandEnv + `" > /proc/1/fd/0; ` + wait
+	case sig != "" && sig != "TERM" && signalName.MatchString(sig):
+		script = "kill -" + sig + " 1; " + wait
+	default:
+		return nil
+	}
+	return &corev1.Lifecycle{PreStop: &corev1.LifecycleHandler{
+		Exec: &corev1.ExecAction{Command: []string{"/bin/sh", "-c", script}},
+	}}
 }
 
 func installCommand(install *gameserversv1alpha1.EggInstall) []string {
