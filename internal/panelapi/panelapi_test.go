@@ -98,7 +98,7 @@ func newTestServer(t *testing.T, objs ...client.Object) *Server {
 	if err := gameserversv1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&gameserversv1alpha1.GameServer{}).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&gameserversv1alpha1.GameServer{}, &gameserversv1alpha1.GameServerBackup{}, &gameserversv1alpha1.GameServerRestore{}).Build()
 	// Clientset/RESTConfig are nil: none of the handlers exercised in this
 	// package's tests touch the log/attach subresources that need them.
 	srv := NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test", nil)
