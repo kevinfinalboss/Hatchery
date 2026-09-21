@@ -17,7 +17,7 @@ import type {
   SFTPSessionResponse,
   User,
 } from "./types";
-import type { MetricsRange, MetricsResponse } from "./metrics";
+import type { MetricsRange, MetricsResponse, RuntimeResponse } from "./metrics";
 
 const API_BASE = "/api/v1";
 const TOKEN_STORAGE_KEY = "hatchery_token";
@@ -225,6 +225,8 @@ export const api = {
 
   getMetrics: (org: string, name: string, range: MetricsRange) =>
     request<MetricsResponse>(`${gs(org, name)}/metrics?range=${range}`),
+
+  getRuntime: (org: string, name: string) => request<RuntimeResponse>(`${gs(org, name)}/runtime`),
 
   logsPath: (org: string, name: string, tailLines?: number) =>
     `${API_BASE}${gs(org, name)}/logs?${tailLines ? `tailLines=${tailLines}&` : ""}follow=true`,
