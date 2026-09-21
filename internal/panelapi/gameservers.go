@@ -17,10 +17,17 @@ limitations under the License.
 package panelapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -65,12 +72,35 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+	if req.Name == "" && req.Spec.DisplayName == "" {
+		writeError(w, http.StatusBadRequest, "name or displayName is required")
+		return
+	}
+	if err := validateDisplayName(req.Spec.DisplayName); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	acc := orgAccessFromContext(r.Context())
 	ns := r.PathValue("namespace")
+
+	if req.Name == "" {
+		// The identifier is derived from the display name; the user never types it.
+		var existing gameserversv1alpha1.GameServerList
+		if err := s.Client.List(r.Context(), &existing, client.InNamespace(ns)); err != nil {
+			writeError(w, statusFor(err), err.Error())
+			return
+		}
+		taken := make(map[string]bool, len(existing.Items))
+		for i := range existing.Items {
+			taken[existing.Items[i].Name] = true
+		}
+		req.Name = uniqueSlug(slugify(req.Spec.DisplayName), taken)
+	}
+	if err := s.checkVariables(r.Context(), ns, req.Spec.EggRef, req.Spec.Variables); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	normalizeResources(&req.Spec.Resources)
 
 	if err := s.checkQuotaHeadroom(r.Context(), acc.Org.Slug, ns, req.Spec); err != nil {
 		s.auditEvent(r, acc.Org.Slug, "gameserver.create", "gameserver", req.Name, "failed", nil)
@@ -91,6 +121,100 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 	}
 	s.auditEvent(r, acc.Org.Slug, "gameserver.create", "gameserver", req.Name, "success", nil)
 	writeJSON(w, http.StatusCreated, gs)
+}
+
+// updateGameServerRequest carries only what the Panel lets an org admin change after creation. A
+// nil field is left as it is; Variables replaces the whole override list. Disk (spec.storage) is
+// deliberately absent: it is fixed at creation.
+type updateGameServerRequest struct {
+	DisplayName *string                                   `json:"displayName"`
+	Variables   *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
+	Resources   *corev1.ResourceRequirements              `json:"resources"`
+}
+
+func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) {
+	var req updateGameServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	acc := orgAccessFromContext(r.Context())
+	ns := r.PathValue("namespace")
+
+	var gs gameserversv1alpha1.GameServer
+	if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+	if req.DisplayName != nil {
+		if err := validateDisplayName(*req.DisplayName); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		gs.Spec.DisplayName = *req.DisplayName
+	}
+	if req.Variables != nil {
+		if err := s.checkVariables(r.Context(), ns, gs.Spec.EggRef, *req.Variables); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		gs.Spec.Variables = *req.Variables
+	}
+	if req.Resources != nil {
+		gs.Spec.Resources = *req.Resources
+		normalizeResources(&gs.Spec.Resources)
+		if err := s.checkQuotaForUpdate(r.Context(), acc.Org.Slug, ns, gs.Name, gs.Spec); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+	}
+	if err := s.Client.Update(r.Context(), &gs); err != nil {
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, gs)
+}
+
+const maxDisplayNameRunes = 64
+
+func validateDisplayName(name string) error {
+	if utf8.RuneCountInString(name) > maxDisplayNameRunes {
+		return fmt.Errorf("displayName must have at most %d characters", maxDisplayNameRunes)
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("displayName must not contain control characters")
+		}
+	}
+	return nil
+}
+
+// normalizeResources makes requests equal to limits (guaranteed QoS, and requests are what the
+// org's ResourceQuota counts) whenever limits are given.
+func normalizeResources(r *corev1.ResourceRequirements) {
+	if len(r.Limits) > 0 {
+		r.Requests = r.Limits.DeepCopy()
+	}
+}
+
+// checkVariables validates variable overrides against the referenced Egg so a bad value gets a
+// clear 422. An Egg that cannot be found is left to the admission webhook, which is the authority.
+func (s *Server) checkVariables(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, vars []gameserversv1alpha1.GameServerVariable) error {
+	eggNS := ns
+	if ref.Scope == gameserversv1alpha1.EggScopeCatalog {
+		eggNS = gameserversv1alpha1.CatalogNamespace
+	}
+	var egg gameserversv1alpha1.Egg
+	if err := s.Client.Get(ctx, client.ObjectKey{Namespace: eggNS, Name: ref.Name}, &egg); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if msgs := gameserversv1alpha1.ValidateVariableOverrides(&egg, vars); len(msgs) > 0 {
+		return fmt.Errorf("%s", strings.Join(msgs, "; "))
+	}
+	return nil
 }
 
 func (s *Server) handleDeleteGameServer(w http.ResponseWriter, r *http.Request) {
