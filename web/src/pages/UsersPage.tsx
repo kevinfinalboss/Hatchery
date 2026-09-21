@@ -9,6 +9,8 @@ import { Badge, ListRow, RowActions } from "../components/ui/List";
 import { Filtered } from "../components/ui/Filtered";
 import { errorMessage } from "../lib/errors";
 
+const INITIAL_ADMIN = "admin";
+
 function CreateUserForm() {
   const t = useT();
   const queryClient = useQueryClient();
@@ -99,14 +101,16 @@ export function UsersPage() {
                   {user.isAdmin && <Badge className="ml-2">{t("common.admin")}</Badge>}
                 </div>
                 <RowActions>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      if (confirm(t("users.deleteConfirm", { name: user.username }))) deleteUser.mutate(user.id);
-                    }}
-                  >
-                    {t("common.delete")}
-                  </Button>
+                  {user.username !== INITIAL_ADMIN && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        if (confirm(t("users.deleteConfirm", { name: user.username }))) deleteUser.mutate(user.id);
+                      }}
+                    >
+                      {t("common.delete")}
+                    </Button>
+                  )}
                 </RowActions>
               </ListRow>
             ))}
