@@ -1,3 +1,4 @@
+import { serverTitle } from "./gameserver";
 import { useMatch, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
@@ -90,7 +91,7 @@ export function useCommands(): Command[] {
     commands.push({
       id: `server-${s.metadata.name}`,
       group: t("palette.groupServers"),
-      label: s.metadata.name,
+      label: serverTitle(s),
       hint: s.spec.eggRef.name,
       run: () => navigate(`/orgs/${org}/servers/${s.metadata.name}`),
     });
