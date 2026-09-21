@@ -23,6 +23,8 @@ export interface GameServerVariable {
 }
 
 export interface GameServerSpec {
+  displayName?: string;
+  imageName?: string;
   eggRef: { name: string; scope?: EggScope };
   state: GameServerState;
   storage: { size: string; storageClassName?: string };
@@ -33,10 +35,18 @@ export interface GameServerSpec {
   };
 }
 
+export interface GameServerCondition {
+  type: string;
+  status: "True" | "False" | "Unknown";
+  reason?: string;
+  message?: string;
+}
+
 export interface GameServerStatus {
   phase: GameServerPhase;
   podName?: string;
   observedGeneration?: number;
+  conditions?: GameServerCondition[];
 }
 
 export interface GameServer {
@@ -55,6 +65,7 @@ export interface EggVariable {
   default?: string;
   required?: boolean;
   userEditable?: boolean;
+  validationRegex?: string;
 }
 
 export interface EggPort {
@@ -86,8 +97,20 @@ export interface SFTPSessionResponse {
 }
 
 export interface CreateGameServerRequest {
-  name: string;
-  spec: GameServerSpec;
+  name?: string;
+  spec: Omit<GameServerSpec, "state"> & { state?: GameServerState };
+}
+
+export interface UpdateGameServerRequest {
+  displayName?: string;
+  imageName?: string;
+  variables?: GameServerVariable[];
+  resources?: { limits?: Record<string, string> };
+}
+
+export interface QuotaUsage {
+  limit: OrgQuota;
+  used: { cpu: string; memory: string; storage: string; gameServers: number };
 }
 
 export interface FileEntry {
@@ -128,11 +151,17 @@ export interface Member {
 
 export type EggScope = "Catalog" | "Namespace";
 
-export interface EggSpec {
+export interface EggImage {
+  name: string;
   image: string;
+}
+
+export interface EggSpec {
+  images: EggImage[];
   startCommand: string;
   variables?: EggVariable[];
   ports?: EggPort[];
+  recommendedResources?: { cpu?: string; memory?: string; disk?: string };
   [extra: string]: unknown;
 }
 
