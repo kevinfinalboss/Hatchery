@@ -65,8 +65,6 @@ spec:
       mkdir -p /data/saves/Worlds
       touch serverconfig.txt
 
-      # Substitui (ou acrescenta) uma chave do serverconfig.txt sem tocar nas outras linhas.
-      # Não usa sed com o valor: MOTD e senha são texto livre e podem ter |, & ou \.
       setkey() {
         grep -v "^$1=" serverconfig.txt > serverconfig.tmp || true
         printf '%s=%s\n' "$1" "$2" >> serverconfig.tmp
@@ -86,12 +84,13 @@ spec:
       setkey password "${PASSWORD}"
       setkey npcstream "${NPCSTREAM}"
 
-      # Este script roda como root; o container do jogo (yolks) roda como uid 1000. Sem isso o
-      # servidor não consegue criar o mundo em saves/Worlds (o Wings fazia esse chown no fim
-      # da instalação no Pterodactyl).
       chown -R 1000:1000 /data
 
       echo "Install complete"
+  recommendedResources:
+    cpu: "1"
+    memory: 1Gi
+    disk: 5Gi
   variables:
     - name: TERRARIA_VERSION
       description: "Versão do Terraria a instalar. Aceita o número completo ou o número do arquivo (ex: 1.4.4.9 ou 1449). 'latest' pega sempre a mais recente. Versões: https://terraria.wiki.gg/wiki/Server#Downloads"
