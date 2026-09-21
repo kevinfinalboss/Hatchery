@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 )
@@ -122,6 +123,81 @@ var _ = Describe("GameServer Webhook", func() {
 
 		gs := newWebhookGameServer("wrong-scope", "default", "only-in-catalog", gameserversv1alpha1.EggScopeNamespace)
 		Expect(k8sClient.Create(ctx, gs)).NotTo(Succeed())
+	})
+})
+
+var _ = Describe("GameServer Webhook: variables and displayName", func() {
+	const namespace = "default"
+
+	var egg *gameserversv1alpha1.Egg
+
+	BeforeEach(func() {
+		egg = &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "webhook-vars-egg", Namespace: namespace},
+			Spec: gameserversv1alpha1.EggSpec{
+				Image:        "example.com/game:latest",
+				StartCommand: "start",
+				Variables: []gameserversv1alpha1.EggVariable{
+					{Name: "MOTD", UserEditable: true, Default: "hi"},
+					{Name: "PORT", UserEditable: true, ValidationRegex: `^[0-9]+$`, Default: "7777"},
+					{Name: "LOCKED", UserEditable: false, Default: "x"},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, egg) })
+	})
+
+	build := func(name string, vars ...gameserversv1alpha1.GameServerVariable) *gameserversv1alpha1.GameServer {
+		gs := newWebhookGameServer(name, namespace, egg.Name, gameserversv1alpha1.EggScopeNamespace)
+		gs.Spec.Variables = vars
+		return gs
+	}
+
+	It("rejects an undeclared variable", func() {
+		err := k8sClient.Create(ctx, build("vars-unknown", gameserversv1alpha1.GameServerVariable{Name: "NOPE", Value: "1"}))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(`"NOPE" is not declared`))
+	})
+
+	It("rejects a variable that is not user-editable", func() {
+		err := k8sClient.Create(ctx, build("vars-locked", gameserversv1alpha1.GameServerVariable{Name: "LOCKED", Value: "y"}))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(`"LOCKED" is not editable`))
+	})
+
+	It("rejects a value that does not match the validation regex", func() {
+		err := k8sClient.Create(ctx, build("vars-regex", gameserversv1alpha1.GameServerVariable{Name: "PORT", Value: "abc"}))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(`"PORT" does not match`))
+	})
+
+	It("admits valid variables and a display name", func() {
+		gs := build("vars-ok", gameserversv1alpha1.GameServerVariable{Name: "PORT", Value: "25565"})
+		gs.Spec.DisplayName = "Survival dos Amigos"
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, gs) })
+	})
+
+	It("rejects a display name with a control character", func() {
+		gs := build("vars-control")
+		gs.Spec.DisplayName = "a\x07b"
+		err := k8sClient.Create(ctx, gs)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("control characters"))
+	})
+
+	It("does not re-validate variables on an update that leaves them alone", func() {
+		gs := build("vars-annotate", gameserversv1alpha1.GameServerVariable{Name: "PORT", Value: "25565"})
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, gs) })
+
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(egg), egg)).To(Succeed())
+		egg.Spec.Variables[1].ValidationRegex = `^9+$`
+		Expect(k8sClient.Update(ctx, egg)).To(Succeed())
+
+		gs.Annotations = map[string]string{"example.com/note": "x"}
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
 	})
 })
 
