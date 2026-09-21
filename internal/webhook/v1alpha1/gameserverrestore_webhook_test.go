@@ -56,7 +56,7 @@ var _ = Describe("GameServerRestore Webhook", func() {
 	createEgg := func(name string) {
 		egg := &gameserversv1alpha1.Egg{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-			Spec:       gameserversv1alpha1.EggSpec{Image: "example.com/game:latest", StartCommand: "start"},
+			Spec:       gameserversv1alpha1.EggSpec{Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}}, StartCommand: "start"},
 		}
 		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg)).To(Succeed()) })
