@@ -96,3 +96,20 @@ func TestDeleteUserIsRefusedForTheSoleOwnerOfAnOrg(t *testing.T) {
 		t.Fatalf("expected 409 for the sole owner of an org, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestDeleteUserIsRefusedForTheInitialAdmin(t *testing.T) {
+	srv := newTestServer(t)
+	admin := adminToken(t, srv)
+	initial, err := srv.DB.CreateUser(t.Context(), BootstrapAdminUsername, "password", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doRequest(t, srv, http.MethodDelete, fmt.Sprintf("/api/v1/users/%d", initial.ID), admin, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for the initial admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := srv.DB.GetUser(t.Context(), initial.ID); err != nil {
+		t.Fatalf("initial admin should still exist: %v", err)
+	}
+}
