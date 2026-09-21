@@ -1,125 +1,17 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useT, type TKey } from "../lib/i18n";
 import { useOrg, atLeast } from "../lib/org";
 import { usePersistedChoice } from "../lib/usePersistedChoice";
-import type { EggEntry, GameServer } from "../lib/types";
+import type { GameServer } from "../lib/types";
+import { serverTitle } from "../lib/gameserver";
 import { ServerCard } from "../components/ServerCard";
 import { ServerList } from "../components/ServerList";
 import { Button } from "../components/ui/Button";
-import { Field, Input } from "../components/ui/Input";
-import { Modal } from "../components/ui/Modal";
+import { Input } from "../components/ui/Input";
 import { type DashboardView, ViewToggle } from "../components/ui/ViewToggle";
-
-function CreateServerForm({ org, onClose }: { org: string; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const t = useT();
-  const { data: eggs } = useQuery({ queryKey: ["eggs", org], queryFn: () => api.listOrgEggs(org) });
-  const [name, setName] = useState("");
-  // Encoded as "<scope>:<name>": a catalog Egg and a private one may share a name.
-  const [eggChoice, setEggChoice] = useState("");
-  const [size, setSize] = useState("2Gi");
-  const [eulaAccepted, setEulaAccepted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const eggOptions: EggEntry[] = eggs ?? [];
-  const selectedEgg = eggOptions.find((egg) => `${egg.scope}:${egg.name}` === eggChoice);
-  const needsEula = selectedEgg?.spec.variables?.some((v) => v.name === "EULA") ?? false;
-
-  const create = useMutation({
-    mutationFn: () =>
-      api.createGameServer(org, {
-        name,
-        spec: {
-          eggRef: { name: selectedEgg!.name, scope: selectedEgg!.scope },
-          state: "Running",
-          storage: { size },
-          ...(needsEula ? { variables: [{ name: "EULA", value: "TRUE" }] } : {}),
-        },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["gameservers", org] });
-      onClose();
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : t("dashboard.createFailed")),
-  });
-
-  return (
-    <Modal title={t("dashboard.newServer")} onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          create.mutate();
-        }}
-        className="flex flex-col gap-4"
-      >
-        <Field label={t("dashboard.name")} htmlFor="new-name">
-          <Input id="new-name" value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
-        <Field label="Egg" htmlFor="new-egg">
-          <select
-            id="new-egg"
-            value={eggChoice}
-            onChange={(e) => {
-              setEggChoice(e.target.value);
-              setEulaAccepted(false);
-            }}
-            required
-            className="rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="" disabled>
-              {t("common.select")}
-            </option>
-            {eggOptions.map((egg) => (
-              <option key={`${egg.scope}:${egg.name}`} value={`${egg.scope}:${egg.name}`}>
-                {egg.name}
-                {egg.scope === "Catalog" ? t("dashboard.catalogSuffix") : t("dashboard.privateSuffix")}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Storage" htmlFor="new-size">
-          <Input id="new-size" value={size} onChange={(e) => setSize(e.target.value)} required />
-        </Field>
-
-        {needsEula && (
-          <label className="flex w-full items-start gap-2 border border-border-strong bg-surface p-3 font-prose text-sm text-text-secondary">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={eulaAccepted}
-              onChange={(e) => setEulaAccepted(e.target.checked)}
-            />
-            <span>
-              {t("dashboard.eulaAccept")}{" "}
-              <a
-                href="https://aka.ms/MinecraftEULA"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-text underline"
-              >
-                {t("dashboard.eulaLink")}
-              </a>
-              {t("dashboard.eulaRest")}
-            </span>
-          </label>
-        )}
-
-        <div className="flex gap-2">
-          <Button type="submit" disabled={create.isPending || (needsEula && !eulaAccepted)}>
-            {create.isPending ? t("common.creating") : t("common.create")}
-          </Button>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-        </div>
-      </form>
-      {error && <div className="mt-4 font-sans text-sm text-status-failed">{error}</div>}
-    </Modal>
-  );
-}
 
 type StatusFilter = "all" | "running" | "installing" | "stopped" | "failed";
 
@@ -150,7 +42,7 @@ function matchesStatus(server: GameServer, filter: StatusFilter): boolean {
 export function DashboardPage() {
   const t = useT();
   const { current, loading: orgsLoading } = useOrg();
-  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [view, setView] = usePersistedChoice<DashboardView>("hatchery_dashboard_view", ["list", "cards"], "list");
@@ -181,7 +73,9 @@ export function DashboardPage() {
   const servers = data?.items ?? [];
   const needle = query.trim().toLowerCase();
   const visible = servers.filter(
-    (s) => matchesStatus(s, statusFilter) && (!needle || s.metadata.name.toLowerCase().includes(needle)),
+    (s) =>
+      matchesStatus(s, statusFilter) &&
+      (!needle || s.metadata.name.toLowerCase().includes(needle) || serverTitle(s).toLowerCase().includes(needle)),
   );
   const canCreate = atLeast(current.role, "admin");
   const provisioning = orgDetail !== undefined && !orgDetail.ready;
@@ -201,7 +95,7 @@ export function DashboardPage() {
           )}
         </div>
         {canCreate && (
-          <Button onClick={() => setCreating(true)} disabled={provisioning}>
+          <Button onClick={() => navigate("/new-server")} disabled={provisioning}>
             {t("dashboard.newButton")}
           </Button>
         )}
@@ -212,8 +106,6 @@ export function DashboardPage() {
           {t("dashboard.provisioning", { phase: orgDetail?.phase ?? "" })}
         </div>
       )}
-
-      {creating && <CreateServerForm org={org} onClose={() => setCreating(false)} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <Input
