@@ -18,7 +18,7 @@ func customizeEgg() *gameserversv1alpha1.Egg {
 	return &gameserversv1alpha1.Egg{
 		ObjectMeta: metav1.ObjectMeta{Name: "vegg", Namespace: testOrgNS()},
 		Spec: gameserversv1alpha1.EggSpec{
-			Image: "example.com/g:1", StartCommand: "run",
+			Images: []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}, {Name: "alt", Image: "example.com/g:2"}}, StartCommand: "run",
 			Variables: []gameserversv1alpha1.EggVariable{
 				{Name: "MOTD", UserEditable: true, Default: "hi"},
 				{Name: "PORT", UserEditable: true, ValidationRegex: `^[0-9]+$`, Default: "7777"},
@@ -191,5 +191,34 @@ func TestGetQuotaReportsLimitAndUsage(t *testing.T) {
 	}
 	if got.Used.CPU != "1" || got.Used.Memory != "2Gi" || got.Used.Storage != "5Gi" || got.Used.GameServers != 1 {
 		t.Fatalf("used: %+v", got.Used)
+	}
+}
+
+func TestGameServerImageNameIsCheckedAgainstTheEgg(t *testing.T) {
+	srv := newTestServer(t, customizeEgg(), editableServer())
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+
+	bad := displayBody("Bad image", map[string]any{"imageName": "nope"})
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), admin, bad); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("create with an undeclared image: got %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+	good := displayBody("Good image", map[string]any{"imageName": "alt"})
+	if rec := doRequest(t, srv, http.MethodPost, orgURL("/gameservers"), admin, good); rec.Code != http.StatusCreated {
+		t.Fatalf("create with a declared image: got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	url := orgURL("/gameservers/edit-me")
+	if rec := doRequest(t, srv, http.MethodPatch, url, admin, map[string]any{"imageName": "nope"}); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("patch to an undeclared image: got %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+	if rec := doRequest(t, srv, http.MethodPatch, url, admin, map[string]any{"imageName": "alt"}); rec.Code != http.StatusOK {
+		t.Fatalf("patch to a declared image: got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got gameserversv1alpha1.GameServer
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: "edit-me"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.ImageName != "alt" {
+		t.Fatalf("imageName not stored: %+v", got.Spec)
 	}
 }
