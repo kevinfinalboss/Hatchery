@@ -45,6 +45,8 @@ type Server struct {
 	Tickets      panelcache.TicketStore
 	LoginLimiter panelcache.LoginLimiter
 
+	Metrics panelcache.MetricsStore
+
 	// TrustedProxies are the peers whose X-Forwarded-For header is believed
 	// when working out the client IP (see clientIP in clientip.go).
 	TrustedProxies []*net.IPNet
@@ -54,6 +56,11 @@ type Server struct {
 	recordAuditFn func(context.Context, paneldb.AuditEvent) error
 
 	resolveSFTPAddr func(namespace, name string) string
+
+	// execFn overrides how commands run inside a Pod (nil: pods/exec). Tests
+	// set it because they have no kube-apiserver to exec through.
+	execFn func(ctx context.Context, namespace, pod, container string, cmd []string) (string, error)
+	disk   diskCache
 }
 
 func NewServer(c client.Client, clientset kubernetes.Interface, cfg *rest.Config, db *paneldb.Store, sftpAgentImage string, allowedOrigins []string) *Server {
@@ -114,6 +121,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("DELETE "+gs, orgRoute(paneldb.RoleAdmin, "gameserver.delete", s.handleDeleteGameServer))
 	mux.Handle("PATCH "+gs+"/state", orgRoute(paneldb.RoleMember, "gameserver.state", s.handleSetGameServerState))
 	mux.Handle("POST "+gs+"/restart", orgRoute(paneldb.RoleMember, "gameserver.restart", s.handleRestartGameServer))
+	mux.Handle("GET "+gs+"/metrics", orgRoute(paneldb.RoleMember, "", s.handleMetrics))
+	mux.Handle("GET "+gs+"/runtime", orgRoute(paneldb.RoleMember, "", s.handleRuntime))
 	mux.Handle("GET "+gs+"/logs", orgRoute(paneldb.RoleMember, "", s.handleLogs))
 	mux.Handle("POST "+gs+"/sftp-session", orgRoute(paneldb.RoleMember, "gameserver.sftp-session", s.handleSFTPSession))
 
