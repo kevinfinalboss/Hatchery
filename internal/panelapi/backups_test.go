@@ -237,7 +237,9 @@ func TestPlatformBackupLimits(t *testing.T) {
 			t.Fatalf("target %s: got %d: %s", s, r.Code, r.Body)
 		}
 	}
-	if f.create(t, "edit-me") != http.StatusAccepted || f.create(t, "edit-me") != http.StatusAccepted {
+	firstCode := f.create(t, "edit-me")
+	secondCode := f.create(t, "edit-me")
+	if firstCode != http.StatusAccepted || secondCode != http.StatusAccepted {
 		t.Fatal("the first two backups of a server fit")
 	}
 	if code := f.create(t, "edit-me"); code != http.StatusConflict {
