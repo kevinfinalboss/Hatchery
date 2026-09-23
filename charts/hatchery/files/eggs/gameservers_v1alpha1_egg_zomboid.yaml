@@ -1,0 +1,113 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: project-zomboid
+  namespace: hatchery-catalog
+spec:
+  images:
+    - name: default
+      image: ghcr.io/ptero-eggs/steamcmd:debian
+  startCommand: >-
+    bash -c 'export PATH="./jre64/bin:$PATH";
+    export LD_LIBRARY_PATH="./linux64:./natives:.:./jre64/lib/amd64:${LD_LIBRARY_PATH}";
+    export LD_PRELOAD="${LD_PRELOAD}:libjsig.so";
+    exec ./ProjectZomboid64 -port 16261 -udpport "$STEAM_PORT" -cachedir=/data/.cache
+    -servername "$SERVER_NAME" -adminusername "$ADMIN_USER" -adminpassword "$ADMIN_PASSWORD"'
+  stopCommand: "quit"
+  stopSignal: SIGTERM
+  stopTimeoutSeconds: 120
+  startupDetection:
+    regex: "SERVER STARTED"
+  install:
+    image: ghcr.io/ptero-eggs/installers:debian
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      cd /data
+
+      BRANCH="${SRCDS_BETAID}"
+      if [ -x /data/ProjectZomboid64 ] && [ "${AUTO_UPDATE}" != "1" ] \
+         && [ "$(cat /data/.zomboid-branch 2>/dev/null)" = "${BRANCH}" ]; then
+        echo "Project Zomboid already installed (branch '${BRANCH:-stable}'), skipping download."
+      else
+        mkdir -p /data/steamcmd /data/steamapps
+        if [ ! -x /data/steamcmd/steamcmd.sh ]; then
+          curl -sSL -o /tmp/steamcmd.tar.gz https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+          tar -xzf /tmp/steamcmd.tar.gz -C /data/steamcmd
+        fi
+
+        # SteamCMD needs a writable HOME and fails on some volume owners otherwise.
+        export HOME=/data
+        chown -R root:root /data/steamcmd /data/steamapps
+
+        cd /data/steamcmd
+        ARGS=(+force_install_dir /data +login anonymous +app_update "${SRCDS_APPID}")
+        [ -n "${BRANCH}" ] && ARGS+=(-beta "${BRANCH}")
+        ARGS+=(validate +quit)
+        ./steamcmd.sh "${ARGS[@]}" || { echo "steamcmd failed"; exit 1; }
+
+        mkdir -p /data/.steam/sdk32 /data/.steam/sdk64
+        cp -v linux32/steamclient.so /data/.steam/sdk32/steamclient.so
+        cp -v linux64/steamclient.so /data/.steam/sdk64/steamclient.so
+        rm -f /data/start-server.sh
+        echo -n "${BRANCH}" > /data/.zomboid-branch
+        echo "Installation completed."
+      fi
+
+      # The game container runs as uid 1000; the Pterodactyl daemon used to chown this for us.
+      chown -R 1000:1000 /data
+  recommendedResources:
+    cpu: "2"
+    memory: 4Gi
+    disk: 10Gi
+  variables:
+    - name: SERVER_NAME
+      description: "Nome interno do servidor, usado nos arquivos de save e de configuração. Só letras e números."
+      default: "Hatchery"
+      required: true
+      userEditable: true
+      validationRegex: "^[A-Za-z0-9]{1,64}$"
+    - name: ADMIN_USER
+      description: "Usuário da conta de administrador."
+      default: "admin"
+      required: true
+      userEditable: true
+      validationRegex: "^.{1,20}$"
+    - name: ADMIN_PASSWORD
+      description: "Senha da conta de administrador (até 32 caracteres). Obrigatória: o servidor não sobe sem ela."
+      default: ""
+      required: true
+      userEditable: true
+      validationRegex: "^.{1,32}$"
+    - name: STEAM_PORT
+      description: "Porta UDP do Steam. Fixa: precisa casar com a porta exposta pelo Egg."
+      default: "16262"
+      required: true
+      userEditable: false
+    - name: SRCDS_APPID
+      description: "App ID do Project Zomboid na Steam."
+      default: "380870"
+      required: true
+      userEditable: false
+    - name: SRCDS_BETAID
+      description: "Branch beta da Steam a instalar, como b41multiplayer. Vazio instala a versão normal. Vale no próximo start."
+      default: ""
+      userEditable: true
+      validationRegex: "^[A-Za-z0-9_.-]{0,64}$"
+    - name: AUTO_UPDATE
+      description: "1 atualiza o servidor a cada start; 0 só instala se ainda não estiver instalado."
+      default: "0"
+      required: true
+      userEditable: true
+      validationRegex: "^[01]$"
+  ports:
+    - name: game
+      containerPort: 16261
+      protocol: UDP
+      default: true
+    - name: steam
+      containerPort: 16262
+      protocol: UDP
