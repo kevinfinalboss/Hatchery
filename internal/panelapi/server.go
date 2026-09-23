@@ -39,6 +39,8 @@ type Server struct {
 
 	AllowedOrigins []string
 
+	UIDir string
+
 	// Tickets stores single-use console tickets; LoginLimiter throttles failed
 	// logins. Both are backed by Redis in production (cmd/panel-api) and by
 	// in-memory fakes in tests. Neither may be nil.
@@ -166,6 +168,10 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("GET "+org+"/audit", orgRoute(paneldb.RoleAdmin, "", s.handleListOrgAudit))
 	mux.Handle("GET /api/v1/audit", s.requireAdmin(http.HandlerFunc(s.handleListPlatformAudit)))
+
+	if s.UIDir != "" {
+		mux.Handle("GET /", uiHandler(s.UIDir))
+	}
 
 	return mux
 }
