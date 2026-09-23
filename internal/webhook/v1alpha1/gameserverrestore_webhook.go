@@ -42,6 +42,10 @@ func SetupGameServerRestoreWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // +kubebuilder:webhook:path=/validate-gameservers-hatchery-io-v1alpha1-gameserverrestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=gameservers.hatchery.io,resources=gameserverrestores,verbs=create,versions=v1alpha1,name=vgameserverrestore-v1alpha1.kb.io,admissionReviewVersions=v1
+
+// GameServerRestoreValidator admits a GameServerRestore only against a stopped GameServer and a completed backup.
+// The marker above must stay separated from this doc comment by a blank line: attached to a type declaration,
+// controller-gen reads it as type documentation and silently drops the webhook from config/webhook/manifests.yaml.
 type GameServerRestoreValidator struct {
 	Client client.Client
 }
