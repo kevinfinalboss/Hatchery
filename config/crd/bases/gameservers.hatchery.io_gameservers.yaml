@@ -107,6 +107,16 @@ spec:
                   install script only runs when the marker on the data volume differs from this number.
                 format: int64
                 type: integer
+              publicExposure:
+                description: PublicExposure requests this server be reachable from
+                  outside the cluster. Off by default.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled requests public exposure. Has no effect unless the operator was started with
+                      --public-port-range: see the PublicExposureReady condition for why.
+                    type: boolean
+                type: object
               resources:
                 description: Resources are the compute resource requirements for the
                   server container.
@@ -319,6 +329,39 @@ spec:
                   PodName is the name of the Pod currently running this server, when one
                   exists.
                 type: string
+              publicExposure:
+                description: PublicExposure reports the public host/ports once allocated
+                  by the GatewayExposureReconciler.
+                properties:
+                  host:
+                    description: |-
+                      Host is the address players use to connect, from the operator's --public-host flag (the
+                      operator has no way to discover this on its own — it's whatever DNS name or IP the VPS answers to).
+                    type: string
+                  ports:
+                    description: Ports lists the public port allocated for each of
+                      the Egg's declared ports.
+                    items:
+                      description: GameServerPublicExposurePort is one Egg-declared
+                        port's public allocation.
+                      properties:
+                        name:
+                          description: Name matches one of the referenced Egg's spec.ports[].name.
+                          type: string
+                        port:
+                          description: Port is the public port allocated for it, from
+                            the operator's configured range.
+                          format: int32
+                          type: integer
+                      required:
+                      - name
+                      - port
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                type: object
             type: object
         required:
         - spec
