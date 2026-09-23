@@ -1,0 +1,122 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: minecraft-paper
+  namespace: hatchery-catalog
+spec:
+  images:
+    - name: "Java 25"
+      image: ghcr.io/ptero-eggs/yolks:java_25
+    - name: "Java 22"
+      image: ghcr.io/ptero-eggs/yolks:java_22
+    - name: "Java 21"
+      image: ghcr.io/ptero-eggs/yolks:java_21
+    - name: "Java 17"
+      image: ghcr.io/ptero-eggs/yolks:java_17
+    - name: "Java 16"
+      image: ghcr.io/ptero-eggs/yolks:java_16
+    - name: "Java 11"
+      image: ghcr.io/ptero-eggs/yolks:java_11
+    - name: "Java 8"
+      image: ghcr.io/ptero-eggs/yolks:java_8
+  startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}"
+  stopCommand: "stop"
+  stopSignal: SIGTERM
+  stopTimeoutSeconds: 90
+  startupDetection:
+    regex: "\\)! For help, type "
+  install:
+    image: ghcr.io/ptero-eggs/installers:alpine
+    entrypoint: ["ash", "-c"]
+    script: |
+      #!/bin/ash
+      # Paper Installation Script
+      #
+      # Server Files: /data
+      PROJECT=paper
+      USER_AGENT="Pterodactyl (https://Pterodactyl.io)"
+
+      if [ "${EULA}" = "TRUE" ]; then
+        echo "eula=true" > /data/eula.txt
+      fi
+
+      if [ -n "${DL_PATH}" ]; then
+        echo -e "Using supplied download url: ${DL_PATH}"
+        DOWNLOAD_URL=`eval echo $(echo ${DL_PATH} | sed -e 's/{{/${/g' -e 's/}}/}/g')`
+      else
+        VER_EXISTS=`curl --user-agent "${USER_AGENT}" -s https://fill.papermc.io/v3/projects/${PROJECT} | jq -r --arg VERSION $MINECRAFT_VERSION '.versions | any(.[]; index($VERSION))' | grep -m1 true`
+        LATEST_VERSION=`curl --user-agent "${USER_AGENT}" -s https://fill.papermc.io/v3/projects/${PROJECT} | jq -r '.versions | to_entries | .[0].value[0]'`
+
+        if [ "${VER_EXISTS}" == "true" ]; then
+          echo -e "Version is valid. Using version ${MINECRAFT_VERSION}"
+        else
+          echo -e "Specified version not found. Defaulting to the latest ${PROJECT} version"
+          MINECRAFT_VERSION=${LATEST_VERSION}
+        fi
+
+        BUILD_EXISTS=`curl --user-agent "${USER_AGENT}" -s https://fill.papermc.io/v3/projects/${PROJECT}/versions/${MINECRAFT_VERSION} | jq -r --arg BUILD ${BUILD_NUMBER} '.builds[] | tostring | contains($BUILD)' | grep -m1 true`
+        LATEST_BUILD=`curl --user-agent "${USER_AGENT}" -s https://fill.papermc.io/v3/projects/${PROJECT}/versions/${MINECRAFT_VERSION} | jq -r '.builds' | jq -r '.[0]'`
+
+        if [ "${BUILD_EXISTS}" == "true" ]; then
+          echo -e "Build is valid for version ${MINECRAFT_VERSION}. Using build ${BUILD_NUMBER}"
+        else
+          echo -e "Using the latest ${PROJECT} build for version ${MINECRAFT_VERSION}"
+          BUILD_NUMBER=${LATEST_BUILD}
+        fi
+
+        echo "Version being downloaded"
+        echo -e "Project: ${PROJECT}"
+        echo -e "MC Version: ${MINECRAFT_VERSION}"
+        echo -e "Build: ${BUILD_NUMBER}"
+        DOWNLOAD_URL=`curl --user-agent "${USER_AGENT}" -s https://fill.papermc.io/v3/projects/${PROJECT}/versions/${MINECRAFT_VERSION}/builds/${BUILD_NUMBER} | jq -r '.downloads."server:default".url'`
+      fi
+
+      cd /data
+
+      echo -e "Running curl --user-agent \"${USER_AGENT}\" -o ${SERVER_JARFILE} ${DOWNLOAD_URL}"
+
+      if [ -f ${SERVER_JARFILE} ]; then
+        mv ${SERVER_JARFILE} ${SERVER_JARFILE}.old
+      fi
+
+      curl --user-agent "${USER_AGENT}" -o ${SERVER_JARFILE} ${DOWNLOAD_URL}
+
+      if [ ! -f server.properties ]; then
+        echo -e "Downloading MC server.properties"
+        curl --user-agent "${USER_AGENT}" -o server.properties https://raw.githubusercontent.com/pterodactyl/game-eggs/main/minecraft/java/server.properties
+      fi
+  recommendedResources:
+    cpu: "2"
+    memory: 4Gi
+    disk: 10Gi
+  variables:
+    - name: EULA
+      description: "Aceita a EULA da Mojang (https://aka.ms/MinecraftEULA). Obrigatório pro Paper iniciar."
+      default: "TRUE"
+      required: true
+      userEditable: true
+    - name: MINECRAFT_VERSION
+      description: "Versão do Minecraft a instalar. 'latest' pega sempre a mais recente; versão inválida cai pra latest."
+      default: "latest"
+      userEditable: true
+    - name: BUILD_NUMBER
+      description: "Build do Paper pra essa versão. 'latest' pega sempre o build mais recente; build inválido cai pro latest."
+      default: "latest"
+      userEditable: true
+    - name: SERVER_JARFILE
+      description: "Nome do arquivo .jar do servidor."
+      default: "server.jar"
+      userEditable: true
+      validationRegex: "^([\\w\\d._-]+)(\\.jar)$"
+    - name: DL_PATH
+      description: "URL alternativa pra baixar o server.jar em vez do fill.papermc.io (avançado)."
+      default: ""
+      userEditable: false
+  ports:
+    - name: game
+      containerPort: 25565
+      protocol: TCP
+      default: true
