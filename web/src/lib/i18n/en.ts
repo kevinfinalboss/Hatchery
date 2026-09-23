@@ -193,6 +193,11 @@ export const en: Dictionary = {
     startCommandDefault: "Egg default — follows the Egg if it changes.",
     startCommandCustom: "Custom — only this server uses this command.",
     startCommandHint: "Edit to customize this server only; \"Restore default\" goes back to the Egg's command. Runs as `exec <command>`; for several steps use `bash -c '…'`.",
+    publicExposure: "Public exposure",
+    publicExposureEnable: "Expose this server publicly",
+    publicExposurePending: "Allocating a public address…",
+    publicExposureNotConfigured: "Public exposure is not enabled on this platform. Contact the administrator.",
+    publicExposurePoolExhausted: "No public ports are free right now. Try again later or contact the administrator.",
   },
   backups: {
     create: "Create backup",
