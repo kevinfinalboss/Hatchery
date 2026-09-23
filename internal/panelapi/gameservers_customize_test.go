@@ -288,3 +288,32 @@ func TestEggWithAnInvalidStartupRegexIsRejected(t *testing.T) {
 		t.Fatalf("got %d, want 422: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestUpdateGameServerCanTogglePublicExposure(t *testing.T) {
+	srv := newTestServer(t, customizeEgg(), editableServer())
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+	url := orgURL("/gameservers/edit-me")
+
+	rec := doRequest(t, srv, http.MethodPatch, url, admin, map[string]any{"publicExposureEnabled": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got gameserversv1alpha1.GameServer
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: "edit-me"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Spec.PublicExposure.Enabled {
+		t.Fatal("publicExposure.enabled was not set")
+	}
+
+	rec = doRequest(t, srv, http.MethodPatch, url, admin, map[string]any{"publicExposureEnabled": false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: "edit-me"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.PublicExposure.Enabled {
+		t.Fatal("publicExposure.enabled was not cleared")
+	}
+}
