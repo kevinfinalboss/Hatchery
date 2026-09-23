@@ -194,6 +194,8 @@ export const ptBR = {
     publicExposure: "Exposição pública",
     publicExposureEnable: "Expor este servidor publicamente",
     publicExposurePending: "Alocando endereço público…",
+    publicExposureNotConfigured: "A exposição pública não está habilitada nesta plataforma. Fale com o administrador.",
+    publicExposurePoolExhausted: "Não há portas públicas livres no momento. Tente de novo mais tarde ou fale com o administrador.",
   },
   backups: {
     create: "Fazer backup",
