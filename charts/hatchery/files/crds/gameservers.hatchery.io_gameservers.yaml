@@ -1,0 +1,372 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: gameservers.gameservers.hatchery.io
+spec:
+  group: gameservers.hatchery.io
+  names:
+    kind: GameServer
+    listKind: GameServerList
+    plural: gameservers
+    singular: gameserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.eggRef.name
+      name: Egg
+      type: string
+    - jsonPath: .spec.state
+      name: State
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GameServer is the Schema for the gameservers API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of GameServer
+            properties:
+              backupTarget:
+                description: BackupTarget is where this server's backups go. Required
+                  before its first backup.
+                properties:
+                  bucket:
+                    description: Bucket is one of the connection's buckets. Unused
+                      for the platform, which decides it.
+                    maxLength: 63
+                    type: string
+                  connection:
+                    description: |-
+                      Connection is the name of one of the organization's S3 connections, or "platform" for the
+                      platform's own storage.
+                    maxLength: 32
+                    type: string
+                  prefix:
+                    description: Prefix is the folder inside the bucket. Empty means
+                      the server's name. Unused for the platform.
+                    maxLength: 256
+                    type: string
+                required:
+                - connection
+                type: object
+              displayName:
+                description: |-
+                  DisplayName is the human-friendly name shown in the Panel. Unlike metadata.name (which names
+                  the Pod, Service and PVC and never changes), it can be edited at any time.
+                maxLength: 64
+                type: string
+              eggRef:
+                description: |-
+                  EggRef points at the Egg that defines this server's image, start command and
+                  install steps. Immutable after creation.
+                properties:
+                  name:
+                    description: Name of the Egg resource.
+                    type: string
+                  scope:
+                    type: string
+                required:
+                - name
+                type: object
+                x-kubernetes-validations:
+                - message: eggRef is immutable
+                  rule: self == oldSelf
+              imageName:
+                description: ImageName picks one of the Egg's images by name. Empty
+                  means the Egg's first (default) image.
+                type: string
+              installRevision:
+                description: |-
+                  InstallRevision is bumped to make the install script run again ("Reinstall"). The Egg's
+                  install script only runs when the marker on the data volume differs from this number.
+                format: int64
+                type: integer
+              publicExposure:
+                description: PublicExposure requests this server be reachable from
+                  outside the cluster. Off by default.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled requests public exposure. Has no effect unless the operator was started with
+                      --public-port-range: see the PublicExposureReady condition for why.
+                    type: boolean
+                type: object
+              resources:
+                description: Resources are the compute resource requirements for the
+                  server container.
+                properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This field depends on the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      properties:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Limits describes the maximum amount of compute resources allowed.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Requests describes the minimum amount of compute resources required.
+                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                type: object
+              startCommand:
+                description: |-
+                  StartCommand overrides the Egg's start command for this server. Empty means the Egg's. It may
+                  use {{VARIABLE}} placeholders for the Egg's variables and runs as `exec <command>`.
+                maxLength: 4096
+                type: string
+              state:
+                default: Running
+                description: |-
+                  State is the desired lifecycle state for this server. The controller drives
+                  the Pod towards this state.
+                enum:
+                - Running
+                - Stopped
+                type: string
+              storage:
+                description: |-
+                  Storage describes the persistent volume backing the server's data
+                  directory. Immutable after creation; resizing is not supported in the MVP.
+                properties:
+                  size:
+                    description: Size is the PVC size request, e.g. "10Gi".
+                    type: string
+                  storageClassName:
+                    description: |-
+                      StorageClassName selects which StorageClass provisions the volume. Empty
+                      uses the cluster default.
+                    type: string
+                required:
+                - size
+                type: object
+                x-kubernetes-validations:
+                - message: storage is immutable in the MVP
+                  rule: self == oldSelf
+              suspendReason:
+                description: SuspendReason is the admin's explanation, shown to the
+                  organization.
+                maxLength: 256
+                type: string
+              suspended:
+                description: |-
+                  Suspended is set by a platform admin (through the Panel) to block a server: its Pod is stopped,
+                  its data stays, and it cannot start until unsuspended.
+                type: boolean
+              variables:
+                description: |-
+                  Variables overrides Egg-declared variables for this specific server
+                  instance.
+                items:
+                  description: |-
+                    GameServerVariable overrides the value of a variable declared by the referenced
+                    Egg for this specific server instance.
+                  properties:
+                    name:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  - value
+                  type: object
+                type: array
+            required:
+            - eggRef
+            - storage
+            type: object
+          status:
+            description: status defines the observed state of GameServer
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the GameServer resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Standard condition types include:
+                  - "Available": the resource is fully functional
+                  - "Progressing": the resource is being created or updated
+                  - "Degraded": the resource failed to reach or maintain its desired state
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation last reconciled by the
+                  controller, used to tell stale status reads apart from current ones.
+                format: int64
+                type: integer
+              phase:
+                description: Phase summarizes the current lifecycle state of the server.
+                type: string
+              podName:
+                description: |-
+                  PodName is the name of the Pod currently running this server, when one
+                  exists.
+                type: string
+              publicExposure:
+                description: PublicExposure reports the public host/ports once allocated
+                  by the GatewayExposureReconciler.
+                properties:
+                  host:
+                    description: |-
+                      Host is the address players use to connect, from the operator's --public-host flag (the
+                      operator has no way to discover this on its own — it's whatever DNS name or IP the VPS answers to).
+                    type: string
+                  ports:
+                    description: Ports lists the public port allocated for each of
+                      the Egg's declared ports.
+                    items:
+                      description: GameServerPublicExposurePort is one Egg-declared
+                        port's public allocation.
+                      properties:
+                        name:
+                          description: Name matches one of the referenced Egg's spec.ports[].name.
+                          type: string
+                        port:
+                          description: Port is the public port allocated for it, from
+                            the operator's configured range.
+                          format: int32
+                          type: integer
+                      required:
+                      - name
+                      - port
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
