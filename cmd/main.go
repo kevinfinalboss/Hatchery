@@ -274,6 +274,7 @@ func main() {
 		if err := (&controller.GatewayExposureReconciler{
 			Client:           mgr.GetClient(),
 			Scheme:           mgr.GetScheme(),
+			APIReader:        mgr.GetAPIReader(),
 			PortRangeMin:     publicPortMin,
 			PortRangeMax:     publicPortMax,
 			PublicHost:       publicHost,
@@ -284,6 +285,9 @@ func main() {
 			setupLog.Error(err, "Failed to create controller", "controller", "gatewayexposure")
 			os.Exit(1)
 		}
+	} else if err := (&controller.PublicExposureUnavailableReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "publicexposureunavailable")
+		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 
