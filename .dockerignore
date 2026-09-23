@@ -12,3 +12,11 @@
 # Re-include Go module files
 !go.mod
 !go.sum
+
+# Embedded by internal/paneldb (go:embed migrations/*.sql)
+!internal/paneldb/migrations/*.sql
+
+# Web UI sources, built inside Dockerfile.panel-api (never the host's node_modules or dist)
+!web/**
+web/node_modules
+web/dist
