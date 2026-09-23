@@ -73,6 +73,15 @@ type TenantQuota struct {
 	// destination the organization brings itself.
 	// +optional
 	Backups *TenantBackupQuota `json:"backups,omitempty"`
+
+	// ExtraImageRegistries are registries this organization may pull Egg images from on top of the
+	// platform's default list (operator/panel --allowed-image-registries). Entries are matched by
+	// whole path segments ("docker.io/itzg" allows docker.io/itzg/*). Only the platform admin
+	// edits it. Ignored while the platform list is empty (the check is off).
+	// +kubebuilder:validation:MaxItems=20
+	// +kubebuilder:validation:items:MaxLength=253
+	// +optional
+	ExtraImageRegistries []string `json:"extraImageRegistries,omitempty"`
 }
 
 // TenantBackupQuota bounds an organization's use of the platform's backup storage.
