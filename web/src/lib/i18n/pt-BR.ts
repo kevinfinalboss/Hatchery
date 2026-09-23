@@ -191,6 +191,9 @@ export const ptBR = {
     startCommandDefault: "Padrão do Egg — acompanha o Egg se ele mudar.",
     startCommandCustom: "Personalizado — só este servidor usa este comando.",
     startCommandHint: "Edite para personalizar só este servidor; \"Restaurar padrão\" volta ao comando do Egg. Roda como `exec <comando>`; para vários passos use `bash -c '…'`.",
+    publicExposure: "Exposição pública",
+    publicExposureEnable: "Expor este servidor publicamente",
+    publicExposurePending: "Alocando endereço público…",
   },
   backups: {
     create: "Fazer backup",
