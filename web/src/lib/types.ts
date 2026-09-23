@@ -19,6 +19,16 @@ export type GameServerPhase =
   | "Stopped"
   | "Failed";
 
+export interface GameServerPublicExposurePort {
+  name: string;
+  port: number;
+}
+
+export interface GameServerPublicExposureStatus {
+  host?: string;
+  ports?: GameServerPublicExposurePort[];
+}
+
 export interface GameServerVariable {
   name: string;
   value: string;
@@ -39,6 +49,7 @@ export interface GameServerSpec {
     requests?: Record<string, string>;
     limits?: Record<string, string>;
   };
+  publicExposure?: { enabled?: boolean };
 }
 
 export interface GameServerCondition {
@@ -53,6 +64,7 @@ export interface GameServerStatus {
   podName?: string;
   observedGeneration?: number;
   conditions?: GameServerCondition[];
+  publicExposure?: GameServerPublicExposureStatus;
 }
 
 export interface GameServer {
@@ -114,6 +126,7 @@ export interface UpdateGameServerRequest {
   imageName?: string;
   variables?: GameServerVariable[];
   resources?: { limits?: Record<string, string> };
+  publicExposureEnabled?: boolean;
 }
 
 export interface QuotaUsage {
