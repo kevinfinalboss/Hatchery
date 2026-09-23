@@ -47,6 +47,7 @@ func main() {
 	var allowedOrigins string
 	var redisURL, trustedProxies string
 	var backupEndpoint, backupBucket, backupSecret string
+	var uiDir string
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -72,6 +73,9 @@ func main() {
 			"Defaults to $PANEL_BACKUP_S3_BUCKET.")
 	flag.StringVar(&backupSecret, "backup-s3-secret", os.Getenv("PANEL_BACKUP_S3_SECRET"),
 		"<namespace>/<name> of the Secret holding the platform's S3 access-key and secret-key. Defaults to $PANEL_BACKUP_S3_SECRET.")
+	flag.StringVar(&uiDir, "ui-dir", os.Getenv("PANEL_UI_DIR"),
+		"Directory with the built web UI (web/dist) to serve on every non-API path. Empty serves no UI (local dev uses Vite). "+
+			"Defaults to $PANEL_UI_DIR.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -160,6 +164,7 @@ func main() {
 	srv.Tickets = panelcache.NewRedisTicketStore(rdb)
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
 	srv.TrustedProxies = proxyNets
+	srv.UIDir = uiDir
 
 	if backupBucket != "" {
 		ns, name, ok := strings.Cut(backupSecret, "/")
