@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -41,4 +43,37 @@ func parseCIDRList(v string) ([]string, error) {
 		}
 	}
 	return cidrs, nil
+}
+
+// envOr returns the environment variable's value, or fallback when it is unset or empty.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// parsePublicPortRange parses "<min>-<max>" (e.g. "30000-40000"). Empty input means the public
+// exposure feature is disabled and is not an error: both returned values are 0, the sentinel
+// cmd/main.go uses to skip registering the GatewayExposureReconciler entirely.
+func parsePublicPortRange(v string) (min, max int32, err error) {
+	if v == "" {
+		return 0, 0, nil
+	}
+	parts := strings.SplitN(v, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected <min>-<max>, got %q", v)
+	}
+	lo, err := strconv.ParseInt(parts[0], 10, 32)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid min port %q: %w", parts[0], err)
+	}
+	hi, err := strconv.ParseInt(parts[1], 10, 32)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid max port %q: %w", parts[1], err)
+	}
+	if lo <= 0 || hi <= 0 || lo > hi || hi > 65535 {
+		return 0, 0, fmt.Errorf("invalid port range %q: must be 1-65535 and min <= max", v)
+	}
+	return int32(lo), int32(hi), nil
 }
