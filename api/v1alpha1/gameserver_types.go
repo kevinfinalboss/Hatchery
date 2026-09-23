@@ -43,6 +43,11 @@ const ConditionRestartRequired = "RestartRequired"
 // False with reason StartupTimeout when the regex never matched and the server was treated as up.
 const ConditionReady = "Ready"
 
+// ConditionPublicExposureReady is True once a Route was allocated for every port the Egg
+// declares. False with reason PoolExhausted when the configured range ran out, or NotConfigured
+// when the operator was not started with --public-port-range.
+const ConditionPublicExposureReady = "PublicExposureReady"
+
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
 // owns the object (the Panel API, or a human via kubectl).
 // +kubebuilder:validation:Enum=Running;Stopped
@@ -80,6 +85,39 @@ func (g *GameServer) EggNamespace() string {
 type GameServerVariable struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// GameServerPublicExposure requests that this server be reachable from outside the cluster
+// (e.g. through a homelab's VPS relay), one public port per port the Egg declares. See
+// GatewayExposureReconciler and docs/superpowers/specs/2026-09-22-public-game-exposure-design.md.
+type GameServerPublicExposure struct {
+	// Enabled requests public exposure. Has no effect unless the operator was started with
+	// --public-port-range: see the PublicExposureReady condition for why.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+}
+
+// GameServerPublicExposurePort is one Egg-declared port's public allocation.
+type GameServerPublicExposurePort struct {
+	// Name matches one of the referenced Egg's spec.ports[].name.
+	Name string `json:"name"`
+
+	// Port is the public port allocated for it, from the operator's configured range.
+	Port int32 `json:"port"`
+}
+
+// GameServerPublicExposureStatus reports where this server is publicly reachable, once allocated.
+type GameServerPublicExposureStatus struct {
+	// Host is the address players use to connect, from the operator's --public-host flag (the
+	// operator has no way to discover this on its own — it's whatever DNS name or IP the VPS answers to).
+	// +optional
+	Host string `json:"host,omitempty"`
+
+	// Ports lists the public port allocated for each of the Egg's declared ports.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Ports []GameServerPublicExposurePort `json:"ports,omitempty"`
 }
 
 // GameServerStorage describes the persistent volume backing the server's data
@@ -157,6 +195,10 @@ type GameServerSpec struct {
 	// +optional
 	BackupTarget *BackupTarget `json:"backupTarget,omitempty"`
 
+	// PublicExposure requests this server be reachable from outside the cluster. Off by default.
+	// +optional
+	PublicExposure GameServerPublicExposure `json:"publicExposure,omitempty"`
+
 	// ImageName picks one of the Egg's images by name. Empty means the Egg's first (default) image.
 	// +optional
 	ImageName string `json:"imageName,omitempty"`
@@ -207,6 +249,10 @@ type GameServerStatus struct {
 	// controller, used to tell stale status reads apart from current ones.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// PublicExposure reports the public host/ports once allocated by the GatewayExposureReconciler.
+	// +optional
+	PublicExposure GameServerPublicExposureStatus `json:"publicExposure,omitempty"`
 
 	// conditions represent the current state of the GameServer resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
