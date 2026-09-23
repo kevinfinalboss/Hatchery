@@ -50,15 +50,18 @@ panel:
   trustedProxies: []
   # Secret (in the release namespace) where the first admin's generated password is written.
   adminSecretName: hatchery-admin-credentials
-  # Platform-provided backup storage (the "platform" connection). Empty bucket = off; orgs can still
-  # bring their own S3. The Secret (release namespace) needs keys access-key and secret-key.
-  backup:
-    endpoint: ""
-    bucket: ""
-    secretName: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+# The platform's own S3 backup storage (the "platform" connection), used by the Panel's backup
+# button and by scheduled backups (GameServerSchedule). Empty bucket = off; orgs can still bring
+# their own S3. Passed to both the operator and the panel deployments.
+backup:
+  platform:
+    endpoint: ""
+    bucket: ""
+    secretName: ""   # Secret in the release namespace with access-key and secret-key
 
 # Public exposure of game servers through the Gateway API (TCPRoute/UDPRoute on one shared Gateway).
 # Needs the Gateway API CRDs (incl. experimental TCPRoute/UDPRoute) and a controller for gatewayClass.
@@ -70,6 +73,15 @@ publicExposure:
   host: ""
   gatewayClass: cilium
   gatewayName: hatchery-public
+
+# Registries organizations' private Eggs may pull images from (catalog Eggs are not checked).
+# Each org can get extras from the platform admin (quota form, "extra image sources").
+# Empty turns the check off.
+imagePolicy:
+  defaultRegistries:
+    - docker.io/itzg
+    - ghcr.io/ptero-eggs
+    - ghcr.io/parkervcp
 
 # Sample Eggs created in the global catalog (hatchery-catalog) when missing. Eggs that already exist
 # are never overwritten, so edits made in the Panel survive upgrades.
@@ -97,6 +109,17 @@ postgres:
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {cpu: "1", memory: 512Mi}
+  # Daily pg_dump of the platform database (users, orgs, audit) to S3 via restic.
+  backup:
+    enabled: false
+    schedule: "0 4 * * *"
+    image: restic/restic:0.18.1
+    s3:
+      endpoint: ""          # empty = AWS S3; e.g. <account>.r2.cloudflarestorage.com
+      bucket: ""
+      prefix: hatchery-platform-db
+      secretName: ""        # Secret in the release namespace with keys access-key and secret-key
+    retention: {daily: 7, weekly: 4, monthly: 6}
 
 externalDatabase:
   # Secret (release namespace) with the full DSN, e.g. postgres://user:pass@host:5432/db?sslmode=require
