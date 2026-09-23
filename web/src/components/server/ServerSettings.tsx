@@ -77,6 +77,7 @@ export function ServerSettings({
   const [valueEdits, setValueEdits] = useState<Record<string, string>>({});
   const [cpuEdit, setCpuEdit] = useState<string | null>(null);
   const [memEdit, setMemEdit] = useState<ByteQuantity | null>(null);
+  const [exposeEdit, setExposeEdit] = useState<boolean | null>(null);
 
   const name = nameEdit ?? current.name;
   const image = imageEdit ?? current.image;
@@ -87,6 +88,9 @@ export function ServerSettings({
   const values = { ...current.values, ...valueEdits };
   const cpu = cpuEdit ?? current.cpu;
   const mem = memEdit ?? current.mem;
+  const expose = exposeEdit ?? (spec.publicExposure?.enabled ?? false);
+  const exposureReason = status?.conditions?.find((c) => c.type === "PublicExposureReady")?.reason;
+  const exposeChanged = exposeEdit !== null && exposeEdit !== (spec.publicExposure?.enabled ?? false);
 
   const nameChanged = nameEdit !== null && nameEdit !== current.name;
   const cmdChanged = egg !== undefined && cmdEdit !== null && storedCmd !== current.cmd;
@@ -94,7 +98,7 @@ export function ServerSettings({
   const varsChanged = Object.keys(valueEdits).some((k) => valueEdits[k] !== current.values[k]);
   const cpuChanged = cpuEdit !== null && cpuEdit !== current.cpu;
   const memChanged = memEdit !== null && joinBytes(memEdit) !== joinBytes(current.mem);
-  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged;
+  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged || exposeChanged;
   const valid = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null) && cpu !== "" && Number.isFinite(mem.value);
 
   const save = () => {
@@ -110,6 +114,7 @@ export function ServerSettings({
       body.variables = [...next].map(([n, v]) => ({ name: n, value: v }));
     }
     if (cpuChanged || memChanged) body.resources = { limits: { cpu, memory: joinBytes(mem) } };
+    if (exposeChanged) body.publicExposureEnabled = expose;
     onSave(body);
   };
 
@@ -193,6 +198,35 @@ export function ServerSettings({
           <Input id="set-disk" value={spec.storage.size} disabled readOnly />
           <span className="font-prose text-xs text-text-tertiary">{t("server.diskFixed")}</span>
         </Field>
+
+        <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("server.publicExposure")}</div>
+        <label className="flex items-center gap-2 font-prose text-sm text-text-primary">
+          <input
+            type="checkbox"
+            checked={expose}
+            disabled={!canEdit}
+            onChange={(e) => setExposeEdit(e.target.checked)}
+          />
+          {t("server.publicExposureEnable")}
+        </label>
+        {status?.publicExposure?.ports && status.publicExposure.ports.length > 0 && (
+          <div className="font-mono text-xs text-text-secondary">
+            {status.publicExposure.ports.map((p) => (
+              <div key={p.name}>
+                {p.name}: {status.publicExposure?.host}:{p.port}
+              </div>
+            ))}
+          </div>
+        )}
+        {expose && (!status?.publicExposure?.ports || status.publicExposure.ports.length === 0) && (
+          <span className="font-prose text-xs text-text-tertiary">
+            {exposureReason === "NotConfigured"
+              ? t("server.publicExposureNotConfigured")
+              : exposureReason === "PoolExhausted"
+                ? t("server.publicExposurePoolExhausted")
+                : t("server.publicExposurePending")}
+          </span>
+        )}
 
         {canEdit && (
           <div className="flex items-center gap-3">
