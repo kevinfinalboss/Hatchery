@@ -71,6 +71,7 @@ func main() {
 	var enableHTTP2 bool
 	var sftpAgentImage string
 	var panelServiceAccount, egressExceptCIDRs string
+	var catalogSeedDir string
 	var publicPortRange, publicHost, publicGatewayNamespace, publicGatewayName, publicGatewayClass string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -99,6 +100,8 @@ func main() {
 			"and an ingress rule letting that namespace reach the sftp-agent port. Empty disables both.")
 	flag.StringVar(&egressExceptCIDRs, "egress-except-cidrs", os.Getenv("OPERATOR_EGRESS_EXCEPT_CIDRS"),
 		"Comma-separated extra CIDRs tenant pods may not reach over internet egress (added to RFC1918, link-local and CGNAT).")
+	flag.StringVar(&catalogSeedDir, "catalog-seed-dir", os.Getenv("OPERATOR_CATALOG_SEED_DIR"),
+		"Directory of Egg manifests created in the global catalog at startup when missing (existing Eggs are never overwritten). Empty seeds nothing.")
 	flag.StringVar(&publicPortRange, "public-port-range", os.Getenv("OPERATOR_PUBLIC_PORT_RANGE"),
 		"Public port pool as <min>-<max> (e.g. 30000-40000) for opt-in GameServer public exposure via Gateway API. "+
 			"Empty (the default) disables the feature entirely — the GatewayExposureReconciler is not even registered.")
@@ -232,6 +235,7 @@ func main() {
 		return (&controller.CatalogEnsurer{
 			Client:              mgr.GetClient(),
 			PanelServiceAccount: types.NamespacedName{Namespace: panelNS, Name: panelName},
+			SeedDir:             catalogSeedDir,
 		}).Ensure(ctx)
 	})); err != nil {
 		setupLog.Error(err, "Failed to register the catalog ensurer")
