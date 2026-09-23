@@ -127,12 +127,13 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 // nil field is left as it is; Variables replaces the whole override list. Disk (spec.storage) is
 // deliberately absent: it is fixed at creation.
 type updateGameServerRequest struct {
-	DisplayName  *string                                   `json:"displayName"`
-	ImageName    *string                                   `json:"imageName"`
-	StartCommand *string                                   `json:"startCommand"`
-	BackupTarget *gameserversv1alpha1.BackupTarget         `json:"backupTarget"`
-	Variables    *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
-	Resources    *corev1.ResourceRequirements              `json:"resources"`
+	DisplayName           *string                                   `json:"displayName"`
+	ImageName             *string                                   `json:"imageName"`
+	StartCommand          *string                                   `json:"startCommand"`
+	BackupTarget          *gameserversv1alpha1.BackupTarget         `json:"backupTarget"`
+	Variables             *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
+	Resources             *corev1.ResourceRequirements              `json:"resources"`
+	PublicExposureEnabled *bool                                     `json:"publicExposureEnabled"`
 }
 
 func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +203,9 @@ func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequ
 		if err := s.checkQuotaForUpdate(r.Context(), acc.Org.Slug, ns, gs.Name, gs.Spec); err != nil {
 			return nil, http.StatusConflict, err
 		}
+	}
+	if req.PublicExposureEnabled != nil {
+		gs.Spec.PublicExposure.Enabled = *req.PublicExposureEnabled
 	}
 	if err := s.Client.Update(r.Context(), &gs); err != nil {
 		return nil, statusFor(err), err
