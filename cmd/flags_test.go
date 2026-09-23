@@ -41,3 +41,17 @@ func TestParseCIDRList(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePublicPortRange(t *testing.T) {
+	if min, max, err := parsePublicPortRange(""); err != nil || min != 0 || max != 0 {
+		t.Fatalf("empty must mean disabled, got (%d, %d, %v)", min, max, err)
+	}
+	if min, max, err := parsePublicPortRange("30000-40000"); err != nil || min != 30000 || max != 40000 {
+		t.Fatalf("got (%d, %d, %v), want (30000, 40000, nil)", min, max, err)
+	}
+	for _, bad := range []string{"30000", "40000-30000", "0-100", "30000-70000", "abc-def"} {
+		if _, _, err := parsePublicPortRange(bad); err == nil {
+			t.Errorf("parsePublicPortRange(%q) should fail", bad)
+		}
+	}
+}
