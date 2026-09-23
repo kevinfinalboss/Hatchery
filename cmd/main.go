@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/controller"
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(gameserversv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -69,6 +71,7 @@ func main() {
 	var enableHTTP2 bool
 	var sftpAgentImage string
 	var panelServiceAccount, egressExceptCIDRs string
+	var publicPortRange, publicHost, publicGatewayNamespace, publicGatewayName, publicGatewayClass string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -96,6 +99,17 @@ func main() {
 			"and an ingress rule letting that namespace reach the sftp-agent port. Empty disables both.")
 	flag.StringVar(&egressExceptCIDRs, "egress-except-cidrs", os.Getenv("OPERATOR_EGRESS_EXCEPT_CIDRS"),
 		"Comma-separated extra CIDRs tenant pods may not reach over internet egress (added to RFC1918, link-local and CGNAT).")
+	flag.StringVar(&publicPortRange, "public-port-range", os.Getenv("OPERATOR_PUBLIC_PORT_RANGE"),
+		"Public port pool as <min>-<max> (e.g. 30000-40000) for opt-in GameServer public exposure via Gateway API. "+
+			"Empty (the default) disables the feature entirely — the GatewayExposureReconciler is not even registered.")
+	flag.StringVar(&publicHost, "public-host", os.Getenv("OPERATOR_PUBLIC_HOST"),
+		"Hostname or IP shown to players as where to connect once a GameServer is publicly exposed (typically the VPS relay's address).")
+	flag.StringVar(&publicGatewayNamespace, "public-gateway-namespace", envOr("OPERATOR_PUBLIC_GATEWAY_NAMESPACE", "hatchery-system"),
+		"Namespace of the shared Gateway API Gateway used for public exposure.")
+	flag.StringVar(&publicGatewayName, "public-gateway-name", envOr("OPERATOR_PUBLIC_GATEWAY_NAME", "hatchery-public"),
+		"Name of the shared Gateway API Gateway used for public exposure.")
+	flag.StringVar(&publicGatewayClass, "public-gateway-class", envOr("OPERATOR_PUBLIC_GATEWAY_CLASS", "cilium"),
+		"GatewayClassName set on the shared Gateway (the Cilium Gateway API implementation registers the class named \"cilium\").")
 	// Development defaults to false so logs are JSON-encoded by default (structured
 	// logging, one object per line — what a log aggregator expects). Pass
 	// --zap-devel for human-readable console output while developing locally.
@@ -248,6 +262,26 @@ func main() {
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err := webhookv1alpha1.SetupGameServerRestoreWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create webhook", "webhook", "GameServerRestore")
+			os.Exit(1)
+		}
+	}
+	publicPortMin, publicPortMax, err := parsePublicPortRange(publicPortRange)
+	if err != nil {
+		setupLog.Error(err, "invalid --public-port-range")
+		os.Exit(1)
+	}
+	if publicPortMin != 0 {
+		if err := (&controller.GatewayExposureReconciler{
+			Client:           mgr.GetClient(),
+			Scheme:           mgr.GetScheme(),
+			PortRangeMin:     publicPortMin,
+			PortRangeMax:     publicPortMax,
+			PublicHost:       publicHost,
+			GatewayName:      publicGatewayName,
+			GatewayNamespace: publicGatewayNamespace,
+			GatewayClassName: publicGatewayClass,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create controller", "controller", "gatewayexposure")
 			os.Exit(1)
 		}
 	}
