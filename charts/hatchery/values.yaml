@@ -1,0 +1,128 @@
+imageRegistry: ""
+imagePullSecrets: []
+
+crds:
+  # Install/upgrade the CRDs with the chart. They carry helm.sh/resource-policy: keep, so
+  # `helm uninstall` never deletes them (which would delete every GameServer, Egg and Tenant).
+  install: true
+
+operator:
+  image:
+    repository: hatchery/operator
+    tag: ""            # defaults to the chart's appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  # Extra CIDRs tenant pods may not reach over internet egress (added to RFC1918, link-local, CGNAT).
+  egressExceptCIDRs: []
+  metrics:
+    # Serve controller metrics on :8443 (HTTPS, authenticated) behind a Service. Off: no metrics endpoint.
+    enabled: false
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+sftpAgent:
+  # Image of the sidecar/maintenance pod the operator and the panel inject next to each game server.
+  image:
+    repository: hatchery/sftp-agent
+    tag: ""
+
+panel:
+  image:
+    repository: hatchery/panel-api
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  service:
+    type: ClusterIP
+    port: 8090
+  # Origins the browser may open the console WebSocket from, e.g. ["https://panel.example.com"].
+  # Empty accepts any Origin — set it once the panel has a public URL.
+  allowedOrigins: []
+  # CIDRs of reverse proxies whose X-Forwarded-For is trusted (rate limiting, audit IPs). With a
+  # Cloudflare Tunnel (cloudflared) in the cluster, this is the pod CIDR it runs in, e.g. ["10.0.0.0/8"].
+  trustedProxies: []
+  # Secret (in the release namespace) where the first admin's generated password is written.
+  adminSecretName: hatchery-admin-credentials
+  # Platform-provided backup storage (the "platform" connection). Empty bucket = off; orgs can still
+  # bring their own S3. The Secret (release namespace) needs keys access-key and secret-key.
+  backup:
+    endpoint: ""
+    bucket: ""
+    secretName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Public exposure of game servers through the Gateway API (TCPRoute/UDPRoute on one shared Gateway).
+# Needs the Gateway API CRDs (incl. experimental TCPRoute/UDPRoute) and a controller for gatewayClass.
+publicExposure:
+  # "<min>-<max>", e.g. "30000-30099". Empty turns the feature off; servers that ask for it get
+  # PublicExposureReady=False/NotConfigured.
+  portRange: ""
+  # Address shown to players (the VPS relay's IP or DNS name).
+  host: ""
+  gatewayClass: cilium
+  gatewayName: hatchery-public
+
+# Sample Eggs created in the global catalog (hatchery-catalog) when missing. Eggs that already exist
+# are never overwritten, so edits made in the Panel survive upgrades.
+catalogEggs:
+  install: true
+  # Names of the Eggs to seed (from charts/hatchery/files/eggs).
+  include:
+    - minecraft-vanilla
+    - minecraft-paper
+    - terraria-vanilla
+    - project-zomboid   # install validated; the server boot itself was not
+
+postgres:
+  # Run Postgres in the release. false: set externalDatabase.
+  enabled: true
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  database: hatchery
+  username: hatchery
+  persistence:
+    size: 5Gi
+    storageClass: ""   # empty = the cluster's default StorageClass
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+
+externalDatabase:
+  # Secret (release namespace) with the full DSN, e.g. postgres://user:pass@host:5432/db?sslmode=require
+  dsnSecret:
+    name: ""
+    key: dsn
+
+valkey:
+  # Run Valkey (Redis-compatible: console tickets, login rate limit, metrics history). false: set externalValkey.
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    # Everything in Valkey is short-lived or rebuildable; persisting only keeps the metrics history
+    # and rate-limit counters across restarts.
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+externalValkey:
+  # Secret (release namespace) with the URL, e.g. redis://:pass@host:6379/0 (Redis/Valkey >= 6.2).
+  urlSecret:
+    name: ""
+    key: url
