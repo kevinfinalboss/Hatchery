@@ -317,3 +317,22 @@ func TestUpdateGameServerCanTogglePublicExposure(t *testing.T) {
 		t.Fatal("publicExposure.enabled was not cleared")
 	}
 }
+
+func TestPatchTurnsAutoRestartOffAndOn(t *testing.T) {
+	srv := newTestServer(t, customizeEgg(), crashyServer("auto"))
+	admin := newMemberToken(t, srv, "adm", paneldb.RoleAdmin)
+
+	for _, want := range []bool{false, true} {
+		rec := doRequest(t, srv, http.MethodPatch, orgURL("/gameservers/auto"), admin, map[string]any{"autoRestart": want})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch autoRestart=%v: got %d: %s", want, rec.Code, rec.Body.String())
+		}
+		var gs gameserversv1alpha1.GameServer
+		if err := srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: "auto"}, &gs); err != nil {
+			t.Fatal(err)
+		}
+		if gs.Spec.AutoRestart == nil || *gs.Spec.AutoRestart != want {
+			t.Fatalf("spec.autoRestart = %v, want %v", gs.Spec.AutoRestart, want)
+		}
+	}
+}

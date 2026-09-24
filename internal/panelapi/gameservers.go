@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -155,6 +156,7 @@ type updateGameServerRequest struct {
 	Variables             *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
 	Resources             *corev1.ResourceRequirements              `json:"resources"`
 	PublicExposureEnabled *bool                                     `json:"publicExposureEnabled"`
+	AutoRestart           *bool                                     `json:"autoRestart"`
 }
 
 func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) {
@@ -227,6 +229,9 @@ func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequ
 	}
 	if req.PublicExposureEnabled != nil {
 		gs.Spec.PublicExposure.Enabled = *req.PublicExposureEnabled
+	}
+	if req.AutoRestart != nil {
+		gs.Spec.AutoRestart = ptr.To(*req.AutoRestart)
 	}
 	if err := s.Client.Update(r.Context(), &gs); err != nil {
 		return nil, statusFor(err), err
