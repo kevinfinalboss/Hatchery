@@ -17,7 +17,9 @@ limitations under the License.
 package panelapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -126,6 +128,12 @@ func (s *Server) createEgg(w http.ResponseWriter, r *http.Request, ns, orgSlug, 
 		writeError(w, http.StatusUnprocessableEntity, strings.Join(msgs, "; "))
 		return
 	}
+	if orgSlug != "" {
+		if msg := s.disallowedImages(r.Context(), orgSlug, req.Spec); msg != "" {
+			writeError(w, http.StatusUnprocessableEntity, msg)
+			return
+		}
+	}
 	egg := &gameserversv1alpha1.Egg{ObjectMeta: metav1.ObjectMeta{Name: req.Name, Namespace: ns}, Spec: req.Spec}
 	if err := s.Client.Create(r.Context(), egg); err != nil {
 		s.auditEvent(r, orgSlug, action, "egg", req.Name, "failed", nil)
@@ -144,6 +152,12 @@ func (s *Server) updateEgg(w http.ResponseWriter, r *http.Request, ns, orgSlug, 
 	if msgs := req.Spec.Validate(); len(msgs) > 0 {
 		writeError(w, http.StatusUnprocessableEntity, strings.Join(msgs, "; "))
 		return
+	}
+	if orgSlug != "" {
+		if msg := s.disallowedImages(r.Context(), orgSlug, req.Spec); msg != "" {
+			writeError(w, http.StatusUnprocessableEntity, msg)
+			return
+		}
 	}
 	name := r.PathValue("name")
 	var egg gameserversv1alpha1.Egg
@@ -212,4 +226,55 @@ func (s *Server) handleUpdateCatalogEgg(w http.ResponseWriter, r *http.Request) 
 // reconcile; running Pods are untouched.
 func (s *Server) handleDeleteCatalogEgg(w http.ResponseWriter, r *http.Request) {
 	s.deleteEgg(w, r, gameserversv1alpha1.CatalogNamespace, "", "catalog.egg.delete")
+}
+
+// orgImageRegistries returns what an org's private Eggs may use: the platform defaults plus the
+// Tenant's extras. enforced is false while the platform list is empty. A missing Tenant means
+// defaults only.
+func (s *Server) orgImageRegistries(ctx context.Context, orgSlug string) (allowed []string, enforced bool, err error) {
+	if len(s.AllowedImageRegistries) == 0 {
+		return nil, false, nil
+	}
+	allowed = append([]string{}, s.AllowedImageRegistries...)
+	var tenant gameserversv1alpha1.Tenant
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: orgSlug}, &tenant); err != nil {
+		if apierrors.IsNotFound(err) {
+			return allowed, true, nil
+		}
+		return nil, true, err
+	}
+	return append(allowed, tenant.Spec.Quota.ExtraImageRegistries...), true, nil
+}
+
+// disallowedImages returns a user-facing message naming the images outside the org's allowlist,
+// or "" when all are allowed. The operator's Egg webhook enforces the same rule; this only turns
+// it into a clear 422 before the request reaches it.
+func (s *Server) disallowedImages(ctx context.Context, orgSlug string, spec gameserversv1alpha1.EggSpec) string {
+	allowed, enforced, err := s.orgImageRegistries(ctx, orgSlug)
+	if err != nil || !enforced {
+		return "" // on a lookup error the webhook still decides
+	}
+	var denied []string
+	for _, img := range spec.ImageRefs() {
+		if !gameserversv1alpha1.ImageAllowed(img, allowed) {
+			denied = append(denied, img)
+		}
+	}
+	if len(denied) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("image(s) %s are not from an allowed registry (allowed: %s)", strings.Join(denied, ", "), strings.Join(allowed, ", "))
+}
+
+func (s *Server) handleImagePolicy(w http.ResponseWriter, r *http.Request) {
+	acc := orgAccessFromContext(r.Context())
+	allowed, enforced, err := s.orgImageRegistries(r.Context(), acc.Org.Slug)
+	if err != nil {
+		writeError(w, statusFor(err), err.Error())
+		return
+	}
+	if allowed == nil {
+		allowed = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enforced": enforced, "registries": allowed})
 }
