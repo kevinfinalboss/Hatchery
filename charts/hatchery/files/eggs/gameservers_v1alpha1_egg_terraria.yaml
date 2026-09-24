@@ -72,6 +72,8 @@ spec:
       chown -R 1000:1000 /data
 
       echo "Install complete"
+  # Runs on every start, after install and before the game, without downloading anything: editing
+  # a variable such as MAX_PLAYERS takes effect on the next start without a reinstall.
   configure:
     entrypoint: ["bash", "-c"]
     script: |
