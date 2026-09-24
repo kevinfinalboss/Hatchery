@@ -75,6 +75,17 @@ export function QuotaFields({ quota, onChange }: { quota: OrgQuota; onChange: (q
           </div>
         )}
       </div>
+      <Field label={t("orgs.extraRegistries")} htmlFor="q-registries">
+        <textarea
+          id="q-registries"
+          rows={3}
+          value={(quota.extraImageRegistries ?? []).join("\n")}
+          onChange={(e) => onChange({ ...quota, extraImageRegistries: e.target.value.split("\n") })}
+          spellCheck={false}
+          className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 font-mono text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <span className="font-prose text-xs text-text-tertiary">{t("orgs.extraRegistriesHint")}</span>
+      </Field>
     </>
   );
 }
