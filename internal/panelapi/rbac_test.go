@@ -39,3 +39,17 @@ func roleAllows(role rbacv1.ClusterRole, group, resource, verb string) bool {
 	}
 	return false
 }
+
+func TestPanelTenantRoleReadsCrashLogs(t *testing.T) {
+	raw, err := os.ReadFile("../../config/rbac/panel_tenant_role.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var role rbacv1.ClusterRole
+	if err := yaml.Unmarshal(raw, &role); err != nil {
+		t.Fatal(err)
+	}
+	if !roleAllows(role, "", "configmaps", "get") {
+		t.Error("hatchery-panel-tenant must get configmaps to serve a server's crash log")
+	}
+}
