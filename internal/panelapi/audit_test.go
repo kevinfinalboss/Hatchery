@@ -123,7 +123,7 @@ func TestLoginEventsAreRecordedWithoutThePassword(t *testing.T) {
 
 func TestConsoleTicketIsAuditedButTheTicketValueIsNot(t *testing.T) {
 	srv := newTestServer(t)
-	member := newMemberToken(t, srv, "m", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "m", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	ticket := issueTicket(t, srv, member, "mc")
 
 	evs := listOrgAudit(t, srv, testOrgSlug)
