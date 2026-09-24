@@ -166,6 +166,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET "+gs+"/metrics", gsPermRoute("", "", s.handleMetrics))
 	mux.Handle("GET "+gs+"/runtime", gsPermRoute("", "", s.handleRuntime))
 	mux.Handle("GET "+gs+"/logs", gsPermRoute(paneldb.PermConsoleRead, "", s.handleLogs))
+	mux.Handle("GET "+gs+"/crash-log", gsPermRoute(paneldb.PermConsoleRead, "", s.handleCrashLog))
 	mux.Handle("POST "+gs+"/sftp-session", gsPermRoute(paneldb.PermFilesWrite, "gameserver.sftp-session", s.handleSFTPSession))
 
 	mux.Handle("GET "+gs+"/files", gsPermRoute(paneldb.PermFilesRead, "", s.handleListFiles))
