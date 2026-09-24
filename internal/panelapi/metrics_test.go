@@ -182,7 +182,7 @@ func TestMetricsEndpointDisabledIs501AndNeedsMembership(t *testing.T) {
 	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers/mc/metrics"), outsider, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("non-member: code=%d, want 404", rec.Code)
 	}
-	member := newMemberToken(t, srv, "viewer", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "viewer", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	if rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers/mc/metrics"), member, nil); rec.Code != http.StatusOK {
 		t.Fatalf("member: code=%d, want 200", rec.Code)
 	}
