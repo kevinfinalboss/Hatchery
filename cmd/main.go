@@ -21,6 +21,8 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -41,6 +43,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/backupplan"
 	"github.com/kevinfinalboss/Hatchery/internal/controller"
 	webhookv1alpha1 "github.com/kevinfinalboss/Hatchery/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
@@ -73,6 +76,8 @@ func main() {
 	var panelServiceAccount, egressExceptCIDRs string
 	var catalogSeedDir string
 	var publicPortRange, publicHost, publicGatewayNamespace, publicGatewayName, publicGatewayClass string
+	var allowedImageRegistries string
+	var backupEndpoint, backupBucket, backupSecret string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -113,6 +118,17 @@ func main() {
 		"Name of the shared Gateway API Gateway used for public exposure.")
 	flag.StringVar(&publicGatewayClass, "public-gateway-class", envOr("OPERATOR_PUBLIC_GATEWAY_CLASS", "cilium"),
 		"GatewayClassName set on the shared Gateway (the Cilium Gateway API implementation registers the class named \"cilium\").")
+	flag.StringVar(&allowedImageRegistries, "allowed-image-registries", os.Getenv("OPERATOR_ALLOWED_IMAGE_REGISTRIES"),
+		"Comma-separated registries organizations' private Eggs may pull images from (e.g. docker.io/itzg,ghcr.io/ptero-eggs), "+
+			"plus each org's Tenant.spec.quota.extraImageRegistries. Empty disables the check.")
+	flag.StringVar(&backupEndpoint, "backup-s3-endpoint", os.Getenv("PANEL_BACKUP_S3_ENDPOINT"),
+		"Endpoint of the platform's own S3-compatible backup storage (empty for AWS S3). Same value as the Panel API's flag of the "+
+			"same name; used by scheduled backups. Defaults to $PANEL_BACKUP_S3_ENDPOINT.")
+	flag.StringVar(&backupBucket, "backup-s3-bucket", os.Getenv("PANEL_BACKUP_S3_BUCKET"),
+		"Bucket of the platform's backup storage. Empty turns the platform storage off for scheduled backups. "+
+			"Defaults to $PANEL_BACKUP_S3_BUCKET.")
+	flag.StringVar(&backupSecret, "backup-s3-secret", os.Getenv("PANEL_BACKUP_S3_SECRET"),
+		"<namespace>/<name> of the Secret holding the platform's S3 access-key and secret-key. Defaults to $PANEL_BACKUP_S3_SECRET.")
 	// Development defaults to false so logs are JSON-encoded by default (structured
 	// logging, one object per line — what a log aggregator expects). Pass
 	// --zap-devel for human-readable console output while developing locally.
@@ -268,6 +284,40 @@ func main() {
 			setupLog.Error(err, "Failed to create webhook", "webhook", "GameServerRestore")
 			os.Exit(1)
 		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupEggWebhookWithManager(mgr, parseRegistryList(allowedImageRegistries)); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "Egg")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupGameServerScheduleWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "GameServerSchedule")
+			os.Exit(1)
+		}
+	}
+	var platformBackup backupplan.Platform
+	if backupBucket != "" {
+		ns, name, ok := strings.Cut(backupSecret, "/")
+		if !ok || ns == "" || name == "" {
+			setupLog.Error(nil, "--backup-s3-bucket needs --backup-s3-secret=<namespace>/<name>")
+			os.Exit(1)
+		}
+		platformBackup = backupplan.Platform{Endpoint: backupEndpoint, Bucket: backupBucket, SecretNamespace: ns, SecretName: name}
+		setupLog.Info("platform backup storage enabled for scheduled backups", "bucket", backupBucket, "endpoint", backupEndpoint)
+	}
+	if err := (&controller.GameServerScheduleReconciler{
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Now:     time.Now,
+		Exec:    controller.NewPodExec(mgr.GetConfig(), clientset),
+		Backups: &backupplan.Planner{Client: mgr.GetClient(), Platform: platformBackup, Now: time.Now},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "gameserverschedule")
+		os.Exit(1)
 	}
 	publicPortMin, publicPortMax, err := parsePublicPortRange(publicPortRange)
 	if err != nil {
