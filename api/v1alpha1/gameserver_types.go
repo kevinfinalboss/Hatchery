@@ -48,6 +48,11 @@ const ConditionReady = "Ready"
 // when the operator was not started with --public-port-range.
 const ConditionPublicExposureReady = "PublicExposureReady"
 
+// ConditionCrashed is True after the controller gave up restarting a server whose game process kept
+// crashing (reason CrashLoop) or crashed with autoRestart off (reason AutoRestartDisabled). It goes
+// back to False (reason NotCrashed) as soon as the server is asked to run again.
+const ConditionCrashed = "Crashed"
+
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
 // owns the object (the Panel API, or a human via kubectl).
 // +kubebuilder:validation:Enum=Running;Stopped
@@ -191,6 +196,11 @@ type GameServerSpec struct {
 	// +optional
 	StartCommand string `json:"startCommand,omitempty"`
 
+	// AutoRestart restarts the server when its game process crashes (exits non-zero or is killed for
+	// running out of memory). Unset means on. A clean exit (code 0) always stops the server instead.
+	// +optional
+	AutoRestart *bool `json:"autoRestart,omitempty"`
+
 	// BackupTarget is where this server's backups go. Required before its first backup.
 	// +optional
 	BackupTarget *BackupTarget `json:"backupTarget,omitempty"`
@@ -232,6 +242,8 @@ const (
 	GameServerPhaseStopping   GameServerPhase = "Stopping"
 	GameServerPhaseStopped    GameServerPhase = "Stopped"
 	GameServerPhaseFailed     GameServerPhase = "Failed"
+	// GameServerPhaseCrashed is transient: the game process crashed and the server waits to be restarted.
+	GameServerPhaseCrashed GameServerPhase = "Crashed"
 )
 
 // GameServerStatus defines the observed state of GameServer.
@@ -253,6 +265,15 @@ type GameServerStatus struct {
 	// PublicExposure reports the public host/ports once allocated by the GatewayExposureReconciler.
 	// +optional
 	PublicExposure GameServerPublicExposureStatus `json:"publicExposure,omitempty"`
+
+	// RecentCrashes are when the game process crashed within the operator's crash window. Cleared once
+	// the server is stopped, so a manual start begins a fresh count.
+	// +optional
+	RecentCrashes []metav1.Time `json:"recentCrashes,omitempty"`
+
+	// LastCrash is the most recent crash. Kept after the server is stopped.
+	// +optional
+	LastCrash *GameServerCrash `json:"lastCrash,omitempty"`
 
 	// conditions represent the current state of the GameServer resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
