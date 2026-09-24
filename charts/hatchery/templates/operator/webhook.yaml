@@ -1,0 +1,61 @@
+{{- /*
+Admission webhook TLS without cert-manager: Helm generates a CA and a serving cert once and reuses them
+(lookup) on every upgrade, so the caBundle below always matches what the operator serves.
+The Secret, the Service and the ValidatingWebhookConfiguration live in this one file on purpose: the
+cert is generated once per render and all three must see the same one.
+*/}}
+{{- $webhook := include "hatchery.webhookName" . }}
+{{- $secretName := printf "%s-tls" $webhook }}
+{{- $host := printf "%s.%s.svc" $webhook .Release.Namespace }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName }}
+{{- $crt := "" }}{{- $key := "" }}{{- $ca := "" }}
+{{- if and $existing (index $existing.data "ca.crt") }}
+{{- $crt = index $existing.data "tls.crt" }}
+{{- $key = index $existing.data "tls.key" }}
+{{- $ca = index $existing.data "ca.crt" }}
+{{- else }}
+{{- $caCert := genCA "hatchery-webhook-ca" 3650 }}
+{{- $cert := genSignedCert $host nil (list $host (printf "%s.%s.svc.cluster.local" $webhook .Release.Namespace)) 3650 $caCert }}
+{{- $crt = $cert.Cert | b64enc }}
+{{- $key = $cert.Key | b64enc }}
+{{- $ca = $caCert.Cert | b64enc }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $crt }}
+  tls.key: {{ $key }}
+  ca.crt: {{ $ca }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $webhook }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "operator") | nindent 4 }}
+spec:
+  selector: {{- include "hatchery.selector" (dict "ctx" . "component" "operator") | nindent 4 }}
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: webhook-server
+---
+{{- /* Webhooks verbatim from config/webhook/manifests.yaml (controller-gen), pointed at this release's Service. */}}
+{{- $vwc := .Files.Get "files/webhook/manifests.yaml" | fromYaml }}
+{{- range $vwc.webhooks }}
+{{- $_ := set .clientConfig "caBundle" $ca }}
+{{- $_ := set .clientConfig.service "name" $webhook }}
+{{- $_ := set .clientConfig.service "namespace" $.Release.Namespace }}
+{{- end }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ $webhook }}
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+webhooks:
+{{- toYaml $vwc.webhooks | nindent 2 }}
