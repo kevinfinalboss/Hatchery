@@ -1,0 +1,91 @@
+{{- $b := .Values.postgres.backup }}
+{{- if $b.enabled }}
+{{- if or (not $b.s3.bucket) (not $b.s3.secretName) }}
+{{- fail "postgres.backup.enabled needs postgres.backup.s3.bucket and postgres.backup.s3.secretName" }}
+{{- end }}
+{{- $name := printf "%s-platform-db-backup" (include "hatchery.fullname" .) }}
+{{- $endpoint := default "s3.amazonaws.com" $b.s3.endpoint }}
+{{- $repo := printf "s3:%s/%s" $endpoint $b.s3.bucket }}
+{{- if $b.s3.prefix }}{{- $repo = printf "%s/%s" $repo $b.s3.prefix }}{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+  annotations:
+    # Every snapshot is encrypted with this password: rotating it would make the old ones unreadable.
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  restic-password: {{ include "hatchery.persistentPassword" (dict "ctx" . "secret" $name "key" "restic-password") }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "platform-db-backup") | nindent 4 }}
+spec:
+  schedule: {{ $b.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "platform-db-backup") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: dump
+              image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+              {{- if .Values.postgres.enabled }}
+              command: ["sh", "-c", "pg_dump -h {{ include "hatchery.postgresName" . }} -U {{ .Values.postgres.username }} -d {{ .Values.postgres.database }} --format=custom -f /dump/hatchery.dump"]
+              env:
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: {{ include "hatchery.postgresName" . }}, key: password}}
+              {{- else }}
+              command: ["sh", "-c", "pg_dump \"$DSN\" --format=custom -f /dump/hatchery.dump"]
+              env:
+                - name: DSN
+                  valueFrom: {secretKeyRef: {name: {{ .Values.externalDatabase.dsnSecret.name }}, key: {{ .Values.externalDatabase.dsnSecret.key }}}}
+              {{- end }}
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+              volumeMounts: [{name: dump, mountPath: /dump}]
+          containers:
+            - name: restic
+              image: {{ $b.image }}
+              # init first: against a missing repository `restic backup` retries for minutes.
+              command:
+                - sh
+                - -c
+                - >-
+                  restic init >/dev/null 2>&1 || true;
+                  restic backup --host hatchery --tag platform-db /dump &&
+                  restic forget --host hatchery --tag platform-db
+                  --keep-daily {{ $b.retention.daily }} --keep-weekly {{ $b.retention.weekly }} --keep-monthly {{ $b.retention.monthly }} --prune
+              env:
+                - {name: RESTIC_REPOSITORY, value: {{ $repo | quote }}}
+                - {name: RESTIC_CACHE_DIR, value: /tmp/restic-cache}
+                - name: RESTIC_PASSWORD
+                  valueFrom: {secretKeyRef: {name: {{ $name }}, key: restic-password}}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: {secretKeyRef: {name: {{ $b.s3.secretName }}, key: access-key}}
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: {secretKeyRef: {name: {{ $b.s3.secretName }}, key: secret-key}}
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+              volumeMounts:
+                - {name: dump, mountPath: /dump, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: dump, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
+{{- end }}
