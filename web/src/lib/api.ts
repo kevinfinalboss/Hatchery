@@ -13,6 +13,7 @@ import type {
   GameServer,
   GameServerList,
   GameServerState,
+  ImagePolicy,
   LoginResponse,
   Member,
   OrgDetail,
@@ -20,6 +21,9 @@ import type {
   OrgRole,
   OrgSummary,
   QuotaUsage,
+  ScheduleItem,
+  ScheduleWrite,
+  ServerGrant,
   SFTPSessionResponse,
   UpdateGameServerRequest,
   User,
@@ -113,12 +117,19 @@ export const api = {
   addMember: (org: string, username: string, role: OrgRole) =>
     request<Member>(`/orgs/${org}/members`, { method: "POST", body: JSON.stringify({ username, role }) }),
   setMemberRole: (org: string, userId: number, role: OrgRole) =>
-    request<{ role: OrgRole }>(`/orgs/${org}/members/${userId}`, {
+    request<{ role: OrgRole; hasServerAccess: boolean }>(`/orgs/${org}/members/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ role }),
     }),
   removeMember: (org: string, userId: number) =>
     request<void>(`/orgs/${org}/members/${userId}`, { method: "DELETE" }),
+  getMemberPermissions: (org: string, userId: number) =>
+    request<{ grants: ServerGrant[] }>(`/orgs/${org}/members/${userId}/permissions`),
+  putMemberPermissions: (org: string, userId: number, grants: ServerGrant[]) =>
+    request<{ grants: ServerGrant[] }>(`/orgs/${org}/members/${userId}/permissions`, {
+      method: "PUT",
+      body: JSON.stringify({ grants }),
+    }),
 
   // Eggs
   listOrgEggs: (org: string) => request<EggEntry[]>(`/orgs/${org}/eggs`),
@@ -147,6 +158,7 @@ export const api = {
   updateGameServer: (org: string, name: string, body: UpdateGameServerRequest) =>
     request<GameServer>(gs(org, name), { method: "PATCH", body: JSON.stringify(body) }),
   getQuota: (org: string) => request<QuotaUsage>(`/orgs/${org}/quota`),
+  getImagePolicy: (org: string) => request<ImagePolicy>(`/orgs/${org}/image-policy`),
   deleteGameServer: (org: string, name: string) => request<void>(gs(org, name), { method: "DELETE" }),
   setGameServerState: (org: string, name: string, state: GameServerState) =>
     request<GameServer>(`${gs(org, name)}/state`, { method: "PATCH", body: JSON.stringify({ state }) }),
@@ -265,4 +277,14 @@ export const api = {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     return `${proto}://${location.host}${API_BASE}${gs(org, name)}/console?ticket=${encodeURIComponent(ticket)}`;
   },
+
+  listSchedules: (org: string, name: string) => request<ScheduleItem[]>(`${gs(org, name)}/schedules`),
+  createSchedule: (org: string, name: string, body: ScheduleWrite) =>
+    request<ScheduleItem>(`${gs(org, name)}/schedules`, { method: "POST", body: JSON.stringify(body) }),
+  updateSchedule: (org: string, name: string, schedule: string, body: ScheduleWrite) =>
+    request<ScheduleItem>(`${gs(org, name)}/schedules/${schedule}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteSchedule: (org: string, name: string, schedule: string) =>
+    request<void>(`${gs(org, name)}/schedules/${schedule}`, { method: "DELETE" }),
+  runSchedule: (org: string, name: string, schedule: string) =>
+    request<void>(`${gs(org, name)}/schedules/${schedule}/run`, { method: "POST" }),
 };
