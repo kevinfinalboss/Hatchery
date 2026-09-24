@@ -30,12 +30,14 @@ export function FileEditor({
   onSave,
   onClose,
   saving,
+  readOnly,
 }: {
   path: string;
   content: string;
   onSave: (content: string) => void;
   onClose: () => void;
   saving: boolean;
+  readOnly: boolean;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,7 @@ export function FileEditor({
         extensions: [
           basicSetup,
           ...languageFor(path),
+          EditorState.readOnly.of(readOnly),
           EditorView.theme({
             "&": { height: "100%", fontSize: "13px" },
             ".cm-scroller": { fontFamily: "'JetBrains Mono', monospace" },
@@ -72,14 +75,16 @@ export function FileEditor({
           <Button variant="secondary" onClick={onClose}>
             {t("common.close")}
           </Button>
-          <Button
-            disabled={saving}
-            onClick={() => {
-              if (viewRef.current) onSave(viewRef.current.state.doc.toString());
-            }}
-          >
-            {t("common.save")}
-          </Button>
+          {!readOnly && (
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (viewRef.current) onSave(viewRef.current.state.doc.toString());
+              }}
+            >
+              {t("common.save")}
+            </Button>
+          )}
         </div>
       </div>
       <div ref={containerRef} className="min-h-0 grow overflow-hidden rounded-lg border border-border" />
