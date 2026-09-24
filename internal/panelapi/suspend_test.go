@@ -60,7 +60,7 @@ func TestASuspendedServerIsLockedForTheOrg(t *testing.T) {
 	srv := newTestServer(t, customizeEgg(), gs)
 	platform := adminToken(t, srv)
 	owner := newMemberToken(t, srv, "own", paneldb.RoleOwner)
-	member := newMemberToken(t, srv, "mem", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "mem", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	base := orgURL("/gameservers/edit-me")
 
 	locked := []struct {
