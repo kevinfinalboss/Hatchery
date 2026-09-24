@@ -1,0 +1,151 @@
+{{- $name := include "hatchery.operatorName" . }}
+{{- $pe := .Values.publicExposure }}
+{{- if and $pe.portRange (not $pe.host) }}
+{{- fail "publicExposure.host is required when publicExposure.portRange is set (it is the address players connect to)" }}
+{{- end }}
+{{- if and .Values.backup.platform.bucket (not .Values.backup.platform.secretName) }}
+{{- fail "backup.platform.bucket needs backup.platform.secretName (a Secret with access-key and secret-key)" }}
+{{- end }}
+{{- /* Only the Eggs listed in catalogEggs.include, keyed by name; the operator creates the missing ones at startup. */}}
+{{- $eggs := dict }}
+{{- range $path, $_ := .Files.Glob "files/eggs/*.yaml" }}
+{{- $egg := $.Files.Get $path | fromYaml }}
+{{- if has $egg.metadata.name $.Values.catalogEggs.include }}
+{{- $_ := set $eggs (printf "%s.yaml" $egg.metadata.name) ($.Files.Get $path) }}
+{{- end }}
+{{- end }}
+{{- if .Values.catalogEggs.install }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-catalog-eggs
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "operator") | nindent 4 }}
+data:
+{{- range $file, $body := $eggs }}
+  {{ $file }}: |
+{{- $body | nindent 4 }}
+{{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "operator") | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels: {{- include "hatchery.selector" (dict "ctx" . "component" "operator") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "operator") | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- if .Values.catalogEggs.install }}
+        # The Eggs are only read at startup: roll the operator when the selection changes.
+        checksum/catalog-eggs: {{ $eggs | toJson | sha256sum }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $name }}
+      {{- include "hatchery.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: manager
+          image: {{ include "hatchery.image" (dict "ctx" . "image" .Values.operator.image) }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          command: ["/manager"]
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address={{ if .Values.operator.metrics.enabled }}:8443{{ else }}0{{ end }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            - --webhook-port=9443
+            - --sftp-agent-image={{ include "hatchery.image" (dict "ctx" . "image" .Values.sftpAgent.image) }}
+            - --panel-service-account={{ .Release.Namespace }}/{{ include "hatchery.panelName" . }}
+            {{- with .Values.operator.egressExceptCIDRs }}
+            - --egress-except-cidrs={{ join "," . }}
+            {{- end }}
+            {{- with .Values.imagePolicy.defaultRegistries }}
+            - --allowed-image-registries={{ join "," . }}
+            {{- end }}
+            {{- if .Values.catalogEggs.install }}
+            - --catalog-seed-dir=/etc/hatchery/catalog-eggs
+            {{- end }}
+            {{- if $pe.portRange }}
+            - --public-port-range={{ $pe.portRange }}
+            - --public-host={{ $pe.host }}
+            - --public-gateway-name={{ $pe.gatewayName }}
+            - --public-gateway-namespace={{ .Release.Namespace }}
+            - --public-gateway-class={{ $pe.gatewayClass }}
+            {{- end }}
+            {{- if .Values.backup.platform.bucket }}
+            - --backup-s3-bucket={{ .Values.backup.platform.bucket }}
+            - --backup-s3-endpoint={{ .Values.backup.platform.endpoint }}
+            - --backup-s3-secret={{ .Release.Namespace }}/{{ .Values.backup.platform.secretName }}
+            {{- end }}
+          ports:
+            - {name: webhook-server, containerPort: 9443, protocol: TCP}
+            - {name: health, containerPort: 8081, protocol: TCP}
+            {{- if .Values.operator.metrics.enabled }}
+            - {name: metrics, containerPort: 8443, protocol: TCP}
+            {{- end }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources: {{- toYaml .Values.operator.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+            {{- if .Values.catalogEggs.install }}
+            - name: catalog-eggs
+              mountPath: /etc/hatchery/catalog-eggs
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "hatchery.webhookName" . }}-tls
+        {{- if .Values.catalogEggs.install }}
+        - name: catalog-eggs
+          configMap:
+            name: {{ $name }}-catalog-eggs
+        {{- end }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.operator.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "operator") | nindent 4 }}
+spec:
+  selector: {{- include "hatchery.selector" (dict "ctx" . "component" "operator") | nindent 4 }}
+  ports:
+    - name: https
+      port: 8443
+      targetPort: metrics
+{{- end }}
