@@ -2,15 +2,13 @@ package panelapi
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,34 +18,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/backupplan"
 )
 
-const (
-	platformBackupSecret   = "hatchery-backup-platform"
-	connectionSecretPrefix = "hatchery-s3-"
-	// connectionLabel marks a Secret as one of the org's S3 connections (its value is the name).
-	connectionLabel = "gameservers.hatchery.io/backup-connection"
+// BackupConfig is an alias so cmd/panel-api/main.go keeps constructing panelapi.BackupConfig{...}
+// unchanged; the type itself now lives in internal/backupplan (shared with the operator's
+// scheduler).
+type BackupConfig = backupplan.Platform
 
-	// platformConnection is the reserved connection name of the platform's own storage.
-	platformConnection = "platform"
-)
-
-var connectionName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
-
-func connectionSecretName(name string) string { return connectionSecretPrefix + name }
-
-// BackupConfig is the platform's own backup storage, set from the panel-api flags. The Secret it
-// names holds "access-key" and "secret-key". It is copied (with a per-org restic password) into an
-// organization's namespace the first time that organization takes a backup there.
-type BackupConfig struct {
-	Endpoint        string
-	Bucket          string
-	SecretNamespace string
-	SecretName      string
+// planner builds a backupplan.Planner from the server's own configuration.
+func (s *Server) planner() *backupplan.Planner {
+	return &backupplan.Planner{Client: s.Client, Platform: s.Backup, Now: time.Now}
 }
 
-// Enabled reports whether the platform offers backup storage at all.
-func (c BackupConfig) Enabled() bool { return c.Bucket != "" && c.SecretName != "" }
+var connectionName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)
 
 type backupLimits struct {
 	MaxPerServer  int32 `json:"maxPerServer"`
@@ -70,43 +54,26 @@ type backupSettingsResponse struct {
 }
 
 func connectionFromSecret(sec *corev1.Secret) connectionItem {
-	item := connectionItem{Name: sec.Labels[connectionLabel], Endpoint: string(sec.Data["endpoint"]), Buckets: []string{}}
-	_ = json.Unmarshal(sec.Data["buckets"], &item.Buckets)
-	return item
+	endpoint, buckets := backupplan.ConnectionBuckets(sec)
+	return connectionItem{Name: sec.Labels[backupplan.ConnectionLabel], Endpoint: endpoint, Buckets: buckets}
 }
 
 func (s *Server) listConnections(ctx context.Context, ns string) ([]corev1.Secret, error) {
 	var list corev1.SecretList
-	if err := s.Client.List(ctx, &list, client.InNamespace(ns), client.HasLabels{connectionLabel}); err != nil {
+	if err := s.Client.List(ctx, &list, client.InNamespace(ns), client.HasLabels{backupplan.ConnectionLabel}); err != nil {
 		return nil, err
 	}
 	sort.Slice(list.Items, func(i, j int) bool {
-		return list.Items[i].Labels[connectionLabel] < list.Items[j].Labels[connectionLabel]
+		return list.Items[i].Labels[backupplan.ConnectionLabel] < list.Items[j].Labels[backupplan.ConnectionLabel]
 	})
 	return list.Items, nil
-}
-
-// orgBackupLimits returns the org's platform-storage limits, or nil when the platform storage is
-// off for it (not configured on the platform, or the org has no backups block).
-func (s *Server) orgBackupLimits(ctx context.Context, orgSlug string) (*gameserversv1alpha1.TenantBackupQuota, error) {
-	if !s.Backup.Enabled() {
-		return nil, nil
-	}
-	var tenant gameserversv1alpha1.Tenant
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: orgSlug}, &tenant); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return tenant.Spec.Quota.Backups, nil
 }
 
 func (s *Server) handleGetBackupSettings(w http.ResponseWriter, r *http.Request) {
 	acc := orgAccessFromContext(r.Context())
 	out := backupSettingsResponse{Connections: []connectionItem{}}
 
-	limits, err := s.orgBackupLimits(r.Context(), acc.Org.Slug)
+	limits, err := s.planner().OrgLimits(r.Context(), acc.Org.Slug)
 	if err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
@@ -140,14 +107,6 @@ var (
 
 const maxBucketsPerConnection = 20
 
-func randomToken(n int) (string, error) {
-	raw := make([]byte, n)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
 // serversUsing returns the servers whose backup destination is the given connection (and bucket,
 // when bucket is not empty).
 func (s *Server) serversUsing(ctx context.Context, ns, conn string, buckets map[string]bool) ([]string, error) {
@@ -178,7 +137,7 @@ func (s *Server) handlePutBackupConnection(w http.ResponseWriter, r *http.Reques
 		s.auditEvent(r, acc.Org.Slug, "backup.connection.update", "backup-connection", name, "failed", nil)
 		writeError(w, code, msg)
 	}
-	if !connectionName.MatchString(name) || name == platformConnection {
+	if !connectionName.MatchString(name) || name == backupplan.PlatformConnection {
 		fail(http.StatusBadRequest, `the connection name must be lowercase letters, digits and '-' (up to 32 characters), and "platform" is reserved`)
 		return
 	}
@@ -215,7 +174,7 @@ func (s *Server) handlePutBackupConnection(w http.ResponseWriter, r *http.Reques
 	}
 
 	ns := r.PathValue("namespace")
-	key := client.ObjectKey{Namespace: ns, Name: connectionSecretName(name)}
+	key := client.ObjectKey{Namespace: ns, Name: backupplan.ConnectionSecretName(name)}
 	var sec corev1.Secret
 	exists := true
 	if err := s.Client.Get(r.Context(), key, &sec); err != nil {
@@ -250,13 +209,13 @@ func (s *Server) handlePutBackupConnection(w http.ResponseWriter, r *http.Reques
 			}
 		}
 	} else {
-		password, err := randomToken(24)
+		password, err := backupplan.RandomToken(24)
 		if err != nil {
 			fail(http.StatusInternalServerError, err.Error())
 			return
 		}
 		sec = corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: ns, Labels: map[string]string{connectionLabel: name}},
+			ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: ns, Labels: map[string]string{backupplan.ConnectionLabel: name}},
 			Data:       map[string][]byte{"restic-password": []byte(password)},
 		}
 	}
@@ -310,7 +269,7 @@ func (s *Server) handleDeleteBackupConnection(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	err = s.Client.Delete(r.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: connectionSecretName(name), Namespace: ns}})
+	err = s.Client.Delete(r.Context(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: backupplan.ConnectionSecretName(name), Namespace: ns}})
 	if err != nil && !apierrors.IsNotFound(err) {
 		fail(statusFor(err), err.Error())
 		return
@@ -325,19 +284,19 @@ func (s *Server) validateBackupTarget(ctx context.Context, ns, orgSlug string, t
 	if t == nil || t.Connection == "" {
 		return nil, 0, nil
 	}
-	if t.Connection == platformConnection {
-		limits, err := s.orgBackupLimits(ctx, orgSlug)
+	if t.Connection == backupplan.PlatformConnection {
+		limits, err := s.planner().OrgLimits(ctx, orgSlug)
 		if err != nil {
 			return nil, http.StatusInternalServerError, err
 		}
 		if limits == nil {
 			return nil, http.StatusConflict, fmt.Errorf("the platform's backup storage is not available for this organization")
 		}
-		return &gameserversv1alpha1.BackupTarget{Connection: platformConnection}, 0, nil
+		return &gameserversv1alpha1.BackupTarget{Connection: backupplan.PlatformConnection}, 0, nil
 	}
 
 	var sec corev1.Secret
-	if err := s.Client.Get(ctx, client.ObjectKey{Namespace: ns, Name: connectionSecretName(t.Connection)}, &sec); err != nil {
+	if err := s.Client.Get(ctx, client.ObjectKey{Namespace: ns, Name: backupplan.ConnectionSecretName(t.Connection)}, &sec); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, http.StatusUnprocessableEntity, fmt.Errorf("unknown backup connection %q", t.Connection)
 		}
@@ -363,13 +322,6 @@ func (s *Server) listBackups(ctx context.Context, ns string) ([]gameserversv1alp
 		return nil, err
 	}
 	return list.Items, nil
-}
-
-// countsForLimits: a failed backup holds no space worth limiting, and one already being deleted is
-// on its way out.
-func countsForLimits(b *gameserversv1alpha1.GameServerBackup) bool {
-	return b.Labels[gameserversv1alpha1.BackupDestinationLabel] == platformConnection &&
-		b.Status.Phase != gameserversv1alpha1.GameServerBackupPhaseFailed && b.DeletionTimestamp.IsZero()
 }
 
 type restoreItem struct {
@@ -424,13 +376,13 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(all, func(i, j int) bool { return all[j].CreationTimestamp.Before(&all[i].CreationTimestamp) })
 	for i := range all {
 		b := &all[i]
-		if countsForLimits(b) {
+		if backupplan.CountsForLimits(b) {
 			out.Usage.Org++
 		}
 		if b.Labels[gameserversv1alpha1.BackupGameServerLabel] != server {
 			continue
 		}
-		if countsForLimits(b) {
+		if backupplan.CountsForLimits(b) {
 			out.Usage.Server++
 		}
 		item := backupItem{
@@ -455,170 +407,37 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// backupObjectName keeps the Job name (which equals the backup's) inside the 63-character limit.
-func backupObjectName(prefix, server string) string {
-	if len(server) > 40 {
-		server = server[:40]
-	}
-	return fmt.Sprintf("%s%s-%s", prefix, server, strconv.FormatInt(time.Now().Unix(), 36))
-}
-
 func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	acc := orgAccessFromContext(r.Context())
-	ns, server := r.PathValue("namespace"), r.PathValue("name")
 
 	var gs gameserversv1alpha1.GameServer
 	if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
-	target := gs.Spec.BackupTarget
-	if target == nil || target.Connection == "" {
-		writeError(w, http.StatusConflict, "choose where this server's backups go first")
+	bkp, err := s.planner().Plan(r.Context(), &gs, acc.Org.Slug)
+	if err != nil {
+		var conflict *backupplan.ConflictError
+		switch {
+		case errors.As(err, &conflict):
+			writeError(w, http.StatusConflict, conflict.Msg)
+		case strings.HasPrefix(err.Error(), "could not prepare the platform's backup credentials"):
+			// The platform's own storage is unreachable/misconfigured, not the caller's fault.
+			writeError(w, http.StatusBadGateway, err.Error())
+		default:
+			writeError(w, statusFor(err), err.Error())
+		}
 		return
 	}
-
-	var s3 gameserversv1alpha1.S3Destination
-	annotations := map[string]string{}
-	if target.Connection == platformConnection {
-		limits, err := s.orgBackupLimits(r.Context(), acc.Org.Slug)
-		if err != nil {
-			writeError(w, statusFor(err), err.Error())
-			return
-		}
-		if limits == nil {
-			writeError(w, http.StatusConflict, "the platform's backup storage is not available for this organization")
-			return
-		}
-		all, err := s.listBackups(r.Context(), ns)
-		if err != nil {
-			writeError(w, statusFor(err), err.Error())
-			return
-		}
-		var perServer, perOrg int32
-		for i := range all {
-			if !countsForLimits(&all[i]) {
-				continue
-			}
-			perOrg++
-			if all[i].Labels[gameserversv1alpha1.BackupGameServerLabel] == server {
-				perServer++
-			}
-		}
-		if perServer >= limits.MaxPerServer {
-			writeError(w, http.StatusConflict, fmt.Sprintf("backup limit reached: this server may keep at most %d backup(s) on the platform's storage; delete one first", limits.MaxPerServer))
-			return
-		}
-		if perOrg >= limits.MaxPerOrg {
-			writeError(w, http.StatusConflict, fmt.Sprintf("backup limit reached: the organization may keep at most %d backup(s) on the platform's storage; delete one first", limits.MaxPerOrg))
-			return
-		}
-		if err := s.ensurePlatformBackupSecret(r.Context(), ns); err != nil {
-			writeError(w, http.StatusBadGateway, "could not prepare the platform's backup credentials: "+err.Error())
-			return
-		}
-		s3 = gameserversv1alpha1.S3Destination{
-			Endpoint:  s.Backup.Endpoint,
-			Bucket:    s.Backup.Bucket,
-			Prefix:    acc.Org.Slug + "/" + server,
-			SecretRef: corev1.LocalObjectReference{Name: platformBackupSecret},
-		}
-		annotations[gameserversv1alpha1.BackupExpiresAtAnnotation] = time.Now().Add(time.Duration(limits.RetentionDays) * 24 * time.Hour).UTC().Format(time.RFC3339)
-	} else {
-		var sec corev1.Secret
-		if err := s.Client.Get(r.Context(), client.ObjectKey{Namespace: ns, Name: connectionSecretName(target.Connection)}, &sec); err != nil {
-			if apierrors.IsNotFound(err) {
-				writeError(w, http.StatusConflict, fmt.Sprintf("the connection %q no longer exists: choose this server's backup destination again", target.Connection))
-				return
-			}
-			writeError(w, statusFor(err), err.Error())
-			return
-		}
-		conn := connectionFromSecret(&sec)
-		inList := false
-		for _, b := range conn.Buckets {
-			inList = inList || b == target.Bucket
-		}
-		if !inList {
-			writeError(w, http.StatusConflict, fmt.Sprintf("bucket %q is no longer one of connection %q: choose this server's backup destination again", target.Bucket, target.Connection))
-			return
-		}
-		prefix := target.Prefix
-		if prefix == "" {
-			prefix = server
-		}
-		s3 = gameserversv1alpha1.S3Destination{
-			Endpoint:  conn.Endpoint,
-			Bucket:    target.Bucket,
-			Prefix:    prefix,
-			SecretRef: corev1.LocalObjectReference{Name: sec.Name},
-		}
-	}
-
-	bkp := &gameserversv1alpha1.GameServerBackup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: backupObjectName("", server), Namespace: ns, Annotations: annotations,
-			Labels: map[string]string{
-				gameserversv1alpha1.BackupGameServerLabel:  server,
-				gameserversv1alpha1.BackupDestinationLabel: target.Connection,
-			},
-		},
-		Spec: gameserversv1alpha1.GameServerBackupSpec{
-			GameServerRef: gameserversv1alpha1.GameServerRef{Name: server},
-			Destination:   gameserversv1alpha1.BackupDestination{S3: &s3},
-		},
-	}
-	err := s.Client.Create(r.Context(), bkp)
-	if apierrors.IsAlreadyExists(err) { // two backups in the same second
-		suffix, _ := randomToken(3)
-		bkp.Name += "-" + strings.ToLower(strings.NewReplacer("-", "", "_", "").Replace(suffix))
-		bkp.ResourceVersion = ""
-		err = s.Client.Create(r.Context(), bkp)
-	}
-	if err != nil {
+	if err := s.planner().Create(r.Context(), bkp); err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, backupItem{
 		Name: bkp.Name, CreatedAt: bkp.CreationTimestamp.UTC().Format(time.RFC3339), Phase: string(bkp.Status.Phase),
-		Destination: target.Connection, Bucket: s3.Bucket, Prefix: s3.Prefix,
-		ExpiresAt: annotations[gameserversv1alpha1.BackupExpiresAtAnnotation],
+		Destination: bkp.Labels[gameserversv1alpha1.BackupDestinationLabel], Bucket: bkp.Spec.Destination.S3.Bucket, Prefix: bkp.Spec.Destination.S3.Prefix,
+		ExpiresAt: bkp.Annotations[gameserversv1alpha1.BackupExpiresAtAnnotation],
 	})
-}
-
-// ensurePlatformBackupSecret creates the org's copy of the platform's S3 credentials, with a restic
-// password generated once per org. The password is never regenerated: every snapshot in the org's
-// repositories is encrypted with it.
-func (s *Server) ensurePlatformBackupSecret(ctx context.Context, ns string) error {
-	var src corev1.Secret
-	if err := s.Client.Get(ctx, client.ObjectKey{Namespace: s.Backup.SecretNamespace, Name: s.Backup.SecretName}, &src); err != nil {
-		return err
-	}
-	access, secret := src.Data["access-key"], src.Data["secret-key"]
-	if len(access) == 0 || len(secret) == 0 {
-		return fmt.Errorf("secret %s/%s needs access-key and secret-key", s.Backup.SecretNamespace, s.Backup.SecretName)
-	}
-
-	var dst corev1.Secret
-	err := s.Client.Get(ctx, client.ObjectKey{Namespace: ns, Name: platformBackupSecret}, &dst)
-	switch {
-	case apierrors.IsNotFound(err):
-		password, err := randomToken(24)
-		if err != nil {
-			return err
-		}
-		return s.Client.Create(ctx, &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: platformBackupSecret, Namespace: ns},
-			Data:       map[string][]byte{"access-key": access, "secret-key": secret, "restic-password": []byte(password)},
-		})
-	case err != nil:
-		return err
-	}
-	if string(dst.Data["access-key"]) != string(access) || string(dst.Data["secret-key"]) != string(secret) {
-		dst.Data["access-key"], dst.Data["secret-key"] = access, secret // the platform rotated its keys
-		return s.Client.Update(ctx, &dst)
-	}
-	return nil
 }
 
 // backupOfServer finds a backup by name and makes sure it belongs to the server in the URL, so a
@@ -669,7 +488,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	rs := &gameserversv1alpha1.GameServerRestore{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: backupObjectName("rs-", gs.Name), Namespace: gs.Namespace,
+			Name: "rs-" + backupplan.ObjectName(gs.Name, time.Now()), Namespace: gs.Namespace,
 			Labels: map[string]string{gameserversv1alpha1.BackupGameServerLabel: gs.Name},
 		},
 		Spec: gameserversv1alpha1.GameServerRestoreSpec{
