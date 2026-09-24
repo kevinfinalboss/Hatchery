@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -118,11 +119,12 @@ func (s *Server) handleGetQuota(w http.ResponseWriter, r *http.Request) {
 
 // quotaRequest is the JSON shape of a tenant quota in the Panel API.
 type quotaRequest struct {
-	CPU            string        `json:"cpu"`
-	Memory         string        `json:"memory"`
-	Storage        string        `json:"storage"`
-	MaxGameServers int32         `json:"maxGameServers"`
-	Backups        *backupLimits `json:"backups,omitempty"`
+	CPU                  string        `json:"cpu"`
+	Memory               string        `json:"memory"`
+	Storage              string        `json:"storage"`
+	MaxGameServers       int32         `json:"maxGameServers"`
+	Backups              *backupLimits `json:"backups,omitempty"`
+	ExtraImageRegistries []string      `json:"extraImageRegistries,omitempty"`
 }
 
 // toQuota parses the quantities. Every field is required: an empty quantity
@@ -162,6 +164,19 @@ func (q quotaRequest) toQuota() (gameserversv1alpha1.TenantQuota, error) {
 		}
 		out.Backups = &gameserversv1alpha1.TenantBackupQuota{MaxPerServer: b.MaxPerServer, MaxPerOrg: b.MaxPerOrg, RetentionDays: b.RetentionDays}
 	}
+	for _, e := range q.ExtraImageRegistries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if strings.ContainsAny(e, " \t\n") || len(e) > 253 {
+			return out, fmt.Errorf("quota.extraImageRegistries: %q is not a registry path", e)
+		}
+		out.ExtraImageRegistries = append(out.ExtraImageRegistries, e)
+	}
+	if len(out.ExtraImageRegistries) > 20 {
+		return out, fmt.Errorf("quota.extraImageRegistries: at most 20 entries")
+	}
 	return out, nil
 }
 
@@ -170,5 +185,6 @@ func quotaResponseFrom(q gameserversv1alpha1.TenantQuota) quotaRequest {
 	if b := q.Backups; b != nil {
 		out.Backups = &backupLimits{MaxPerServer: b.MaxPerServer, MaxPerOrg: b.MaxPerOrg, RetentionDays: b.RetentionDays}
 	}
+	out.ExtraImageRegistries = q.ExtraImageRegistries
 	return out
 }
