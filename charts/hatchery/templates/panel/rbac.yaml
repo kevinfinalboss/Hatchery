@@ -1,0 +1,64 @@
+{{- $name := include "hatchery.panelName" . }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "panel") | nindent 4 }}
+{{- /*
+The three Panel ClusterRoles come verbatim from config/rbac. Their names are fixed because the operator
+refers to hatchery-panel-tenant and hatchery-panel-catalog by name: it binds them per org namespace and in
+the catalog namespace (TenantReconciler, CatalogEnsurer). Only hatchery-panel-cluster is bound here.
+*/}}
+{{- range $file := list "panel_cluster_role.yaml" "panel_tenant_role.yaml" "panel_catalog_role.yaml" }}
+{{- $role := $.Files.Get (printf "files/rbac/%s" $file) | fromYaml }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $role.metadata.name }}
+  labels: {{- include "hatchery.labels" $ | nindent 4 }}
+rules:
+{{- toYaml $role.rules | nindent 0 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hatchery-panel-cluster
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hatchery-panel-cluster
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+{{- /* In its own namespace the Panel writes the first admin's credentials and reads the platform backup Secret. */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
