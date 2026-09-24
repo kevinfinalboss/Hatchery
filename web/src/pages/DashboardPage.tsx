@@ -38,7 +38,7 @@ function matchesStatus(server: GameServer, filter: StatusFilter): boolean {
     case "suspended":
       return phase === "Suspended";
     case "failed":
-      return phase === "Failed";
+      return phase === "Failed" || phase === "Crashed";
   }
 }
 
