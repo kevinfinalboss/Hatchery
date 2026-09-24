@@ -7,6 +7,7 @@ import { atLeast, useOrg } from "./org";
 import { useRestartServer, useSetServerState } from "./serverActions";
 import { useT } from "./i18n";
 import { useTheme } from "./theme";
+import { can } from "./permissions";
 
 export interface Command {
   id: string;
@@ -52,21 +53,23 @@ export function useCommands(): Command[] {
     const running = server.spec.state === "Running";
     const serverGroup = t("palette.groupServer", { name: routeName });
     const base = `/orgs/${routeOrg}/servers/${routeName}`;
-    commands.push({
-      id: "server-toggle",
-      group: serverGroup,
-      label: running ? t("palette.stopServer") : t("palette.startServer"),
-      run: () => setState.mutate({ org: routeOrg, name: routeName, state: running ? "Stopped" : "Running" }),
-    });
-    if (running) {
+    if (can(server, "power")) {
       commands.push({
-        id: "server-restart",
+        id: "server-toggle",
         group: serverGroup,
-        label: t("palette.restartServer"),
-        run: () => {
-          if (confirm(t("server.restartConfirm", { name: routeName }))) restart.mutate({ org: routeOrg, name: routeName });
-        },
+        label: running ? t("palette.stopServer") : t("palette.startServer"),
+        run: () => setState.mutate({ org: routeOrg, name: routeName, state: running ? "Stopped" : "Running" }),
       });
+      if (running) {
+        commands.push({
+          id: "server-restart",
+          group: serverGroup,
+          label: t("palette.restartServer"),
+          run: () => {
+            if (confirm(t("server.restartConfirm", { name: routeName }))) restart.mutate({ org: routeOrg, name: routeName });
+          },
+        });
+      }
     }
     commands.push({ id: "server-console", group: serverGroup, label: t("palette.goConsole"), run: () => navigate(`${base}?s=console`) });
     commands.push({ id: "server-metrics", group: serverGroup, label: t("palette.goMetrics"), run: () => navigate(`${base}?s=metrics`) });
