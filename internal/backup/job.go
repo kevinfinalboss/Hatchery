@@ -151,8 +151,9 @@ func CleanupJobName(backupName string) string {
 // already exists in every real case.
 func CleanupJob(bkp *gameserversv1alpha1.GameServerBackup) *batchv1.Job {
 	const script = `restic init >/dev/null 2>&1 || true
-if restic snapshots --tag "$TAG" --json 2>/dev/null | grep -q '"short_id"'; then
-  restic forget --tag "$TAG" --prune
+ids=$(restic snapshots --tag "$TAG" --json 2>/dev/null | grep -o '"short_id":"[^"]*"' | cut -d'"' -f4)
+if [ -n "$ids" ]; then
+  restic forget --prune $ids
 else
   echo "no snapshots found for tag $TAG, nothing to prune"
 fi
