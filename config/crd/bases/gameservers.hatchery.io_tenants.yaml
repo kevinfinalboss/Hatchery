@@ -94,6 +94,17 @@ spec:
                       pods may add up to.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  extraImageRegistries:
+                    description: |-
+                      ExtraImageRegistries are registries this organization may pull Egg images from on top of the
+                      platform's default list (operator/panel --allowed-image-registries). Entries are matched by
+                      whole path segments ("docker.io/itzg" allows docker.io/itzg/*). Only the platform admin
+                      edits it. Ignored while the platform list is empty (the check is off).
+                    items:
+                      maxLength: 253
+                      type: string
+                    maxItems: 20
+                    type: array
                   maxGameServers:
                     description: MaxGameServers caps how many GameServer objects the
                       tenant may have.
