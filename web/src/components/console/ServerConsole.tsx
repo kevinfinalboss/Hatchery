@@ -32,11 +32,13 @@ export function ServerConsole({
   name,
   running,
   installing,
+  canWrite,
 }: {
   org: string;
   name: string;
   running: boolean;
   installing: boolean;
+  canWrite: boolean;
 }) {
   const t = useT();
   const { theme } = useTheme();
@@ -124,7 +126,7 @@ export function ServerConsole({
   }, [org, name, running, installing]);
 
   useEffect(() => {
-    if (!running) {
+    if (!running || !canWrite) {
       setConnected(false);
       return;
     }
@@ -159,7 +161,7 @@ export function ServerConsole({
       wsRef.current = null;
       setConnected(false);
     };
-  }, [org, name, running]);
+  }, [org, name, running, canWrite]);
 
   function sendCommand() {
     const trimmed = command.trim();
@@ -209,30 +211,32 @@ export function ServerConsole({
     <div className="flex h-full w-full flex-col gap-2">
       <div className="shrink-0 font-sans text-xs text-text-tertiary">{statusText}</div>
       <div ref={containerRef} className="min-h-0 grow border border-border bg-canvas p-2 [&_.xterm]:h-full" />
-      <form
-        className="flex shrink-0 items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          sendCommand();
-        }}
-      >
-        <span className="text-primary-text" aria-hidden>
-          &gt;
-        </span>
-        <Input
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={!connected}
-          placeholder={!running ? t("console.placeholderStopped") : connected ? t("console.placeholderReady") : t("console.placeholderConnecting")}
-          className="grow font-mono"
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <Button type="submit" disabled={!connected || !command.trim()}>
-          {t("common.send")}
-        </Button>
-      </form>
+      {canWrite && (
+        <form
+          className="flex shrink-0 items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendCommand();
+          }}
+        >
+          <span className="text-primary-text" aria-hidden>
+            &gt;
+          </span>
+          <Input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!connected}
+            placeholder={!running ? t("console.placeholderStopped") : connected ? t("console.placeholderReady") : t("console.placeholderConnecting")}
+            className="grow font-mono"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <Button type="submit" disabled={!connected || !command.trim()}>
+            {t("common.send")}
+          </Button>
+        </form>
+      )}
     </div>
   );
 }
