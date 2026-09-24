@@ -67,10 +67,30 @@ export interface GameServerStatus {
   publicExposure?: GameServerPublicExposureStatus;
 }
 
+export type Permission =
+  | "console.read"
+  | "console.write"
+  | "power"
+  | "files.read"
+  | "files.write"
+  | "backups.read"
+  | "backups.manage"
+  | "schedules";
+
+export interface ServerGrant {
+  gameserver: string; // server name or "*"
+  permissions: Permission[];
+}
+
+export interface GameServerAccess {
+  permissions: Permission[];
+}
+
 export interface GameServer {
   metadata: ObjectMeta;
   spec: GameServerSpec;
   status?: GameServerStatus;
+  access?: GameServerAccess;
 }
 
 export interface GameServerList {
@@ -162,6 +182,12 @@ export interface OrgQuota {
   storage: string;
   maxGameServers: number;
   backups?: BackupLimits;
+  extraImageRegistries?: string[];
+}
+
+export interface ImagePolicy {
+  enforced: boolean;
+  registries: string[];
 }
 
 export interface BackupTarget {
@@ -269,4 +295,63 @@ export interface AuditPage {
 export interface ConsoleTicketResponse {
   ticket: string;
   expiresInSeconds: number;
+}
+
+export type ScheduleAction = "Command" | "Restart" | "Start" | "Stop" | "Backup";
+
+export interface ScheduleTask {
+  action: ScheduleAction;
+  command?: string;
+  delaySeconds?: number;
+  keepLast?: number;
+}
+
+export interface ScheduleSpec {
+  gameServerRef: { name: string };
+  displayName?: string;
+  cron: string;
+  timeZone?: string;
+  suspend?: boolean;
+  onlyWhenRunning: boolean;
+  tasks: ScheduleTask[];
+}
+
+export type ScheduleRunResult = "Succeeded" | "Failed" | "Skipped";
+
+export interface ScheduleRun {
+  startedAt: string;
+  finishedAt?: string;
+  result: ScheduleRunResult;
+  message?: string;
+}
+
+export interface ActiveScheduleRun {
+  id: string;
+  startedAt: string;
+  taskIndex: number;
+  nextTaskAt: string;
+}
+
+export interface ScheduleStatus {
+  nextScheduleTime?: string;
+  lastScheduleTime?: string;
+  lastRun?: ScheduleRun;
+  activeRun?: ActiveScheduleRun;
+  lastRunNow?: string;
+  conditions?: GameServerCondition[];
+}
+
+export interface ScheduleItem {
+  name: string;
+  spec: ScheduleSpec;
+  status: ScheduleStatus;
+}
+
+export interface ScheduleWrite {
+  displayName: string;
+  cron: string;
+  timeZone: string;
+  suspend: boolean;
+  onlyWhenRunning?: boolean;
+  tasks: ScheduleTask[];
 }
