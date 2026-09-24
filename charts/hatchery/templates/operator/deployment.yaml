@@ -66,6 +66,8 @@ spec:
             - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
             - --webhook-port=9443
             - --sftp-agent-image={{ include "hatchery.image" (dict "ctx" . "image" .Values.sftpAgent.image) }}
+            - --crash-restart-limit={{ .Values.operator.crashRestart.limit }}
+            - --crash-restart-window={{ .Values.operator.crashRestart.window }}
             - --panel-service-account={{ .Release.Namespace }}/{{ include "hatchery.panelName" . }}
             {{- with .Values.operator.egressExceptCIDRs }}
             - --egress-except-cidrs={{ join "," . }}
