@@ -78,6 +78,7 @@ export function ServerSettings({
   const [cpuEdit, setCpuEdit] = useState<string | null>(null);
   const [memEdit, setMemEdit] = useState<ByteQuantity | null>(null);
   const [exposeEdit, setExposeEdit] = useState<boolean | null>(null);
+  const [autoRestartEdit, setAutoRestartEdit] = useState<boolean | null>(null);
 
   const name = nameEdit ?? current.name;
   const image = imageEdit ?? current.image;
@@ -91,6 +92,8 @@ export function ServerSettings({
   const expose = exposeEdit ?? (spec.publicExposure?.enabled ?? false);
   const exposureReason = status?.conditions?.find((c) => c.type === "PublicExposureReady")?.reason;
   const exposeChanged = exposeEdit !== null && exposeEdit !== (spec.publicExposure?.enabled ?? false);
+  const autoRestart = autoRestartEdit ?? (spec.autoRestart ?? true);
+  const autoRestartChanged = autoRestartEdit !== null && autoRestartEdit !== (spec.autoRestart ?? true);
 
   const nameChanged = nameEdit !== null && nameEdit !== current.name;
   const cmdChanged = egg !== undefined && cmdEdit !== null && storedCmd !== current.cmd;
@@ -98,7 +101,7 @@ export function ServerSettings({
   const varsChanged = Object.keys(valueEdits).some((k) => valueEdits[k] !== current.values[k]);
   const cpuChanged = cpuEdit !== null && cpuEdit !== current.cpu;
   const memChanged = memEdit !== null && joinBytes(memEdit) !== joinBytes(current.mem);
-  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged || exposeChanged;
+  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged || exposeChanged || autoRestartChanged;
   const valid = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null) && cpu !== "" && Number.isFinite(mem.value);
 
   const save = () => {
@@ -115,6 +118,7 @@ export function ServerSettings({
     }
     if (cpuChanged || memChanged) body.resources = { limits: { cpu, memory: joinBytes(mem) } };
     if (exposeChanged) body.publicExposureEnabled = expose;
+    if (autoRestartChanged) body.autoRestart = autoRestart;
     onSave(body);
   };
 
@@ -198,6 +202,18 @@ export function ServerSettings({
           <Input id="set-disk" value={spec.storage.size} disabled readOnly />
           <span className="font-prose text-xs text-text-tertiary">{t("server.diskFixed")}</span>
         </Field>
+
+        <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("server.autoRestart")}</div>
+        <label className="flex items-center gap-2 font-prose text-sm text-text-primary">
+          <input
+            type="checkbox"
+            checked={autoRestart}
+            disabled={!canEdit}
+            onChange={(e) => setAutoRestartEdit(e.target.checked)}
+          />
+          {t("server.autoRestartEnable")}
+        </label>
+        <span className="font-prose text-xs text-text-tertiary">{t("server.autoRestartHint")}</span>
 
         <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("server.publicExposure")}</div>
         <label className="flex items-center gap-2 font-prose text-sm text-text-primary">
