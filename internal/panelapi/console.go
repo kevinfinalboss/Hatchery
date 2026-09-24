@@ -105,6 +105,10 @@ func (s *Server) requireConsoleTicket(next http.Handler) http.Handler {
 			writeError(w, status, msg)
 			return
 		}
+		if !acc.Can(t.GameServer, paneldb.PermConsoleWrite) {
+			writeError(w, http.StatusForbidden, "you no longer have console access to this server")
+			return
+		}
 
 		r.SetPathValue("namespace", gameserversv1alpha1.TenantNamespace(acc.Org.Slug))
 		ctx := context.WithValue(withOrgAccess(r.Context(), acc), userContextKey, user)
