@@ -69,6 +69,9 @@ type GameServerReconciler struct {
 	// LogReader reads a game container's console so the startup regex of an Egg can be matched.
 	// nil disables startup detection: servers go straight from Pending to Running.
 	LogReader LogReader
+
+	// CrashPolicy bounds automatic restarts after a crash. The zero value means DefaultCrashPolicy.
+	CrashPolicy CrashPolicy
 }
 
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameservers,verbs=get;list;watch;create;update;patch;delete
@@ -81,6 +84,7 @@ type GameServerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;update
 
 // Reconcile moves the cluster state for a single GameServer towards its desired
 // state: an Egg-derived Pod, a Service exposing the Egg's ports, and a PVC
@@ -160,7 +164,15 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("reconciling pod: %w", err)
 	}
 
-	return r.updateStatus(ctx, &gs, &egg, pod)
+	crashWait, err := r.reconcileCrash(ctx, &gs, pod)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("handling crash: %w", err)
+	}
+	res, err := r.updateStatus(ctx, &gs, &egg, pod)
+	if err == nil && crashWait > 0 && (res.RequeueAfter == 0 || crashWait < res.RequeueAfter) {
+		res.RequeueAfter = crashWait
+	}
+	return res, err
 }
 
 // reconcileDelete runs the finalizer's cleanup and then releases it. Pod,
@@ -421,6 +433,16 @@ func (r *GameServerReconciler) updateStatus(ctx context.Context, gs *gameservers
 
 	condChanged := apimeta.SetStatusCondition(&gs.Status.Conditions, obs.ready)
 	condChanged = apimeta.SetStatusCondition(&gs.Status.Conditions, restartRequiredCondition(gs, pod)) || condChanged
+	if gs.Spec.State == gameserversv1alpha1.GameServerStateRunning && !gs.Spec.Suspended {
+		// Asked to run again: the reason it was left stopped no longer applies.
+		condChanged = apimeta.SetStatusCondition(&gs.Status.Conditions, metav1.Condition{
+			Type: gameserversv1alpha1.ConditionCrashed, Status: metav1.ConditionFalse, Reason: "NotCrashed", ObservedGeneration: gs.Generation,
+		}) || condChanged
+	} else if len(gs.Status.RecentCrashes) > 0 {
+		// A stopped server starts a fresh crash count on its next start.
+		gs.Status.RecentCrashes = nil
+		condChanged = true
+	}
 	if !condChanged && gs.Status.Phase == obs.phase && gs.Status.PodName == obs.podName && gs.Status.ObservedGeneration == gs.Generation {
 		return result, nil
 	}

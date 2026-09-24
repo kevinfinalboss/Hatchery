@@ -79,6 +79,12 @@ func (r *GameServerReconciler) observe(ctx context.Context, gs *gameserversv1alp
 		return observation{phase: gameserversv1alpha1.GameServerPhaseStopping, podName: pod.Name, ready: notReady("Stopping")}
 	}
 
+	// The game container ended on its own while the sftp-agent sidecar keeps the Pod Running: without
+	// this the server would show Running (or Starting forever, with startup detection) with no game.
+	if serverTerminated(pod) != nil {
+		return observation{phase: gameserversv1alpha1.GameServerPhaseCrashed, podName: pod.Name, ready: notReady("Crashed")}
+	}
+
 	switch pod.Status.Phase {
 	case corev1.PodFailed:
 		return observation{phase: gameserversv1alpha1.GameServerPhaseFailed, podName: pod.Name, ready: notReady("Failed")}
