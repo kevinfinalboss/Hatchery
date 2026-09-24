@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseServiceAccount(t *testing.T) {
 	ns, name, err := parseServiceAccount("hatchery-panel/panel-api")
@@ -49,6 +52,21 @@ func TestParseRegistryList(t *testing.T) {
 	}
 	if parseRegistryList("") != nil {
 		t.Fatal("empty input must give a nil list (check disabled)")
+	}
+}
+
+func TestCrashPolicyFromFlags(t *testing.T) {
+	p, err := crashPolicyFromFlags(3, 10*time.Minute)
+	if err != nil || p.Limit != 3 || p.Window != 10*time.Minute {
+		t.Fatalf("got %+v, %v", p, err)
+	}
+	for _, bad := range []struct {
+		limit  int
+		window time.Duration
+	}{{0, time.Minute}, {-1, time.Minute}, {3, 0}, {3, -time.Second}} {
+		if _, err := crashPolicyFromFlags(bad.limit, bad.window); err == nil {
+			t.Errorf("limit=%d window=%v must be rejected", bad.limit, bad.window)
+		}
 	}
 }
 

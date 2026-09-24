@@ -6,6 +6,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/kevinfinalboss/Hatchery/internal/controller"
 )
 
 // parseServiceAccount splits "<namespace>/<name>". Empty input means "not
@@ -47,6 +50,17 @@ func parseCIDRList(v string) ([]string, error) {
 
 func parseRegistryList(s string) []string {
 	return splitCSV(s)
+}
+
+// crashPolicyFromFlags validates --crash-restart-limit and --crash-restart-window.
+func crashPolicyFromFlags(limit int, window time.Duration) (controller.CrashPolicy, error) {
+	if limit < 1 {
+		return controller.CrashPolicy{}, fmt.Errorf("--crash-restart-limit must be at least 1, got %d", limit)
+	}
+	if window <= 0 {
+		return controller.CrashPolicy{}, fmt.Errorf("--crash-restart-window must be positive, got %s", window)
+	}
+	return controller.CrashPolicy{Limit: limit, Window: window}, nil
 }
 
 // envOr returns the environment variable's value, or fallback when it is unset or empty.
