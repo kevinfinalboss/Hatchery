@@ -45,6 +45,7 @@ func main() {
 	var adminSecretNamespace string
 	var adminSecretName string
 	var allowedOrigins string
+	var allowedImageRegistries string
 	var redisURL, trustedProxies string
 	var backupEndpoint, backupBucket, backupSecret string
 	var uiDir string
@@ -60,6 +61,8 @@ func main() {
 	flag.StringVar(&allowedOrigins, "allowed-origins", os.Getenv("PANEL_ALLOWED_ORIGINS"),
 		"Comma-separated allowlist of Origins accepted by the console WebSocket (e.g. https://panel.example.com). "+
 			"Empty accepts any Origin, matching pre-allowlist behavior. Defaults to $PANEL_ALLOWED_ORIGINS.")
+	flag.StringVar(&allowedImageRegistries, "allowed-image-registries", os.Getenv("PANEL_ALLOWED_IMAGE_REGISTRIES"),
+		"Comma-separated default registries for organizations' private Eggs (same list as the operator's). Empty: no check.")
 	flag.StringVar(&redisURL, "redis-url", os.Getenv("PANEL_REDIS_URL"),
 		"Redis URL (redis:// or rediss:// for TLS, password in the URL) for console tickets and the login rate limiter. "+
 			"Required. Redis 6.2 or newer (GETDEL). Defaults to $PANEL_REDIS_URL.")
@@ -150,16 +153,8 @@ func main() {
 	log.Info("admin bootstrap checked", "secretNamespace", adminSecretNamespace, "secretName", adminSecretName,
 		"note", "if this is the first run, fetch the generated password from that Secret")
 
-	var originAllowlist []string
-	if allowedOrigins != "" {
-		for _, o := range strings.Split(allowedOrigins, ",") {
-			if o = strings.TrimSpace(o); o != "" {
-				originAllowlist = append(originAllowlist, o)
-			}
-		}
-	}
-
-	srv := panelapi.NewServer(c, clientset, cfg, db, sftpAgentImage, originAllowlist)
+	srv := panelapi.NewServer(c, clientset, cfg, db, sftpAgentImage, splitList(allowedOrigins))
+	srv.AllowedImageRegistries = splitList(allowedImageRegistries)
 
 	srv.Tickets = panelcache.NewRedisTicketStore(rdb)
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
@@ -185,4 +180,19 @@ func main() {
 		log.Error(err, "panel-api server stopped")
 		os.Exit(1)
 	}
+}
+
+// splitList parses a comma-separated flag value into a trimmed, non-empty slice (nil for an
+// empty input). Shared by --allowed-origins and --allowed-image-registries.
+func splitList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
