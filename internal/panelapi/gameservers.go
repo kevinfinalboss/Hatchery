@@ -30,20 +30,40 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
-// handleListGameServers lists the GameServers of the requested org. The
-// namespace is the org's derived one (set by requireOrgRole), so there is no
-// way to list another org's servers from here.
+// handleListGameServers lists the GameServers of the requested org, filtered to the ones the
+// caller's grants let them see (admin/owner see everything). The namespace is the org's derived
+// one (set by requireOrgRole), so there is no way to list another org's servers from here.
 func (s *Server) handleListGameServers(w http.ResponseWriter, r *http.Request) {
 	var list gameserversv1alpha1.GameServerList
 	if err := s.Client.List(r.Context(), &list, client.InNamespace(r.PathValue("namespace"))); err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
+	acc := orgAccessFromContext(r.Context())
+	visible := list.Items[:0]
+	for _, gs := range list.Items {
+		if acc.Sees(gs.Name) {
+			visible = append(visible, gs)
+		}
+	}
+	list.Items = visible
 	writeJSON(w, http.StatusOK, list)
+}
+
+// gameServerWithAccess is a GameServer plus what the caller may do on it (the UI hides the rest).
+type gameServerWithAccess struct {
+	gameserversv1alpha1.GameServer
+	Access serverAccess `json:"access"`
+}
+
+type serverAccess struct {
+	Permissions []paneldb.Permission `json:"permissions"`
 }
 
 func (s *Server) handleGetGameServer(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +75,8 @@ func (s *Server) handleGetGameServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusFor(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, gs)
+	acc := orgAccessFromContext(r.Context())
+	writeJSON(w, http.StatusOK, gameServerWithAccess{GameServer: gs, Access: serverAccess{Permissions: acc.Effective(gs.Name)}})
 }
 
 // createGameServerRequest is a thin envelope around GameServerSpec. There is
@@ -269,6 +290,12 @@ func (s *Server) handleDeleteGameServer(w http.ResponseWriter, r *http.Request) 
 	if err := s.Client.Delete(r.Context(), gs); err != nil {
 		writeError(w, statusFor(err), err.Error())
 		return
+	}
+	acc := orgAccessFromContext(r.Context())
+	if err := s.DB.DeleteGameServerGrants(r.Context(), acc.Org.ID, gs.Name); err != nil {
+		// The server is gone; a stale grant only matters if a server with this name is created
+		// again, so log instead of failing a delete that already happened.
+		logf.FromContext(r.Context()).Error(err, "dropping grants of deleted game server", "gameserver", gs.Name)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
