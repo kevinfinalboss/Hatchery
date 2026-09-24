@@ -6,6 +6,7 @@ import type {
   BackupSettings,
   ConsoleTicketResponse,
   BackupConnectionRequest,
+  CrashLog,
   CreateGameServerRequest,
   EggEntry,
   EggSpec,
@@ -266,6 +267,8 @@ export const api = {
     request<MetricsResponse>(`${gs(org, name)}/metrics?range=${range}`),
 
   getRuntime: (org: string, name: string) => request<RuntimeResponse>(`${gs(org, name)}/runtime`),
+
+  getCrashLog: (org: string, name: string) => request<CrashLog>(`${gs(org, name)}/crash-log`),
 
   logsPath: (org: string, name: string, tailLines?: number, container?: "install" | "configure") =>
     `${API_BASE}${gs(org, name)}/logs?${tailLines ? `tailLines=${tailLines}&` : ""}${container ? `container=${container}&` : ""}follow=true`,
