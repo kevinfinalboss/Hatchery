@@ -204,7 +204,7 @@ func TestSFTPSessionRequiresOrgMembership(t *testing.T) {
 		t.Fatalf("a non-member must get 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	member := newMemberToken(t, srv, "in-org", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "in-org", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	rec = doRequest(t, srv, http.MethodPost, orgURL("/gameservers/gs-scoped/sftp-session"), member, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a member must get 200, got %d: %s", rec.Code, rec.Body.String())
