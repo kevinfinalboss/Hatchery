@@ -78,6 +78,8 @@ func main() {
 	var publicPortRange, publicHost, publicGatewayNamespace, publicGatewayName, publicGatewayClass string
 	var allowedImageRegistries string
 	var backupEndpoint, backupBucket, backupSecret string
+	var crashRestartLimit int
+	var crashRestartWindow time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -129,6 +131,10 @@ func main() {
 			"Defaults to $PANEL_BACKUP_S3_BUCKET.")
 	flag.StringVar(&backupSecret, "backup-s3-secret", os.Getenv("PANEL_BACKUP_S3_SECRET"),
 		"<namespace>/<name> of the Secret holding the platform's S3 access-key and secret-key. Defaults to $PANEL_BACKUP_S3_SECRET.")
+	flag.IntVar(&crashRestartLimit, "crash-restart-limit", controller.DefaultCrashPolicy.Limit,
+		"Crashes of a GameServer within --crash-restart-window after which it is left stopped instead of restarted again.")
+	flag.DurationVar(&crashRestartWindow, "crash-restart-window", controller.DefaultCrashPolicy.Window,
+		"Window in which --crash-restart-limit crashes make the operator stop restarting a GameServer.")
 	// Development defaults to false so logs are JSON-encoded by default (structured
 	// logging, one object per line — what a log aggregator expects). Pass
 	// --zap-devel for human-readable console output while developing locally.
@@ -219,11 +225,17 @@ func main() {
 		setupLog.Error(err, "Failed to create the Kubernetes clientset")
 		os.Exit(1)
 	}
+	crashPolicy, err := crashPolicyFromFlags(crashRestartLimit, crashRestartWindow)
+	if err != nil {
+		setupLog.Error(err, "Invalid crash restart flags")
+		os.Exit(1)
+	}
 	if err := (&controller.GameServerReconciler{
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
 		SFTPAgentImage: sftpAgentImage,
 		LogReader:      controller.ClientsetLogReader{Clientset: clientset},
+		CrashPolicy:    crashPolicy,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "gameserver")
 		os.Exit(1)
