@@ -10,6 +10,7 @@ const phaseConfig: Record<string, { label: TKey; glyph: string; color: string }>
   Stopped: { label: "status.stopped", glyph: "○", color: "text-status-stopped" },
   Suspended: { label: "status.suspended", glyph: "⏸", color: "text-status-failed" },
   Failed: { label: "status.failed", glyph: "✕", color: "text-status-failed" },
+  Crashed: { label: "status.crashed", glyph: "↻", color: "text-status-failed" },
 };
 
 export function StatusBadge({ phase }: { phase: GameServerPhase | string }) {
