@@ -10,6 +10,7 @@ import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { ServerConsole } from "../components/console/ServerConsole";
+import { CrashBanner } from "../components/server/CrashBanner";
 import { FileManager } from "../components/files/FileManager";
 import { ServerMetrics } from "../components/server/ServerMetrics";
 import { ServerBackups } from "../components/server/ServerBackups";
@@ -182,6 +183,8 @@ export function ServerDetailPage() {
           {t("server.suspendedBanner", { reason: server.spec.suspendReason ?? "" })}
         </div>
       )}
+
+      {!locked && <CrashBanner org={org} server={server} canReadLog={canConsoleRead} />}
 
       {!locked && canPower && restartRequired(server) && desiredRunning && (
         <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface px-4 py-2.5 font-sans text-sm text-text-primary">
