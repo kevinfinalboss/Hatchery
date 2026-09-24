@@ -45,6 +45,10 @@ func parseCIDRList(v string) ([]string, error) {
 	return cidrs, nil
 }
 
+func parseRegistryList(s string) []string {
+	return splitCSV(s)
+}
+
 // envOr returns the environment variable's value, or fallback when it is unset or empty.
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
