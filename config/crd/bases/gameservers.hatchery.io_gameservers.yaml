@@ -52,6 +52,11 @@ spec:
           spec:
             description: spec defines the desired state of GameServer
             properties:
+              autoRestart:
+                description: |-
+                  AutoRestart restarts the server when its game process crashes (exits non-zero or is killed for
+                  running out of memory). Unset means on. A clean exit (code 0) always stops the server instead.
+                type: boolean
               backupTarget:
                 description: BackupTarget is where this server's backups go. Required
                   before its first backup.
@@ -315,6 +320,30 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastCrash:
+                description: LastCrash is the most recent crash. Kept after the server
+                  is stopped.
+                properties:
+                  at:
+                    description: At is when the game container finished (its terminated.finishedAt).
+                    format: date-time
+                    type: string
+                  exitCode:
+                    description: ExitCode is the game process' exit code.
+                    format: int32
+                    type: integer
+                  oomKilled:
+                    description: OOMKilled is true when the container was killed for
+                      going over its memory limit.
+                    type: boolean
+                  reason:
+                    description: Reason is the kubelet's reason for the termination
+                      (Error, OOMKilled, ...).
+                    type: string
+                required:
+                - at
+                - exitCode
+                type: object
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation last reconciled by the
@@ -362,6 +391,14 @@ spec:
                     - name
                     x-kubernetes-list-type: map
                 type: object
+              recentCrashes:
+                description: |-
+                  RecentCrashes are when the game process crashed within the operator's crash window. Cleared once
+                  the server is stopped, so a manual start begins a fresh count.
+                items:
+                  format: date-time
+                  type: string
+                type: array
             type: object
         required:
         - spec
