@@ -26,7 +26,7 @@ function joinPath(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
 }
 
-export function FileManager({ org, name }: { org: string; name: string }) {
+export function FileManager({ org, name, readOnly }: { org: string; name: string; readOnly: boolean }) {
   const { t, plural, formatDateTime } = useI18n();
   const queryClient = useQueryClient();
   const [currentPath, setCurrentPath] = useState("/");
@@ -167,6 +167,7 @@ export function FileManager({ org, name }: { org: string; name: string }) {
         path={editingPath}
         content={editingContent}
         saving={saveMutation.isPending}
+        readOnly={readOnly}
         onSave={(content) => saveMutation.mutate({ path: editingPath, content })}
         onClose={() => setEditingPath(null)}
       />
@@ -179,11 +180,13 @@ export function FileManager({ org, name }: { org: string; name: string }) {
     <div
       className={clsx("flex h-full flex-col gap-3 rounded-lg", dragOver && "outline-2 outline-dashed outline-primary")}
       onDragOver={(e) => {
+        if (readOnly) return;
         e.preventDefault();
         setDragOver(true);
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
+        if (readOnly) return;
         e.preventDefault();
         setDragOver(false);
         Array.from(e.dataTransfer.files).forEach((file) => uploadMutation.mutate(file));
@@ -221,28 +224,32 @@ export function FileManager({ org, name }: { org: string; name: string }) {
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => {
-            const dirName = prompt(t("files.newFolderPrompt"));
-            if (dirName) mkdirMutation.mutate(dirName);
-          }}
-        >
-          {t("files.newFolder")}
-        </Button>
-        <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
-          {t("files.upload")}
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            Array.from(e.target.files ?? []).forEach((file) => uploadMutation.mutate(file));
-            e.target.value = "";
-          }}
-        />
+        {!readOnly && (
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const dirName = prompt(t("files.newFolderPrompt"));
+                if (dirName) mkdirMutation.mutate(dirName);
+              }}
+            >
+              {t("files.newFolder")}
+            </Button>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+              {t("files.upload")}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                Array.from(e.target.files ?? []).forEach((file) => uploadMutation.mutate(file));
+                e.target.value = "";
+              }}
+            />
+          </>
+        )}
         {selectedList.length > 0 && (
           <>
             <Button
@@ -251,58 +258,62 @@ export function FileManager({ org, name }: { org: string; name: string }) {
             >
               {t("files.download", { count: selectedList.length })}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const dest = prompt(t("files.compressPrompt"), joinPath(currentPath, "archive.zip"));
-                if (dest) compressMutation.mutate({ paths: selectedList, dest });
-              }}
-            >
-              {t("files.compress")}
-            </Button>
-            {selectedList.length === 1 && selectedList[0].endsWith(".zip") && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const dest = prompt(t("files.decompressPrompt"), currentPath);
-                  if (dest) decompressMutation.mutate({ path: selectedList[0], dest });
-                }}
-              >
-                {t("files.decompress")}
-              </Button>
+            {!readOnly && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const dest = prompt(t("files.compressPrompt"), joinPath(currentPath, "archive.zip"));
+                    if (dest) compressMutation.mutate({ paths: selectedList, dest });
+                  }}
+                >
+                  {t("files.compress")}
+                </Button>
+                {selectedList.length === 1 && selectedList[0].endsWith(".zip") && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const dest = prompt(t("files.decompressPrompt"), currentPath);
+                      if (dest) decompressMutation.mutate({ path: selectedList[0], dest });
+                    }}
+                  >
+                    {t("files.decompress")}
+                  </Button>
+                )}
+                {selectedList.length === 1 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const from = selectedList[0];
+                      const to = prompt(t("files.movePrompt"), from);
+                      if (to) renameMutation.mutate({ from, to });
+                    }}
+                  >
+                    {t("files.move")}
+                  </Button>
+                )}
+                {selectedList.length === 1 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const from = selectedList[0];
+                      const to = prompt(t("files.copyPrompt"), from + ".copy");
+                      if (to) copyMutation.mutate({ from, to });
+                    }}
+                  >
+                    {t("files.copy")}
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    if (confirm(plural("files.deleteConfirm", selectedList.length))) deleteMutation.mutate(selectedList);
+                  }}
+                >
+                  {t("files.delete")}
+                </Button>
+              </>
             )}
-            {selectedList.length === 1 && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const from = selectedList[0];
-                  const to = prompt(t("files.movePrompt"), from);
-                  if (to) renameMutation.mutate({ from, to });
-                }}
-              >
-                {t("files.move")}
-              </Button>
-            )}
-            {selectedList.length === 1 && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const from = selectedList[0];
-                  const to = prompt(t("files.copyPrompt"), from + ".copy");
-                  if (to) copyMutation.mutate({ from, to });
-                }}
-              >
-                {t("files.copy")}
-              </Button>
-            )}
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (confirm(plural("files.deleteConfirm", selectedList.length))) deleteMutation.mutate(selectedList);
-              }}
-            >
-              {t("files.delete")}
-            </Button>
           </>
         )}
       </div>
