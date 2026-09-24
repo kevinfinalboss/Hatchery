@@ -3,9 +3,14 @@ package panelapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -120,7 +125,97 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditEvent(r, acc.Org.Slug, "member.role", "user", strconv.FormatInt(uid, 10), "success", map[string]string{"role": string(req.Role)})
-	writeJSON(w, http.StatusOK, setRoleRequest{Role: req.Role})
+
+	hasAccess := true
+	if req.Role == paneldb.RoleMember {
+		grants, err := s.DB.ListMemberGrants(r.Context(), acc.Org.ID, uid)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		hasAccess = len(grants) > 0
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"role": req.Role, "hasServerAccess": hasAccess})
+}
+
+type memberGrantsBody struct {
+	Grants []paneldb.Grant `json:"grants"`
+}
+
+func (s *Server) handleGetMemberPermissions(w http.ResponseWriter, r *http.Request) {
+	acc := orgAccessFromContext(r.Context())
+	uid, err := memberUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	if _, err := s.DB.GetMembership(r.Context(), acc.Org.ID, uid); err != nil {
+		writeError(w, http.StatusNotFound, "user is not a member of this organization")
+		return
+	}
+	grants, err := s.DB.ListMemberGrants(r.Context(), acc.Org.ID, uid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if grants == nil {
+		grants = []paneldb.Grant{}
+	}
+	writeJSON(w, http.StatusOK, memberGrantsBody{Grants: grants})
+}
+
+func (s *Server) handlePutMemberPermissions(w http.ResponseWriter, r *http.Request) {
+	acc := orgAccessFromContext(r.Context())
+	uid, err := memberUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	var body memberGrantsBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	if _, err := s.DB.GetMembership(r.Context(), acc.Org.ID, uid); err != nil {
+		writeError(w, http.StatusNotFound, "user is not a member of this organization")
+		return
+	}
+	for _, g := range body.Grants {
+		for _, p := range g.Permissions {
+			if !p.Valid() {
+				writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("unknown permission %q", p))
+				return
+			}
+		}
+		if g.GameServer == paneldb.AllServers {
+			continue
+		}
+		var gs gameserversv1alpha1.GameServer
+		key := client.ObjectKey{Namespace: r.PathValue("namespace"), Name: g.GameServer}
+		if err := s.Client.Get(r.Context(), key, &gs); err != nil {
+			if apierrors.IsNotFound(err) {
+				writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("no game server named %q in this organization", g.GameServer))
+				return
+			}
+			writeError(w, statusFor(err), err.Error())
+			return
+		}
+	}
+	if err := s.DB.SetMemberGrants(r.Context(), acc.Org.ID, uid, body.Grants); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	grants, err := s.DB.ListMemberGrants(r.Context(), acc.Org.ID, uid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if grants == nil {
+		grants = []paneldb.Grant{}
+	}
+	raw, _ := json.Marshal(grants)
+	s.auditEvent(r, acc.Org.Slug, "member.permissions.update", "user", strconv.FormatInt(uid, 10), "success", map[string]string{"grants": string(raw)})
+	writeJSON(w, http.StatusOK, memberGrantsBody{Grants: grants})
 }
 
 // handleRemoveMember lets any member leave, and lets an admin remove others.
