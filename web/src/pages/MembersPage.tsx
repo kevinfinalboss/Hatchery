@@ -11,6 +11,7 @@ import { Card } from "../components/ui/Card";
 import { Field, Input } from "../components/ui/Input";
 import { Badge, ListRow, RowActions } from "../components/ui/List";
 import { Filtered } from "../components/ui/Filtered";
+import { MemberPermissionsEditor } from "../components/orgs/MemberPermissionsEditor";
 
 const roleKey = {
   owner: "members.roleOwner",
@@ -21,7 +22,15 @@ const roleKey = {
 const selectClasses =
   "rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary";
 
-function AddMemberForm({ org, callerRole }: { org: string; callerRole: OrgRole }) {
+function AddMemberForm({
+  org,
+  callerRole,
+  onOpenPermissions,
+}: {
+  org: string;
+  callerRole: OrgRole;
+  onOpenPermissions: (userId: number, username: string, showHint: boolean) => void;
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
@@ -30,11 +39,12 @@ function AddMemberForm({ org, callerRole }: { org: string; callerRole: OrgRole }
 
   const add = useMutation({
     mutationFn: () => api.addMember(org, username.trim(), role),
-    onSuccess: () => {
+    onSuccess: (member) => {
       setUsername("");
       setRole("member");
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ["members", org] });
+      if (member.role === "member") onOpenPermissions(member.userId, member.username, true);
     },
     onError: (err) => setError(errorMessage(err, t("members.addFailed"))),
   });
@@ -75,12 +85,14 @@ function MemberRow({
   callerRole,
   selfId,
   onError,
+  onOpenPermissions,
 }: {
   org: string;
   member: Member;
   callerRole: OrgRole;
   selfId: number | undefined;
   onError: (msg: string | null) => void;
+  onOpenPermissions: (userId: number, username: string, showHint: boolean) => void;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -88,14 +100,16 @@ function MemberRow({
   // Only an owner deals in owners; an admin manages members and other admins.
   const canManage = atLeast(callerRole, "admin") && (member.role !== "owner" || callerRole === "owner");
   const canLeaveOnly = isSelf && !canManage;
+  const canEditPermissions = atLeast(callerRole, "admin");
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["members", org] });
 
   const changeRole = useMutation({
     mutationFn: (role: OrgRole) => api.setMemberRole(org, member.userId, role),
-    onSuccess: () => {
+    onSuccess: (result) => {
       onError(null);
       invalidate();
+      if (!result.hasServerAccess) onOpenPermissions(member.userId, member.username, true);
     },
     onError: (err) => onError(errorMessage(err, t("members.roleChangeFailed"))),
   });
@@ -132,6 +146,11 @@ function MemberRow({
         ) : (
           <Badge>{t(roleKey[member.role])}</Badge>
         )}
+        {canEditPermissions && (
+          <Button variant="ghost" onClick={() => onOpenPermissions(member.userId, member.username, false)}>
+            {t("members.permissions")}
+          </Button>
+        )}
         {(canManage || canLeaveOnly) && (
           <Button
             variant="ghost"
@@ -154,6 +173,7 @@ export function MembersPage() {
   const { user } = useAuth();
   const { current } = useOrg();
   const [rowError, setRowError] = useState<string | null>(null);
+  const [permEditor, setPermEditor] = useState<{ userId: number; username: string; showHint: boolean } | null>(null);
   const org = current?.slug ?? "";
 
   const { data: members, isLoading, error } = useQuery({
@@ -161,6 +181,10 @@ export function MembersPage() {
     queryFn: () => api.listMembers(org),
     enabled: !!org,
   });
+
+  function openPermissions(userId: number, username: string, showHint: boolean) {
+    setPermEditor({ userId, username, showHint });
+  }
 
   if (!current) return <div className="font-sans text-sm text-text-secondary">{t("common.selectOrg")}</div>;
 
@@ -171,7 +195,7 @@ export function MembersPage() {
         <div className="mt-0.5 font-sans text-sm text-text-secondary">{current.name}</div>
       </div>
 
-      {atLeast(current.role, "admin") && <AddMemberForm org={org} callerRole={current.role} />}
+      {atLeast(current.role, "admin") && <AddMemberForm org={org} callerRole={current.role} onOpenPermissions={openPermissions} />}
 
       {isLoading && <div className="font-sans text-sm text-text-secondary">{t("common.loading")}</div>}
       {error && <div className="font-sans text-sm text-status-failed">{errorMessage(error, t("members.loadFailed"))}</div>}
@@ -181,11 +205,29 @@ export function MembersPage() {
         {(items) => (
           <Card className="divide-y divide-border">
             {items.map((m) => (
-              <MemberRow key={m.userId} org={org} member={m} callerRole={current.role} selfId={user?.id} onError={setRowError} />
+              <MemberRow
+                key={m.userId}
+                org={org}
+                member={m}
+                callerRole={current.role}
+                selfId={user?.id}
+                onError={setRowError}
+                onOpenPermissions={openPermissions}
+              />
             ))}
           </Card>
         )}
       </Filtered>
+
+      {permEditor && (
+        <MemberPermissionsEditor
+          org={org}
+          userId={permEditor.userId}
+          username={permEditor.username}
+          showNoAccessHint={permEditor.showHint}
+          onClose={() => setPermEditor(null)}
+        />
+      )}
     </div>
   );
 }
