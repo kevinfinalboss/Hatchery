@@ -32,6 +32,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - pods/exec
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
   - pods/log
   verbs:
   - get
@@ -52,6 +58,7 @@ rules:
   resources:
   - eggs
   verbs:
+  - create
   - get
   - list
   - watch
@@ -85,11 +92,22 @@ rules:
   - gameserverbackups/status
   - gameserverrestores/status
   - gameservers/status
+  - gameserverschedules/status
   - tenants/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - gameservers.hatchery.io
+  resources:
+  - gameserverschedules
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
