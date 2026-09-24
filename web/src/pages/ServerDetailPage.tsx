@@ -13,33 +13,46 @@ import { ServerConsole } from "../components/console/ServerConsole";
 import { FileManager } from "../components/files/FileManager";
 import { ServerMetrics } from "../components/server/ServerMetrics";
 import { ServerBackups } from "../components/server/ServerBackups";
+import { ServerSchedules } from "../components/server/ServerSchedules";
 import { ServerSettings } from "../components/server/ServerSettings";
 import { restartRequired, serverTitle } from "../lib/gameserver";
 import { errorMessage } from "../lib/errors";
+import { can } from "../lib/permissions";
 import type { UpdateGameServerRequest } from "../lib/types";
 
-type Section = "console" | "metrics" | "files" | "backups" | "settings";
+type Section = "console" | "metrics" | "files" | "backups" | "schedules" | "settings";
 
 const SECTIONS: {
   id: Section;
-  label: "server.sectionConsole" | "server.sectionMetrics" | "server.sectionFiles" | "server.sectionBackups" | "server.sectionSettings";
+  label:
+    | "server.sectionConsole"
+    | "server.sectionMetrics"
+    | "server.sectionFiles"
+    | "server.sectionBackups"
+    | "server.sectionSchedules"
+    | "server.sectionSettings";
 }[] = [
   { id: "console", label: "server.sectionConsole" },
   { id: "metrics", label: "server.sectionMetrics" },
   { id: "files", label: "server.sectionFiles" },
   { id: "backups", label: "server.sectionBackups" },
+  { id: "schedules", label: "server.sectionSchedules" },
   { id: "settings", label: "server.sectionSettings" },
 ];
 
 function sectionOf(raw: string | null): Section {
-  return raw === "metrics" || raw === "files" || raw === "backups" || raw === "settings" ? raw : "console";
+  return raw === "metrics" || raw === "files" || raw === "backups" || raw === "schedules" || raw === "settings" ? raw : "console";
+}
+
+function visibleSectionOf(raw: string | null, visible: Section[]): Section {
+  const requested = sectionOf(raw);
+  return visible.includes(requested) ? requested : "metrics";
 }
 
 export function ServerDetailPage() {
   const t = useT();
   const { org = "", name = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const section = sectionOf(params.get("s"));
   const { orgs } = useOrg();
   const { user } = useAuth();
   const isPlatformAdmin = !!user?.isAdmin;
@@ -108,6 +121,25 @@ export function ServerDetailPage() {
   const suspended = !!server.spec.suspended;
   const locked = suspended && !isPlatformAdmin;
 
+  const canConsoleRead = can(server, "console.read");
+  const canConsoleWrite = can(server, "console.write");
+  const canPower = can(server, "power");
+  const canFilesRead = can(server, "files.read");
+  const canFilesWrite = can(server, "files.write");
+  const canBackupsRead = can(server, "backups.read");
+  const canBackupsManage = can(server, "backups.manage");
+  const canSchedules = can(server, "schedules");
+
+  const visibleSections = SECTIONS.filter((s) => {
+    if (s.id === "console") return canConsoleRead;
+    if (s.id === "files") return canFilesRead;
+    if (s.id === "backups") return canBackupsRead;
+    if (s.id === "schedules") return canSchedules;
+    if (s.id === "settings") return canEdit;
+    return true; // metrics is always visible
+  }).map((s) => s.id);
+  const section = visibleSectionOf(params.get("s"), visibleSections);
+
   return (
     <div className="flex h-full flex-col gap-5">
       <div className="flex items-start justify-between gap-4">
@@ -122,7 +154,7 @@ export function ServerDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {!locked && desiredRunning && (
+          {!locked && canPower && desiredRunning && (
             <Button
               variant="secondary"
               disabled={restart.isPending}
@@ -133,7 +165,7 @@ export function ServerDetailPage() {
               {t("server.restart")}
             </Button>
           )}
-          {!locked && (
+          {!locked && canPower && (
           <Button
             variant={desiredRunning ? "secondary" : "primary"}
             disabled={setState.isPending}
@@ -151,7 +183,7 @@ export function ServerDetailPage() {
         </div>
       )}
 
-      {!locked && restartRequired(server) && desiredRunning && (
+      {!locked && canPower && restartRequired(server) && desiredRunning && (
         <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface px-4 py-2.5 font-sans text-sm text-text-primary">
           <span>{t("server.restartPending")}</span>
           <Button
@@ -168,7 +200,7 @@ export function ServerDetailPage() {
 
       <div className="flex min-h-0 grow flex-col gap-4 md:flex-row md:gap-6">
         <nav className="flex shrink-0 gap-1 border-b border-border pb-2 md:w-40 md:flex-col md:border-b-0 md:pb-0">
-          {SECTIONS.map((s) => (
+          {SECTIONS.filter((s) => visibleSections.includes(s.id)).map((s) => (
             <button
               key={s.id}
               onClick={() => setParams({ s: s.id }, { replace: true })}
@@ -189,13 +221,15 @@ export function ServerDetailPage() {
           {locked && section !== "settings" ? (
             <div className="font-prose text-sm text-text-secondary">{t("server.suspendedLocked")}</div>
           ) : section === "console" ? (
-            <ServerConsole org={org} name={name} running={podRunning} installing={installing} />
+            <ServerConsole org={org} name={name} running={podRunning} installing={installing} canWrite={canConsoleWrite} />
           ) : section === "metrics" ? (
             <ServerMetrics org={org} name={name} server={server} running={podRunning} />
           ) : section === "files" ? (
-            <FileManager org={org} name={name} />
+            <FileManager org={org} name={name} readOnly={!canFilesWrite} />
           ) : section === "backups" ? (
-            <ServerBackups org={org} name={name} server={server} canManage={canEdit} />
+            <ServerBackups org={org} name={name} server={server} canManage={canBackupsManage} />
+          ) : section === "schedules" ? (
+            <ServerSchedules org={org} name={name} server={server} />
           ) : (
             <ServerSettings
               org={org}
