@@ -14,8 +14,9 @@ const orgContextKey contextKey = userContextKey + 1
 // orgAccess is what requireOrgRole resolved for a request: which org, and the
 // caller's effective role in it (a platform admin is treated as owner).
 type orgAccess struct {
-	Org  *paneldb.Org
-	Role paneldb.Role
+	Org    *paneldb.Org
+	Role   paneldb.Role
+	Grants []paneldb.Grant
 }
 
 func withOrgAccess(ctx context.Context, a *orgAccess) context.Context {
@@ -49,7 +50,13 @@ func (s *Server) resolveOrgAccess(ctx context.Context, user *paneldb.User, slug 
 	if !role.AtLeast(min) {
 		return nil, http.StatusForbidden, "insufficient role in this organization"
 	}
-	return &orgAccess{Org: org, Role: role}, 0, ""
+	var grants []paneldb.Grant
+	if role == paneldb.RoleMember {
+		if grants, err = s.DB.ListMemberGrants(ctx, org.ID, user.ID); err != nil {
+			return nil, http.StatusInternalServerError, err.Error()
+		}
+	}
+	return &orgAccess{Org: org, Role: role, Grants: grants}, 0, ""
 }
 
 func (s *Server) requireOrgRole(min paneldb.Role, next http.Handler) http.Handler {
