@@ -42,6 +42,16 @@ func TestParseCIDRList(t *testing.T) {
 	}
 }
 
+func TestParseRegistryList(t *testing.T) {
+	got := parseRegistryList(" docker.io/itzg, ,ghcr.io/ptero-eggs ,")
+	if len(got) != 2 || got[0] != "docker.io/itzg" || got[1] != "ghcr.io/ptero-eggs" {
+		t.Fatalf("parseRegistryList = %q", got)
+	}
+	if parseRegistryList("") != nil {
+		t.Fatal("empty input must give a nil list (check disabled)")
+	}
+}
+
 func TestParsePublicPortRange(t *testing.T) {
 	if min, max, err := parsePublicPortRange(""); err != nil || min != 0 || max != 0 {
 		t.Fatalf("empty must mean disabled, got (%d, %d, %v)", min, max, err)
