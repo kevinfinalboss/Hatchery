@@ -63,10 +63,15 @@ var (
 		Name: "hatchery_schedule_runs_total",
 		Help: "Finished GameServerSchedule runs by result (Succeeded, Failed, Skipped).",
 	}, []string{"result"})
+
+	gameServerCrashesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hatchery_gameserver_crashes_total",
+		Help: "Game processes that ended on their own, by what the operator did: restarted, gave_up (left stopped) or clean_exit (exit code 0, stopped).",
+	}, []string{"result"})
 )
 
 func init() {
-	metrics.Registry.MustRegister(gameServerReconcileTotal, gameServerReconcileDuration, gameServerPhase, scheduleRunsTotal)
+	metrics.Registry.MustRegister(gameServerReconcileTotal, gameServerReconcileDuration, gameServerPhase, scheduleRunsTotal, gameServerCrashesTotal)
 }
 
 // recordGameServerPhase updates the phase gauge when a GameServer transitions
