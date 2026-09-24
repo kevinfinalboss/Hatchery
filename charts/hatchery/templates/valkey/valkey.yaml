@@ -1,0 +1,91 @@
+{{- if .Values.valkey.enabled }}
+{{- $name := include "hatchery.valkeyName" . }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "valkey") | nindent 4 }}
+type: Opaque
+data:
+  password: {{ include "hatchery.persistentPassword" (dict "ctx" . "secret" $name "key" "password") }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "valkey") | nindent 4 }}
+spec:
+  selector: {{- include "hatchery.selector" (dict "ctx" . "component" "valkey") | nindent 4 }}
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "valkey") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "hatchery.selector" (dict "ctx" . "component" "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "hatchery.componentLabels" (dict "ctx" . "component" "valkey") | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 1000   # the valkey group in the official images
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $name }}, key: password}}
+          args:
+            - valkey-server
+            - --requirepass
+            - $(VALKEY_PASSWORD)
+            - --dir
+            - /data
+            {{- if .Values.valkey.persistence.enabled }}
+            - --appendonly
+            - "yes"
+            {{- end }}
+          ports:
+            - {name: valkey, containerPort: 6379, protocol: TCP}
+          readinessProbe:
+            exec: {command: ["sh", "-c", "valkey-cli -a \"$VALKEY_PASSWORD\" --no-auth-warning ping | grep -q PONG"]}
+            periodSeconds: 10
+          livenessProbe:
+            exec: {command: ["sh", "-c", "valkey-cli -a \"$VALKEY_PASSWORD\" --no-auth-warning ping | grep -q PONG"]}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources: {{- toYaml .Values.valkey.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      {{- if not .Values.valkey.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.valkey.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.valkey.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.valkey.persistence.size }}
+  {{- end }}
+{{- end }}
