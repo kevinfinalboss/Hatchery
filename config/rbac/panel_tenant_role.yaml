@@ -4,7 +4,7 @@ metadata:
   name: hatchery-panel-tenant
 rules:
 - apiGroups: ["gameservers.hatchery.io"]
-  resources: ["gameservers", "gameserverbackups", "gameserverrestores", "eggs"]
+  resources: ["gameservers", "gameserverbackups", "gameserverrestores", "gameserverschedules", "eggs"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["gameservers.hatchery.io"]
   resources: ["gameservers/status"]
@@ -23,7 +23,7 @@ rules:
   verbs: ["get", "list"]
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get"]
+  verbs: ["get", "list", "create", "update", "delete"]
 - apiGroups: ["metrics.k8s.io"]
   resources: ["pods"]
   verbs: ["get", "list"]
