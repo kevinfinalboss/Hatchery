@@ -25,6 +25,7 @@ function EggEditor({
   lockName,
   saving,
   error,
+  allowedRegistries,
   onSave,
   onCancel,
 }: {
@@ -33,6 +34,7 @@ function EggEditor({
   lockName: boolean;
   saving: boolean;
   error: string | null;
+  allowedRegistries?: string[];
   onSave: (name: string, spec: EggSpec) => void;
   onCancel: () => void;
 }) {
@@ -76,6 +78,11 @@ function EggEditor({
         <div className="font-sans text-xs text-text-tertiary">
           {t("eggs.warning")}
         </div>
+        {allowedRegistries && allowedRegistries.length > 0 && (
+          <div className="font-sans text-xs text-text-tertiary">
+            {t("eggs.allowedRegistries", { list: allowedRegistries.join(", ") })}
+          </div>
+        )}
         <div className="flex gap-2">
           <Button type="submit" disabled={saving}>
             {saving ? t("common.saving") : t("common.save")}
@@ -105,6 +112,12 @@ export function EggsPage() {
   const { data: eggs, isLoading } = useQuery({
     queryKey: ["eggs", org],
     queryFn: () => api.listOrgEggs(org),
+    enabled: !!org,
+  });
+
+  const { data: imagePolicy } = useQuery({
+    queryKey: ["image-policy", org],
+    queryFn: () => api.getImagePolicy(org),
     enabled: !!org,
   });
 
@@ -166,6 +179,11 @@ export function EggsPage() {
           lockName={typeof editing !== "string"}
           saving={save.isPending}
           error={error}
+          allowedRegistries={
+            imagePolicy?.enforced && (editing === "new-private" || (typeof editing !== "string" && editing.scope === "Namespace"))
+              ? imagePolicy.registries
+              : undefined
+          }
           onSave={(name, spec) => {
             setError(null);
             save.mutate({ name, spec });
