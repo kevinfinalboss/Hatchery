@@ -57,7 +57,7 @@ func TestConsoleTicketRequiresMembership(t *testing.T) {
 
 func TestConsoleHandshakeAcceptsAValidTicketExactlyOnce(t *testing.T) {
 	srv := newTestServer(t)
-	member := newMemberToken(t, srv, "m", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "m", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	ticket := issueTicket(t, srv, member, "mc")
 
 	var ns string
@@ -75,7 +75,7 @@ func TestConsoleHandshakeAcceptsAValidTicketExactlyOnce(t *testing.T) {
 
 func TestConsoleHandshakeRejectsBadInputs(t *testing.T) {
 	srv := newTestServer(t)
-	member := newMemberToken(t, srv, "m", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "m", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	var ns string
 
 	if rec := handshake(t, srv, orgURL("/gameservers/mc/console"), &ns); rec.Code != http.StatusUnauthorized {
@@ -103,7 +103,7 @@ func TestConsoleHandshakeRejectsBadInputs(t *testing.T) {
 
 func TestConsoleHandshakeRevalidatesMembership(t *testing.T) {
 	srv := newTestServer(t)
-	member := newMemberToken(t, srv, "leaver", paneldb.RoleMember)
+	member := memberWithGrants(t, srv, "leaver", paneldb.Grant{GameServer: paneldb.AllServers, Permissions: paneldb.AllPermissions})
 	ticket := issueTicket(t, srv, member, "mc")
 
 	// The user is removed from the org in the seconds between asking and using.
