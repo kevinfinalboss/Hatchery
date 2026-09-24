@@ -115,6 +115,12 @@ var _ = BeforeSuite(func() {
 	err = SetupGameServerRestoreWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = SetupEggWebhookWithManager(mgr, []string{"docker.io/itzg", "ghcr.io/ptero-eggs"})
+	Expect(err).NotTo(HaveOccurred())
+
+	err = SetupGameServerScheduleWebhookWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:webhook
 
 	go func() {
