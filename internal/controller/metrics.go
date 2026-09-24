@@ -58,10 +58,15 @@ var (
 		},
 		[]string{"namespace", "name", "phase"},
 	)
+
+	scheduleRunsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hatchery_schedule_runs_total",
+		Help: "Finished GameServerSchedule runs by result (Succeeded, Failed, Skipped).",
+	}, []string{"result"})
 )
 
 func init() {
-	metrics.Registry.MustRegister(gameServerReconcileTotal, gameServerReconcileDuration, gameServerPhase)
+	metrics.Registry.MustRegister(gameServerReconcileTotal, gameServerReconcileDuration, gameServerPhase, scheduleRunsTotal)
 }
 
 // recordGameServerPhase updates the phase gauge when a GameServer transitions
