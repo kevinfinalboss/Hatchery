@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/backupplan"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -41,7 +42,7 @@ func newBackupFixture(t *testing.T, withQuota bool, objs ...client.Object) backu
 	return backupFixture{
 		srv:    srv,
 		admin:  newMemberToken(t, srv, "adm", paneldb.RoleAdmin),
-		member: newMemberToken(t, srv, "mem", paneldb.RoleMember),
+		member: memberWithGrants(t, srv, "mem", paneldb.Grant{GameServer: "edit-me", Permissions: []paneldb.Permission{paneldb.PermBackupsRead}}),
 	}
 }
 
@@ -202,7 +203,7 @@ func TestCreatePlatformBackup(t *testing.T) {
 	b := bs[0]
 	s3 := b.Spec.Destination.S3
 	if b.Spec.GameServerRef.Name != "edit-me" || s3.Bucket != "hatchery" || s3.Endpoint != "http://minio:9000" ||
-		s3.Prefix != testOrgSlug+"/edit-me" || s3.SecretRef.Name != platformBackupSecret {
+		s3.Prefix != testOrgSlug+"/edit-me" || s3.SecretRef.Name != backupplan.PlatformSecret {
 		t.Fatalf("destination: %+v", b.Spec)
 	}
 	if b.Labels[gameserversv1alpha1.BackupGameServerLabel] != "edit-me" || b.Labels[gameserversv1alpha1.BackupDestinationLabel] != "platform" {
@@ -214,7 +215,7 @@ func TestCreatePlatformBackup(t *testing.T) {
 	}
 
 	var sec corev1.Secret
-	if err := f.srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: platformBackupSecret}, &sec); err != nil {
+	if err := f.srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: backupplan.PlatformSecret}, &sec); err != nil {
 		t.Fatalf("the org's platform secret must be created on demand: %v", err)
 	}
 	if string(sec.Data["access-key"]) != "AKIA" || string(sec.Data["secret-key"]) != "s3cr3t" || len(sec.Data["restic-password"]) < 16 {
@@ -224,7 +225,7 @@ func TestCreatePlatformBackup(t *testing.T) {
 	if code := f.create(t, "edit-me"); code != http.StatusAccepted {
 		t.Fatalf("second backup: got %d", code)
 	}
-	_ = f.srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: platformBackupSecret}, &sec)
+	_ = f.srv.Client.Get(t.Context(), client.ObjectKey{Namespace: testOrgNS(), Name: backupplan.PlatformSecret}, &sec)
 	if string(sec.Data["restic-password"]) != first {
 		t.Fatal("the restic password must be generated once and kept: changing it would orphan every snapshot")
 	}
