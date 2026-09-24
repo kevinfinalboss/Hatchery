@@ -17,7 +17,8 @@ export type GameServerPhase =
   | "Running"
   | "Stopping"
   | "Stopped"
-  | "Failed";
+  | "Failed"
+  | "Crashed";
 
 export interface GameServerPublicExposurePort {
   name: string;
@@ -50,6 +51,22 @@ export interface GameServerSpec {
     limits?: Record<string, string>;
   };
   publicExposure?: { enabled?: boolean };
+  autoRestart?: boolean;
+}
+
+export interface GameServerCrash {
+  at: string;
+  exitCode: number;
+  reason?: string;
+  oomKilled?: boolean;
+}
+
+export interface CrashLog {
+  at: string;
+  exitCode: number;
+  reason?: string;
+  oomKilled: boolean;
+  log: string;
 }
 
 export interface GameServerCondition {
@@ -65,6 +82,8 @@ export interface GameServerStatus {
   observedGeneration?: number;
   conditions?: GameServerCondition[];
   publicExposure?: GameServerPublicExposureStatus;
+  recentCrashes?: string[];
+  lastCrash?: GameServerCrash;
 }
 
 export type Permission =
@@ -147,6 +166,7 @@ export interface UpdateGameServerRequest {
   variables?: GameServerVariable[];
   resources?: { limits?: Record<string, string> };
   publicExposureEnabled?: boolean;
+  autoRestart?: boolean;
 }
 
 export interface QuotaUsage {
