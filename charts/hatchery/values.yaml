@@ -17,6 +17,11 @@ operator:
     limits: {cpu: 500m, memory: 256Mi}
   # Extra CIDRs tenant pods may not reach over internet egress (added to RFC1918, link-local, CGNAT).
   egressExceptCIDRs: []
+  # A GameServer whose game process crashes `limit` times within `window` is left stopped instead of
+  # being restarted again. Exit code 0 is never a crash: it stops the server.
+  crashRestart:
+    limit: 3
+    window: 10m
   metrics:
     # Serve controller metrics on :8443 (HTTPS, authenticated) behind a Service. Off: no metrics endpoint.
     enabled: false
