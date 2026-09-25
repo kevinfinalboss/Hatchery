@@ -191,22 +191,18 @@ function EmailSection({ user, mailEnabled }: { user: User; mailEnabled: boolean 
       <div className="font-sans text-sm font-semibold text-text-primary">{t("account.changeEmail")}</div>
       <div className="font-sans text-sm text-text-secondary">{t("account.currentEmail", { email: user.email })}</div>
       {!mailEnabled && <div className="font-sans text-xs text-text-tertiary">{t("account.emailNoConfirmation")}</div>}
-      {(
-        <>
-          <Field label={t("account.newEmail")} htmlFor="acc-email">
-            <Input id="acc-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </Field>
-          <Field label={t("account.currentPassword")} htmlFor="acc-email-pw">
-            <Input id="acc-email-pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </Field>
-          <div>
-            <Button type="submit" disabled={saving}>
-              {saving ? t("common.saving") : mailEnabled ? t("account.sendConfirmation") : t("account.saveEmail")}
-            </Button>
-          </div>
-          <Status ok={ok} error={error} />
-        </>
-      )}
+      <Field label={t("account.newEmail")} htmlFor="acc-email">
+        <Input id="acc-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </Field>
+      <Field label={t("account.currentPassword")} htmlFor="acc-email-pw">
+        <Input id="acc-email-pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </Field>
+      <div>
+        <Button type="submit" disabled={saving}>
+          {saving ? t("common.saving") : mailEnabled ? t("account.sendConfirmation") : t("account.saveEmail")}
+        </Button>
+      </div>
+      <Status ok={ok} error={error} />
     </form>
   );
 }
