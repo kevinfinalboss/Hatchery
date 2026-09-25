@@ -153,3 +153,18 @@ func TestRedisMetricsStoreAppendIsIdempotentAndRangeFilters(t *testing.T) {
 		t.Fatalf("series must be per server, got %+v", got)
 	}
 }
+
+func TestRedisRequestLimiter(t *testing.T) {
+	rdb, prefix := testRedis(t)
+	l := newRedisRequestLimiter(rdb, prefix)
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if ok, _, err := l.Allow(ctx, "k", 2, time.Minute); err != nil || !ok {
+			t.Fatalf("request %d: ok=%v err=%v", i+1, ok, err)
+		}
+	}
+	ok, retry, err := l.Allow(ctx, "k", 2, time.Minute)
+	if err != nil || ok || retry <= 0 || retry > time.Minute {
+		t.Fatalf("3rd: ok=%v retry=%v err=%v", ok, retry, err)
+	}
+}

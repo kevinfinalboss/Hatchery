@@ -158,8 +158,10 @@ func (l *RedisLoginLimiter) RecordSuccess(ctx context.Context, username, ip stri
 }
 
 var (
-	_ TicketStore  = (*RedisTicketStore)(nil)
-	_ LoginLimiter = (*RedisLoginLimiter)(nil)
-	_ TicketStore  = (*MemoryTicketStore)(nil)
-	_ LoginLimiter = (*MemoryLoginLimiter)(nil)
+	_ TicketStore    = (*RedisTicketStore)(nil)
+	_ LoginLimiter   = (*RedisLoginLimiter)(nil)
+	_ RequestLimiter = (*RedisRequestLimiter)(nil)
+	_ TicketStore    = (*MemoryTicketStore)(nil)
+	_ LoginLimiter   = (*MemoryLoginLimiter)(nil)
+	_ RequestLimiter = (*MemoryRequestLimiter)(nil)
 )
