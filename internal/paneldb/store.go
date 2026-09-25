@@ -17,6 +17,7 @@ limitations under the License.
 package paneldb
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -29,6 +30,29 @@ var ErrNotFound = errors.New("not found")
 // ErrAlreadyExists is returned when a create would violate a uniqueness
 // constraint (e.g. a username that's already taken).
 var ErrAlreadyExists = errors.New("already exists")
+
+// ErrEmailTaken is returned when an e-mail is already used by another account.
+var ErrEmailTaken = errors.New("e-mail already in use")
+
+// ErrLastAdmin is returned when a change would leave the platform without any admin.
+var ErrLastAdmin = errors.New("the platform must keep at least one admin")
+
+// queryer is what *sql.DB and *sql.Tx have in common, so helpers can run
+// inside or outside a transaction.
+type queryer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// uniqueConstraint returns the name of the violated unique constraint, or "".
+func uniqueConstraint(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+		return pgErr.ConstraintName
+	}
+	return ""
+}
 
 // Store is the Panel API's handle to its Postgres database.
 type Store struct {

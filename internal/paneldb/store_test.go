@@ -80,7 +80,7 @@ func TestCreateUserAndVerifyPassword(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u, err := s.CreateUser(ctx, "alice", "correct-horse-battery-staple", false)
+	u, err := s.CreateUser(ctx, "alice", "alice@example.com", "correct-horse-battery-staple", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestCreateUserAndVerifyPassword(t *testing.T) {
 		t.Fatal("expected a non-zero id")
 	}
 
-	if _, err := s.CreateUser(ctx, "alice", "whatever", false); err != ErrAlreadyExists {
+	if _, err := s.CreateUser(ctx, "alice", "alice2@example.com", "whatever", false); err != ErrAlreadyExists {
 		t.Fatalf("expected ErrAlreadyExists, got %v", err)
 	}
 
@@ -112,11 +112,11 @@ func TestUpsertUserIsIdempotent(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	first, err := s.UpsertUser(ctx, "admin", "password-one", true)
+	first, err := s.UpsertUser(ctx, "admin", "admin@example.com", "password-one", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.UpsertUser(ctx, "admin", "password-two", true)
+	second, err := s.UpsertUser(ctx, "admin", "admin@example.com", "password-two", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestSessionLifecycle(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u, err := s.CreateUser(ctx, "bob", "password", false)
+	u, err := s.CreateUser(ctx, "bob", "bob@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestSessionExpiry(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u, err := s.CreateUser(ctx, "carol", "password", false)
+	u, err := s.CreateUser(ctx, "carol", "carol@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestDeleteUserCascadesSessions(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	u, err := s.CreateUser(ctx, "erin", "password", false)
+	u, err := s.CreateUser(ctx, "erin", "erin@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestDeleteUserCascadesSessions(t *testing.T) {
 func TestVerifyPasswordUnknownUserCostsAsMuchAsAWrongPassword(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	if _, err := s.CreateUser(ctx, "real", "correct-horse", false); err != nil {
+	if _, err := s.CreateUser(ctx, "real", "real@example.com", "correct-horse", false); err != nil {
 		t.Fatal(err)
 	}
 
