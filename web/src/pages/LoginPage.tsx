@@ -1,23 +1,28 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { AuthLayout } from "../components/layout/AuthLayout";
 import { Button } from "../components/ui/Button";
 import { Field, Input } from "../components/ui/Input";
-import { LanguageSwitcher } from "../components/ui/LanguageSwitcher";
-import { Wordmark } from "../components/ui/Wordmark";
 import { useT } from "../lib/i18n";
 import { useAuth } from "../lib/auth";
-import { ApiError } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 
 export function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const t = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { data: features } = useQuery({ queryKey: ["auth-features"], queryFn: api.features });
 
-  if (user) return <Navigate to="/" replace />;
+  const rawNext = new URLSearchParams(location.search).get("next");
+  const next = rawNext && rawNext.startsWith("/") ? rawNext : "/";
+
+  if (user) return <Navigate to={next} replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,7 +30,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(username, password);
-      navigate("/", { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError(
@@ -42,18 +47,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-canvas px-4">
-      <div className="fixed right-4 top-4">
-        <LanguageSwitcher />
-      </div>
-      <form
-        onSubmit={(e) => void handleSubmit(e)}
-        className="flex w-[360px] max-w-full flex-col gap-5 border border-border bg-surface p-8"
-      >
-        <div className="text-center text-2xl">
-          <Wordmark />
-        </div>
-
+    <AuthLayout>
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-5">
         <Field label={t("login.username")} htmlFor="username">
           <Input
             id="username"
@@ -80,7 +75,13 @@ export function LoginPage() {
         <Button type="submit" disabled={submitting} className="w-full justify-center">
           {submitting ? t("login.submitting") : t("login.submit")}
         </Button>
+
+        {features?.passwordReset && (
+          <Link to="/forgot-password" className="text-center font-sans text-sm text-text-secondary hover:text-primary-text">
+            {t("login.forgot")}
+          </Link>
+        )}
       </form>
-    </div>
+    </AuthLayout>
   );
 }
