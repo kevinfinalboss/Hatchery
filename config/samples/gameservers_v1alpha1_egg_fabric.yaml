@@ -1,0 +1,134 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: minecraft-fabric
+  namespace: hatchery-catalog
+spec:
+  images:
+    - name: "Java 25"
+      image: ghcr.io/ptero-eggs/yolks:java_25
+    - name: "Java 24"
+      image: ghcr.io/ptero-eggs/yolks:java_24
+    - name: "Java 23"
+      image: ghcr.io/ptero-eggs/yolks:java_23
+    - name: "Java 22"
+      image: ghcr.io/ptero-eggs/yolks:java_22
+    - name: "Java 21"
+      image: ghcr.io/ptero-eggs/yolks:java_21
+    - name: "Java 17"
+      image: ghcr.io/ptero-eggs/yolks:java_17
+    - name: "Java 16"
+      image: ghcr.io/ptero-eggs/yolks:java_16
+    - name: "Java 11"
+      image: ghcr.io/ptero-eggs/yolks:java_11
+    - name: "Java 8"
+      image: ghcr.io/ptero-eggs/yolks:java_8
+  runAsUser: 1000
+  startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
+  stopCommand: "stop"
+  stopSignal: SIGTERM
+  stopTimeoutSeconds: 90
+  startupDetection:
+    regex: "\\)! For help, type "
+  install:
+    image: eclipse-temurin:21-jdk-jammy
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      # Fabric MC Installation Script
+      #
+      # Server Files: /data
+      apt update
+      apt install -y curl jq unzip dos2unix wget
+      mkdir -p /data
+      cd /data
+
+      if [ "${EULA}" = "TRUE" ]; then
+        echo "eula=true" > /data/eula.txt
+      fi
+
+      # Enable snapshots
+      if [ -z "$MC_VERSION" ] || [ "$MC_VERSION" == "latest" ]; then
+        MC_VERSION=$(curl -sSL https://meta.fabricmc.net/v2/versions/game | jq -r '.[] | select(.stable== true )|.version' | head -n1)
+      elif [ "$MC_VERSION" == "snapshot" ]; then
+        MC_VERSION=$(curl -sSL https://meta.fabricmc.net/v2/versions/game | jq -r '.[] | select(.stable== false )|.version' | head -n1)
+      fi
+
+      if [ -z "$FABRIC_VERSION" ] || [ "$FABRIC_VERSION" == "latest" ]; then
+        FABRIC_VERSION=$(curl -sSL https://meta.fabricmc.net/v2/versions/installer | jq -r '.[0].version')
+      fi
+
+      if [ -z "$LOADER_VERSION" ] || [ "$LOADER_VERSION" == "latest" ]; then
+        LOADER_VERSION=$(curl -sSL https://meta.fabricmc.net/v2/versions/loader | jq -r '.[] | select(.stable== true )|.version' | head -n1)
+      elif [ "$LOADER_VERSION" == "snapshot" ]; then
+        LOADER_VERSION=$(curl -sSL https://meta.fabricmc.net/v2/versions/loader | jq -r '.[] | select(.stable== false )|.version' | head -n1)
+      fi
+
+      wget -O fabric-installer.jar https://maven.fabricmc.net/net/fabricmc/fabric-installer/$FABRIC_VERSION/fabric-installer-$FABRIC_VERSION.jar
+      java -jar fabric-installer.jar server -mcversion $MC_VERSION -loader $LOADER_VERSION -downloadMinecraft
+      mv server.jar minecraft-server.jar
+      mv fabric-server-launch.jar server.jar
+      echo "serverJar=minecraft-server.jar" > fabric-server-launcher.properties
+
+      # The mod installer reads the game version actually installed from here (the variable may be "latest").
+      mkdir -p /data/.hatchery
+      echo "${MC_VERSION}" > /data/.hatchery/game-version
+      chown -R 1000:1000 /data
+      echo -e "Install Complete"
+  configure:
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      # Runs on every start: forces the keys the Wings used to rewrite (config.files) without
+      # touching the rest of server.properties.
+      cd /data
+      touch server.properties
+      setkey() {
+        grep -v "^$1=" server.properties > server.properties.tmp || true
+        printf '%s=%s\n' "$1" "$2" >> server.properties.tmp
+        mv server.properties.tmp server.properties
+      }
+      setkey server-ip 0.0.0.0
+      setkey server-port 25565
+  mods:
+    kind: mod
+    loaders: [fabric]
+    directory: mods
+    gameVersion:
+      variable: MC_VERSION
+      file: .hatchery/game-version
+  recommendedResources:
+    cpu: "2"
+    memory: 4Gi
+    disk: 10Gi
+  variables:
+    - name: EULA
+      description: "Aceita a EULA da Mojang (https://aka.ms/MinecraftEULA). Obrigatório pro servidor iniciar."
+      default: "TRUE"
+      required: true
+      userEditable: true
+    - name: MC_VERSION
+      description: "Versão do Minecraft. 'latest' pega a estável mais recente; 'snapshot', a snapshot mais recente."
+      default: "latest"
+      userEditable: true
+    - name: FABRIC_VERSION
+      description: "Versão do instalador do Fabric ('latest' pega a mais recente)."
+      default: "latest"
+      userEditable: true
+    - name: LOADER_VERSION
+      description: "Versão do Fabric Loader ('latest' = estável mais recente, 'snapshot' = mais recente)."
+      default: "latest"
+      userEditable: true
+    - name: SERVER_JARFILE
+      description: "Nome do arquivo .jar do servidor."
+      default: "server.jar"
+      userEditable: true
+      validationRegex: "^([\\w\\d._-]+)(\\.jar)$"
+  ports:
+    - name: game
+      containerPort: 25565
+      protocol: TCP
+      default: true
