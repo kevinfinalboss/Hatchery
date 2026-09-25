@@ -72,8 +72,8 @@ export function useCommands(): Command[] {
       }
     }
     commands.push({ id: "server-console", group: serverGroup, label: t("palette.goConsole"), run: () => navigate(`${base}?s=console`) });
-    commands.push({ id: "server-metrics", group: serverGroup, label: t("palette.goMetrics"), run: () => navigate(`${base}?s=metrics`) });
     commands.push({ id: "server-files", group: serverGroup, label: t("palette.goFiles"), run: () => navigate(`${base}?s=files`) });
+    commands.push({ id: "server-mods", group: serverGroup, label: t("palette.goMods"), run: () => navigate(`${base}?s=mods&tab=explore`) });
     commands.push({ id: "server-settings", group: serverGroup, label: t("palette.goSettings"), run: () => navigate(`${base}?s=settings`) });
   }
 
