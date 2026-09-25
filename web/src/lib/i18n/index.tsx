@@ -51,12 +51,15 @@ interface I18nContextValue {
   t: (key: TKey, vars?: Vars) => string;
   plural: (base: PluralKey, count: number, vars?: Vars) => string;
   formatDateTime: (value: string | number | Date) => string;
+  timeZone: string;
+  setTimeZone: (tz: string) => void;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(detect);
+  const [timeZone, setTimeZone] = useState<string>("");
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -78,9 +81,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const form = rules.select(count) === "one" ? "one" : "other";
       return t(`${base}_${form}` as TKey, { count, ...vars });
     };
-    const formatDateTime = (v: string | number | Date) => new Date(v).toLocaleString(locale);
-    return { locale, setLocale, t, plural, formatDateTime };
-  }, [locale, setLocale]);
+    const formatDateTime = (v: string | number | Date) =>
+      new Date(v).toLocaleString(locale, timeZone ? { timeZone } : undefined);
+    return { locale, setLocale, t, plural, formatDateTime, timeZone, setTimeZone };
+  }, [locale, setLocale, timeZone]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
