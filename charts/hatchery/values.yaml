@@ -68,6 +68,14 @@ panel:
     from: ""              # e.g. "Hatchery <noreply@example.com>"
     tls: starttls         # starttls | tls (implicit, 465) | none (local catcher such as Mailpit only)
     existingSecret: ""    # Secret in the release namespace with keys "username" and "password"
+  # Mod/plugin installer (Modrinth needs no key; CurseForge needs one from console.curseforge.com).
+  mods:
+    # User-Agent sent to the catalogs; empty = hatchery/dev (+<publicURL>). Modrinth requires one
+    # that identifies the application.
+    userAgent: ""
+    curseforge:
+      # Secret in the release namespace with key "api-key". Empty = CurseForge off.
+      existingSecret: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -109,6 +117,8 @@ catalogEggs:
   include:
     - minecraft-vanilla
     - minecraft-paper
+    - minecraft-purpur
+    - minecraft-fabric
     - terraria-vanilla
     - project-zomboid   # install validated; the server boot itself was not
 
