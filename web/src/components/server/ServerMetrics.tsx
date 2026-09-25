@@ -130,7 +130,7 @@ export function ServerMetrics({
   const formatTime = (ts: number) => new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto">
+    <div className="flex flex-col gap-4">
       {runtimeCards}
       <div className="flex flex-wrap items-center gap-3">
         <div role="group" aria-label={t("metrics.rangeLabel")} className="flex divide-x divide-border border border-border">
