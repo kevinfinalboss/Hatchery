@@ -76,13 +76,13 @@ function ScheduleEditor({
   item?: ScheduleItem;
   onClose: () => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, timeZone: profileTimeZone } = useI18n();
   const queryClient = useQueryClient();
   const isNew = editing === "";
 
   const [displayName, setDisplayName] = useState(item?.spec.displayName ?? "");
   const [preset, setPreset] = useState<Preset>(item ? cronToPreset(item.spec.cron) : { kind: "daily", hour: 3, minute: 0 });
-  const [timeZone, setTimeZone] = useState(item?.spec.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [timeZone, setTimeZone] = useState(item?.spec.timeZone || profileTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [onlyWhenRunning, setOnlyWhenRunning] = useState(item?.spec.onlyWhenRunning ?? true);
   const [tasks, setTasks] = useState<ScheduleTask[]>(item && item.spec.tasks.length > 0 ? item.spec.tasks : [defaultTask()]);
   const [error, setError] = useState<string | null>(null);
