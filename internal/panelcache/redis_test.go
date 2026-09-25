@@ -168,3 +168,8 @@ func TestRedisRequestLimiter(t *testing.T) {
 		t.Fatalf("3rd: ok=%v retry=%v err=%v", ok, retry, err)
 	}
 }
+
+func TestRedisModHashCache(t *testing.T) {
+	rdb, prefix := testRedis(t)
+	testModHashCache(t, newRedisModHashCache(rdb, prefix))
+}
