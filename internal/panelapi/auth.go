@@ -79,6 +79,18 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	}))
 }
 
+func (s *Server) optionalUser(r *http.Request) *paneldb.User {
+	token := headerToken(r)
+	if token == "" {
+		return nil
+	}
+	u, err := s.DB.ValidateSession(r.Context(), token)
+	if err != nil {
+		return nil
+	}
+	return u
+}
+
 func userFromContext(ctx context.Context) *paneldb.User {
 	u, _ := ctx.Value(userContextKey).(*paneldb.User)
 	return u
