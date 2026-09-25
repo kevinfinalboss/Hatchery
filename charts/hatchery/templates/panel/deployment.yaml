@@ -71,6 +71,9 @@ spec:
             - --backup-s3-secret={{ .Release.Namespace }}/{{ .Values.backup.platform.secretName }}
             {{- end }}
             - --bootstrap-admin-email={{ .Values.panel.bootstrapAdmin.email }}
+            {{- with .Values.panel.mods.userAgent }}
+            - --mods-user-agent={{ . }}
+            {{- end }}
             {{- with .Values.panel.publicURL }}
             - --public-url={{ . }}
             {{- end }}
@@ -105,6 +108,10 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ . }}, key: username}}
             - name: PANEL_SMTP_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ . }}, key: password}}
+            {{- end }}
+            {{- with .Values.panel.mods.curseforge.existingSecret }}
+            - name: PANEL_CURSEFORGE_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ . }}, key: api-key}}
             {{- end }}
           ports:
             - {name: http, containerPort: 8090, protocol: TCP}
