@@ -21,7 +21,7 @@ func TestResetPasswordIsSingleUseAndRevokesSessions(t *testing.T) {
 	if _, err := s.ResetPassword(ctx, tok, "password2"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.VerifyPassword(ctx, "kevin", "password2"); err != nil {
+	if _, err := s.VerifyPassword(ctx, "jhon", "password2"); err != nil {
 		t.Errorf("new password: %v", err)
 	}
 	if _, err := s.ValidateSession(ctx, sess); !errors.Is(err, ErrNotFound) {
