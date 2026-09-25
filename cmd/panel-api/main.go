@@ -146,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := panelapi.BootstrapAdmin(ctx, c, db, adminSecretNamespace, adminSecretName); err != nil {
+	if err := panelapi.BootstrapAdmin(ctx, c, db, adminSecretNamespace, adminSecretName, "admin@hatchery.local"); err != nil {
 		log.Error(err, "failed to bootstrap admin user")
 		os.Exit(1)
 	}
