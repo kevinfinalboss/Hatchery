@@ -68,9 +68,18 @@ export function FileManager({ org, name, readOnly }: { org: string; name: string
   });
   const deleteMutation = useMutation({
     mutationFn: (paths: string[]) => api.deleteFiles(org, name, paths),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setSelected(new Set());
       invalidate();
+      if (result && result.failed.length > 0) {
+        setError(
+          t("files.deletePartial", {
+            deleted: result.deleted.length,
+            total: result.deleted.length + result.failed.length,
+            failed: result.failed.map((f) => `${f.path} (${f.error})`).join("; "),
+          }),
+        );
+      }
     },
     onError: reportError,
   });
