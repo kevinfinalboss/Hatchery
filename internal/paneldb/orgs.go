@@ -70,14 +70,22 @@ type OrgWithRole struct {
 	Role Role `json:"role"`
 }
 
-// Member is one user's membership in an org.
+// Member is one user's membership in an org, with the profile fields other
+// members may see. Email is blanked by the Panel API for callers below admin.
 type Member struct {
-	UserID   int64  `json:"userId"`
-	Username string `json:"username"`
-	Role     Role   `json:"role"`
+	UserID            int64  `json:"userId"`
+	Username          string `json:"username"`
+	Role              Role   `json:"role"`
+	DisplayName       string `json:"displayName"`
+	Email             string `json:"email,omitempty"`
+	Discord           string `json:"discord"`
+	MinecraftUsername string `json:"minecraftUsername"`
+	SteamID           string `json:"steamId"`
 }
 
-// CreateOrg inserts the org and makes ownerUserID its first owner, atomically.
+// CreateOrg inserts the org and, when ownerUserID is not 0, makes that user its
+// first owner, atomically. An org without members is valid: platform admins
+// are effective owners of every org, and an owner invitation fills it later.
 func (s *Store) CreateOrg(ctx context.Context, slug, name string, ownerUserID int64) (*Org, error) {
 	if !ValidSlug(slug) {
 		return nil, ErrInvalidSlug
@@ -97,9 +105,11 @@ func (s *Store) CreateOrg(ctx context.Context, slug, name string, ownerUserID in
 		}
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'owner')`, o.ID, ownerUserID); err != nil {
-		return nil, err
+	if ownerUserID != 0 {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'owner')`, o.ID, ownerUserID); err != nil {
+			return nil, err
+		}
 	}
 	return o, tx.Commit()
 }
@@ -183,7 +193,8 @@ func (s *Store) GetMembership(ctx context.Context, orgID, userID int64) (Role, e
 // ListMembers returns an org's members ordered by username.
 func (s *Store) ListMembers(ctx context.Context, orgID int64) ([]Member, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.id, u.username, m.role FROM memberships m JOIN users u ON u.id = m.user_id
+		SELECT u.id, u.username, m.role, u.display_name, u.email, u.discord, u.minecraft_username, u.steam_id
+		FROM memberships m JOIN users u ON u.id = m.user_id
 		WHERE m.org_id = $1 ORDER BY u.username`, orgID)
 	if err != nil {
 		return nil, err
@@ -192,7 +203,7 @@ func (s *Store) ListMembers(ctx context.Context, orgID int64) ([]Member, error) 
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Username, &m.Role); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.Role, &m.DisplayName, &m.Email, &m.Discord, &m.MinecraftUsername, &m.SteamID); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

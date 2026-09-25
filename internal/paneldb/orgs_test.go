@@ -37,7 +37,7 @@ func TestRoleAtLeast(t *testing.T) {
 
 func mustUser(t *testing.T, s *Store, name string) *User {
 	t.Helper()
-	u, err := s.CreateUser(context.Background(), name, "password", false)
+	u, err := s.CreateUser(context.Background(), name, name+"@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
