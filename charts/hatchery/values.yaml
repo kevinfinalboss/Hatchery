@@ -55,6 +55,19 @@ panel:
   trustedProxies: []
   # Secret (in the release namespace) where the first admin's generated password is written.
   adminSecretName: hatchery-admin-credentials
+  # Public URL of the panel (e.g. https://panel.example.com). E-mailed links (invitations, password
+  # reset, e-mail change) are built from it — never from the request's Host. Empty = e-mail off.
+  publicURL: ""
+  bootstrapAdmin:
+    # E-mail of the first admin account (change it later under "My account").
+    email: admin@hatchery.local
+  # SMTP for transactional e-mail. Empty host = e-mail off (invitations then return a link to copy).
+  smtp:
+    host: ""
+    port: 587
+    from: ""              # e.g. "Hatchery <noreply@example.com>"
+    tls: starttls         # starttls | tls (implicit, 465) | none (local catcher such as Mailpit only)
+    existingSecret: ""    # Secret in the release namespace with keys "username" and "password"
   nodeSelector: {}
   tolerations: []
   affinity: {}
