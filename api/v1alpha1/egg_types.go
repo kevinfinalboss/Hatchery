@@ -138,6 +138,39 @@ type EggConfigure struct {
 	Script string `json:"script"`
 }
 
+// EggModsKind says what the mod installer puts in EggMods.Directory.
+// +kubebuilder:validation:Enum=plugin;mod
+type EggModsKind string
+
+const (
+	EggModsPlugin EggModsKind = "plugin"
+	EggModsMod    EggModsKind = "mod"
+)
+
+// KnownModLoaders are the loader names the mod installer understands (Modrinth's names).
+var KnownModLoaders = []string{"paper", "purpur", "spigot", "bukkit", "folia", "fabric", "quilt", "forge", "neoforge"}
+
+// EggModsGameVersion says where the running game version comes from: Variable when it holds a
+// concrete version, else File (written by the install script with the version it downloaded).
+type EggModsGameVersion struct {
+	// +optional
+	Variable string `json:"variable,omitempty"`
+	// +optional
+	File string `json:"file,omitempty"`
+}
+
+// EggMods turns on the Panel's mod/plugin installer for servers of this Egg.
+type EggMods struct {
+	Kind EggModsKind `json:"kind"`
+	// Loaders the installed files must target, in Modrinth's names (see KnownModLoaders).
+	// +kubebuilder:validation:MinItems=1
+	Loaders []string `json:"loaders"`
+	// Directory is relative to the server's data directory, e.g. "plugins".
+	Directory string `json:"directory"`
+	// +optional
+	GameVersion EggModsGameVersion `json:"gameVersion,omitempty"`
+}
+
 type EggSpec struct {
 	// Images are the container images the game server process can run with. The first is the
 	// default; a GameServer picks another by name through spec.imageName.
@@ -194,6 +227,10 @@ type EggSpec struct {
 	// RecommendedResources pre-fills the create-server form; the user may change them.
 	// +optional
 	RecommendedResources *EggResources `json:"recommendedResources,omitempty"`
+
+	// Mods turns on the mod/plugin installer for servers of this Egg.
+	// +optional
+	Mods *EggMods `json:"mods,omitempty"`
 }
 
 // EggStatus defines the observed state of Egg.
