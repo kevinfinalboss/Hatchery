@@ -98,4 +98,16 @@ var _ = Describe("Egg Webhook", func() {
 		Expect(k8sClient.Create(ctx, eggWith("anything", gameserversv1alpha1.CatalogNamespace, "quay.io/whatever/x"))).To(Succeed())
 		Expect(k8sClient.Create(ctx, eggWith("plain", "default", "quay.io/whatever/x"))).To(Succeed())
 	})
+	It("rejects an invalid mods block, catalog Eggs included", func() {
+		err := k8sClient.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: gameserversv1alpha1.CatalogNamespace}})
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
+		bad := eggWith("bad-mods", gameserversv1alpha1.CatalogNamespace, "itzg/minecraft-server")
+		bad.Spec.Mods = &gameserversv1alpha1.EggMods{Kind: gameserversv1alpha1.EggModsPlugin, Loaders: []string{"paper"}, Directory: "../plugins"}
+		Expect(k8sClient.Create(ctx, bad)).NotTo(Succeed())
+		good := eggWith("good-mods", gameserversv1alpha1.CatalogNamespace, "itzg/minecraft-server")
+		good.Spec.Mods = &gameserversv1alpha1.EggMods{Kind: gameserversv1alpha1.EggModsPlugin, Loaders: []string{"paper"}, Directory: "plugins"}
+		Expect(k8sClient.Create(ctx, good)).To(Succeed())
+	})
 })

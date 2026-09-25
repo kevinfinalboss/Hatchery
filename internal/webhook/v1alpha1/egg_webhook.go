@@ -65,6 +65,10 @@ func (v *EggValidator) ValidateDelete(context.Context, *gameserversv1alpha1.Egg)
 }
 
 func (v *EggValidator) validate(ctx context.Context, egg *gameserversv1alpha1.Egg) error {
+	// Spec rules (startup regex, mods block) apply everywhere, the catalog included.
+	if msgs := egg.Spec.Validate(); len(msgs) > 0 {
+		return fmt.Errorf("%s", strings.Join(msgs, "; "))
+	}
 	if len(v.DefaultRegistries) == 0 || egg.Namespace == gameserversv1alpha1.CatalogNamespace {
 		return nil
 	}
