@@ -38,9 +38,10 @@ const maxEggBody = 1 << 20
 // eggEntry is an Egg together with where it lives, so the UI can tell catalog
 // Eggs from the org's private ones.
 type eggEntry struct {
-	Name  string                       `json:"name"`
-	Scope gameserversv1alpha1.EggScope `json:"scope"`
-	Spec  gameserversv1alpha1.EggSpec  `json:"spec"`
+	Name    string                       `json:"name"`
+	Scope   gameserversv1alpha1.EggScope `json:"scope"`
+	Spec    gameserversv1alpha1.EggSpec  `json:"spec"`
+	Modpack bool                         `json:"modpack,omitempty"`
 }
 
 type eggWriteRequest struct {
@@ -51,7 +52,7 @@ type eggWriteRequest struct {
 func toEntries(list gameserversv1alpha1.EggList, scope gameserversv1alpha1.EggScope) []eggEntry {
 	out := make([]eggEntry, 0, len(list.Items))
 	for _, e := range list.Items {
-		out = append(out, eggEntry{Name: e.Name, Scope: scope, Spec: e.Spec})
+		out = append(out, eggEntry{Name: e.Name, Scope: scope, Spec: e.Spec, Modpack: e.IsModpack()})
 	}
 	return out
 }
