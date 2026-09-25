@@ -1,19 +1,33 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getAuthToken, setAuthToken } from "./api";
-import type { User } from "./types";
+import { useI18n } from "./i18n";
+import type { LoginResponse, User } from "./types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  setUser: (user: User) => void;
+  startSession: (resp: LoginResponse) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { setLocale, setTimeZone } = useI18n();
+
+  // The profile's language and time zone follow the account across devices.
+  const setUser = useCallback(
+    (u: User) => {
+      setUserState(u);
+      if (u.locale) setLocale(u.locale);
+      setTimeZone(u.timeZone);
+    },
+    [setLocale, setTimeZone],
+  );
 
   useEffect(() => {
     if (!getAuthToken()) {
@@ -25,12 +39,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => setAuthToken(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [setUser]);
 
-  async function login(username: string, password: string) {
-    const resp = await api.login(username, password);
+  function startSession(resp: LoginResponse) {
     setAuthToken(resp.token);
     setUser(resp.user);
+  }
+
+  async function login(username: string, password: string) {
+    startSession(await api.login(username, password));
   }
 
   async function logout() {
@@ -39,10 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
     }
     setAuthToken(null);
-    setUser(null);
+    setUserState(null);
+    setTimeZone("");
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, setUser, startSession }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
