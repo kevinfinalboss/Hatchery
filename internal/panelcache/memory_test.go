@@ -118,3 +118,7 @@ func TestMemoryRequestLimiterFixedWindow(t *testing.T) {
 		t.Fatal("window did not reset")
 	}
 }
+
+func TestMemoryModHashCache(t *testing.T) {
+	testModHashCache(t, NewMemoryModHashCache())
+}
