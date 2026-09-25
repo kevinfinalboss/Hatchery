@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -205,7 +206,15 @@ func (h *rootedHandler) Filecmd(r *sftp.Request) error {
 	case "Mkdir":
 		return h.root.Mkdir(relPath(r.Filepath), 0o755)
 	case "Rmdir":
-		return h.root.RemoveAll(relPath(r.Filepath))
+		p := relPath(r.Filepath)
+		info, err := h.root.Stat(p)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return &os.PathError{Op: "rmdir", Path: r.Filepath, Err: syscall.ENOTDIR}
+		}
+		return h.root.RemoveAll(p)
 	case "Remove":
 		return h.root.Remove(relPath(r.Filepath))
 	case "Rename":

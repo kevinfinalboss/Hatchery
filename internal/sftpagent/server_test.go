@@ -228,3 +228,34 @@ func TestCannotEscapeRoot(t *testing.T) {
 		t.Fatal("expected opening a path outside root to fail")
 	}
 }
+
+func TestRemoveMissingPathFails(t *testing.T) {
+	srv, secret, root := startTestServer(t)
+	token, err := authtoken.Sign(secret, testServerUUID, authtoken.ScopeSFTP, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := dialSFTP(t, srv, token)
+
+	if err := client.Remove("missing.txt"); err == nil {
+		t.Fatal("removing a missing file must fail")
+	}
+	if err := client.RemoveDirectory("missing-dir"); err == nil {
+		t.Fatal("removing a missing directory must fail")
+	}
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RemoveDirectory("file.txt"); err == nil {
+		t.Fatal("rmdir on a regular file must fail")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "dir", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RemoveDirectory("dir"); err != nil {
+		t.Fatalf("recursive directory removal: %v", err)
+	}
+	if err := client.Remove("file.txt"); err != nil {
+		t.Fatalf("removing an existing file: %v", err)
+	}
+}
