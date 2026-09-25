@@ -10,6 +10,7 @@ spec:
   images:
     - name: default
       image: ghcr.io/ptero-eggs/yolks:debian
+  runAsUser: 1000
   startCommand: "./TerrariaServer.bin.x86_64 -config serverconfig.txt"
   stopCommand: "exit"
   stopSignal: SIGTERM
