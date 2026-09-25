@@ -114,6 +114,42 @@ spec:
                 required:
                 - script
                 type: object
+              mods:
+                description: Mods turns on the mod/plugin installer for servers of
+                  this Egg.
+                properties:
+                  directory:
+                    description: Directory is relative to the server's data directory,
+                      e.g. "plugins".
+                    type: string
+                  gameVersion:
+                    description: |-
+                      EggModsGameVersion says where the running game version comes from: Variable when it holds a
+                      concrete version, else File (written by the install script with the version it downloaded).
+                    properties:
+                      file:
+                        type: string
+                      variable:
+                        type: string
+                    type: object
+                  kind:
+                    description: EggModsKind says what the mod installer puts in EggMods.Directory.
+                    enum:
+                    - plugin
+                    - mod
+                    type: string
+                  loaders:
+                    description: Loaders the installed files must target, in Modrinth's
+                      names (see KnownModLoaders).
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - directory
+                - kind
+                - loaders
+                type: object
               ports:
                 description: Ports declares the network ports this Egg's process listens
                   on.
