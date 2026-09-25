@@ -27,7 +27,7 @@ func login(t *testing.T, srv *Server, remote, xff, username, password string) *h
 
 func TestLoginIsBlockedAfterRepeatedFailuresEvenWithTheRightPassword(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "victim", "right-password", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "victim", "victim@example.com", "right-password", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,7 +48,7 @@ func TestLoginIsBlockedAfterRepeatedFailuresEvenWithTheRightPassword(t *testing.
 
 func TestBlockedIPDoesNotLockOutTheRealUserFromAnotherIP(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "victim", "right-password", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "victim", "victim@example.com", "right-password", false); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
@@ -61,7 +61,7 @@ func TestBlockedIPDoesNotLockOutTheRealUserFromAnotherIP(t *testing.T) {
 
 func TestSuccessfulLoginResetsTheCounter(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "u", "pw", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "u", "u@example.com", "pw", false); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
@@ -79,7 +79,7 @@ func TestSuccessfulLoginResetsTheCounter(t *testing.T) {
 
 func TestForwardedForIsHonouredOnlyFromATrustedProxy(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "u", "pw", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "u", "u@example.com", "pw", false); err != nil {
 		t.Fatal(err)
 	}
 	// Without trusted proxies, rotating X-Forwarded-For must NOT evade the limit.
@@ -106,7 +106,7 @@ func (failingLimiter) RecordSuccess(context.Context, string, string) error {
 func TestLoginFailsOpenWhenTheLimiterIsDown(t *testing.T) {
 	srv := newTestServer(t)
 	srv.LoginLimiter = failingLimiter{}
-	if _, err := srv.DB.CreateUser(t.Context(), "u", "pw", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "u", "u@example.com", "pw", false); err != nil {
 		t.Fatal(err)
 	}
 	if rec := login(t, srv, "203.0.113.5:1", "", "u", "pw"); rec.Code != http.StatusOK {
