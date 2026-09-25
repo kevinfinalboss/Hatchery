@@ -1,0 +1,157 @@
+apiVersion: gameservers.hatchery.io/v1alpha1
+kind: Egg
+metadata:
+  labels:
+    app.kubernetes.io/name: hatchery
+    app.kubernetes.io/managed-by: kustomize
+  name: minecraft-spigot
+  namespace: hatchery-catalog
+spec:
+  images:
+    - name: "Java 25"
+      image: ghcr.io/ptero-eggs/yolks:java_25
+    - name: "Java 22"
+      image: ghcr.io/ptero-eggs/yolks:java_22
+    - name: "Java 21"
+      image: ghcr.io/ptero-eggs/yolks:java_21
+    - name: "Java 17"
+      image: ghcr.io/ptero-eggs/yolks:java_17
+    - name: "Java 16"
+      image: ghcr.io/ptero-eggs/yolks:java_16
+    - name: "Java 11"
+      image: ghcr.io/ptero-eggs/yolks:java_11
+    - name: "Java 8"
+      image: ghcr.io/ptero-eggs/yolks:java_8
+  runAsUser: 1000
+  startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}} nogui"
+  stopCommand: "stop"
+  stopSignal: SIGTERM
+  stopTimeoutSeconds: 90
+  startupDetection:
+    regex: "\\)! For help, type "
+  install:
+    image: eclipse-temurin:25-jdk-noble
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      # Spigot Installation Script
+      #
+      # Server Files: /data
+      set -e
+      apt-get update >/dev/null
+      apt-get install -y curl jq git >/dev/null
+      cd /data
+
+      if [ "${EULA}" = "TRUE" ]; then
+        echo "eula=true" > /data/eula.txt
+      fi
+
+      ARCH=$([[ "$(uname -m)" == "x86_64" ]] && echo "x64" || echo "aarch64")
+      install_java() {
+        echo "Downloading an older JDK: $1"
+        curl -fsSL "$1" -o /tmp/java.tar.gz
+        tar xzf /tmp/java.tar.gz -C /tmp
+        export PATH=/tmp/$2/bin:$PATH
+        java -version
+      }
+
+      if [ -n "${DL_PATH}" ]; then
+        MODIFIED_DOWNLOAD=$(eval echo "$(echo "${DL_PATH}" | sed -e 's/{{/${/g' -e 's/}}/}/g')")
+        echo "Using custom provided download link ${MODIFIED_DOWNLOAD}"
+        curl -fsSL "${MODIFIED_DOWNLOAD}" -o "${SERVER_JARFILE}"
+        MC_RESOLVED="${DL_VERSION}"
+      else
+        if [ -z "${DL_VERSION}" ] || [ "${DL_VERSION}" = "latest" ]; then
+          DL_VERSION="latest"
+        fi
+        if ! SPIGOT_VERSION_JSON=$(curl -fsS "https://hub.spigotmc.org/versions/${DL_VERSION}.json"); then
+          echo "Invalid version requested... defaulting to latest."
+          DL_VERSION="latest"
+          SPIGOT_VERSION_JSON=$(curl -fsS https://hub.spigotmc.org/versions/latest.json)
+        fi
+        JAVA_MIN=$(echo "${SPIGOT_VERSION_JSON}" | jq -r '.javaVersions[0] // 52')
+        JAVA_MAX=$(echo "${SPIGOT_VERSION_JSON}" | jq -r '.javaVersions[1] // 69')
+        # Class file versions: 52 = Java 8, 60 = 16, 61 = 17, 65 = 21, 69 = 25 (this image's Java).
+        if [ 69 -ge "${JAVA_MIN}" ] && [ 69 -le "${JAVA_MAX}" ]; then
+          java -version
+        elif [ 65 -ge "${JAVA_MIN}" ] && [ 65 -le "${JAVA_MAX}" ]; then
+          install_java "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_${ARCH}_linux_hotspot_21.0.3_9.tar.gz" jdk-21.0.3+9
+        elif [ 61 -ge "${JAVA_MIN}" ] && [ 61 -le "${JAVA_MAX}" ]; then
+          install_java "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.1%2B12/OpenJDK17U-jdk_${ARCH}_linux_hotspot_17.0.1_12.tar.gz" jdk-17.0.1+12
+        elif [ 60 -ge "${JAVA_MIN}" ] && [ 60 -le "${JAVA_MAX}" ]; then
+          install_java "https://github.com/adoptium/temurin16-binaries/releases/download/jdk-16.0.2%2B7/OpenJDK16U-jdk_${ARCH}_linux_hotspot_16.0.2_7.tar.gz" jdk-16.0.2+7
+        elif [ 52 -ge "${JAVA_MIN}" ] && [ 52 -le "${JAVA_MAX}" ]; then
+          install_java "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u312-b07/OpenJDK8U-jdk_${ARCH}_linux_hotspot_8u312b07.tar.gz" jdk8u312-b07
+        else
+          echo "Unsupported Java version required (${JAVA_MIN}-${JAVA_MAX})"
+          exit 1
+        fi
+
+        mkdir -p /tmp/buildtools
+        cd /tmp/buildtools
+        curl -fsSL -o BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
+        java -XX:MaxRAMPercentage=80.0 -jar BuildTools.jar --rev "${DL_VERSION}"
+        JAR=$(ls spigot-*.jar | head -n1)
+        MC_RESOLVED="${JAR#spigot-}"
+        MC_RESOLVED="${MC_RESOLVED%.jar}"
+        mv "${JAR}" "/data/${SERVER_JARFILE}"
+        cd /data
+        rm -rf /tmp/buildtools
+      fi
+
+      # The mod installer reads the game version actually installed from here.
+      mkdir -p /data/.hatchery
+      echo "${MC_RESOLVED}" > /data/.hatchery/game-version
+      chown -R 1000:1000 /data
+      echo "Installation completed (Spigot ${MC_RESOLVED})."
+  configure:
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      # Runs on every start: forces the keys the Wings used to rewrite (config.files) without
+      # touching the rest of server.properties.
+      cd /data
+      touch server.properties
+      setkey() {
+        grep -v "^$1=" server.properties > server.properties.tmp || true
+        printf '%s=%s\n' "$1" "$2" >> server.properties.tmp
+        mv server.properties.tmp server.properties
+      }
+      setkey server-ip 0.0.0.0
+      setkey server-port 25565
+  mods:
+    kind: plugin
+    loaders: [spigot, bukkit]
+    directory: plugins
+    gameVersion:
+      variable: DL_VERSION
+      file: .hatchery/game-version
+  recommendedResources:
+    cpu: "2"
+    memory: 4Gi
+    disk: 10Gi
+  variables:
+    - name: EULA
+      description: "Aceita a EULA da Mojang (https://aka.ms/MinecraftEULA). Obrigatório pro servidor iniciar."
+      default: "TRUE"
+      required: true
+      userEditable: true
+    - name: DL_VERSION
+      description: "Versão do Spigot (o --rev do BuildTools, ex.: 1.21.4). 'latest' compila a mais recente. O build leva alguns minutos."
+      default: "latest"
+      userEditable: true
+      validationRegex: "^(latest|[0-9]+(\\.[0-9]+){1,2})$"
+    - name: SERVER_JARFILE
+      description: "Nome do arquivo .jar do servidor."
+      default: "server.jar"
+      userEditable: true
+      validationRegex: "^([\\w\\d._-]+)(\\.jar)$"
+    - name: DL_PATH
+      description: "URL de um jar pronto em vez de compilar (avançado). {{DL_VERSION}} é substituído pela versão."
+      default: ""
+      userEditable: false
+  ports:
+    - name: game
+      containerPort: 25565
+      protocol: TCP
+      default: true
