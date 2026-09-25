@@ -2,6 +2,10 @@ import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { RequireAdmin, RequireAuth, RequireOrgAdmin } from "./components/RequireAuth";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { InvitePage } from "./pages/InvitePage";
+import { ConfirmEmailPage } from "./pages/ConfirmEmailPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { NewServerPage } from "./pages/NewServerPage";
 import { ServerDetailPage } from "./pages/ServerDetailPage";
@@ -17,6 +21,10 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/invite" element={<InvitePage />} />
+      <Route path="/confirm-email" element={<ConfirmEmailPage />} />
 
       <Route element={<RequireAuth />}>
         <Route path="/" element={<AppShell><DashboardPage /></AppShell>} />
