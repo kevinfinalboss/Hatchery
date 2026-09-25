@@ -83,7 +83,7 @@ async function failure(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -222,7 +222,10 @@ export const api = {
     request<void>(`${gs(org, name)}/files/copy`, { method: "POST", body: JSON.stringify({ from, to }) }),
 
   deleteFiles: (org: string, name: string, paths: string[]) =>
-    request<void>(`${gs(org, name)}/files/delete`, { method: "POST", body: JSON.stringify({ paths }) }),
+    request<{ deleted: string[]; failed: { path: string; error: string }[] } | undefined>(`${gs(org, name)}/files/delete`, {
+      method: "POST",
+      body: JSON.stringify({ paths }),
+    }),
 
   compressFiles: (org: string, name: string, paths: string[], dest: string) =>
     request<void>(`${gs(org, name)}/files/compress`, { method: "POST", body: JSON.stringify({ paths, dest }) }),
