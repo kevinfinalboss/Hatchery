@@ -34,3 +34,19 @@ func TestSampleEggsWithModsValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestYolksEggsRunAsSFTPUser(t *testing.T) {
+	for _, file := range []string{"paper", "purpur", "fabric", "terraria", "zomboid"} {
+		raw, err := os.ReadFile("../../config/samples/gameservers_v1alpha1_egg_" + file + ".yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var egg Egg
+		if err := yaml.UnmarshalStrict(raw, &egg); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if egg.Spec.RunAsUser == nil || *egg.Spec.RunAsUser != 1000 {
+			t.Errorf("%s: runAsUser = %v, want 1000", file, egg.Spec.RunAsUser)
+		}
+	}
+}

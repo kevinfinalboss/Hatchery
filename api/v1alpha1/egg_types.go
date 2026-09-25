@@ -231,6 +231,17 @@ type EggSpec struct {
 	// Mods turns on the mod/plugin installer for servers of this Egg.
 	// +optional
 	Mods *EggMods `json:"mods,omitempty"`
+
+	// RunAsUser runs the game (and the configure step) as this uid and gid instead of the
+	// image's user. Set it for images that would otherwise run as root (e.g. the yolks
+	// images): files the game creates then belong to the same uid as the sftp-agent (1000),
+	// so the file manager can write them. Install stays as root, and a "fix-owner" step
+	// chowns the data volume once per install revision. Leave unset for images whose
+	// entrypoint must start as root and drops privileges itself (itzg/*).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	RunAsUser *int64 `json:"runAsUser,omitempty"`
 }
 
 // EggStatus defines the observed state of Egg.
