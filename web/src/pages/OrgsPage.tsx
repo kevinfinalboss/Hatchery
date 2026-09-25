@@ -22,11 +22,14 @@ function CreateOrgForm({ onClose }: { onClose: () => void }) {
   const [quota, setQuota] = useState<OrgQuota>(DEFAULT_QUOTA);
   const [error, setError] = useState<string | null>(null);
 
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const create = useMutation({
-    mutationFn: () => api.createOrg({ slug: slug.trim(), name: name.trim(), ownerUsername: owner.trim(), quota }),
-    onSuccess: () => {
+    mutationFn: () => api.createOrg({ slug: slug.trim(), name: name.trim(), ownerEmail: owner.trim(), quota }),
+    onSuccess: (org) => {
       void queryClient.invalidateQueries({ queryKey: ["orgs"] });
-      onClose();
+      if (org.inviteError) setError(org.inviteError);
+      if (org.inviteUrl) setInviteUrl(org.inviteUrl);
+      else if (!org.inviteError) onClose();
     },
     onError: (err) => setError(errorMessage(err, t("orgs.createFailed"))),
   });
@@ -49,8 +52,9 @@ function CreateOrgForm({ onClose }: { onClose: () => void }) {
           <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} required />
         </Field>
         <Field label={t("orgs.owner")} htmlFor="org-owner">
-          <Input id="org-owner" value={owner} onChange={(e) => setOwner(e.target.value)} required />
+          <Input id="org-owner" type="email" value={owner} onChange={(e) => setOwner(e.target.value)} required />
         </Field>
+        <div className="w-full font-sans text-xs text-text-tertiary">{t("orgs.ownerHelp")}</div>
         <QuotaFields quota={quota} onChange={setQuota} />
         <div className="flex gap-2">
           <Button type="submit" disabled={create.isPending}>
@@ -62,6 +66,17 @@ function CreateOrgForm({ onClose }: { onClose: () => void }) {
         </div>
       </form>
       {error && <div className="font-sans text-sm text-status-failed">{error}</div>}
+      {inviteUrl && (
+        <div className="flex flex-col gap-2">
+          <div className="font-sans text-sm text-text-secondary">{t("orgs.ownerInviteLink")}</div>
+          <code className="break-all rounded border border-border bg-canvas px-2 py-1 font-mono text-xs text-text-secondary">{inviteUrl}</code>
+          <div>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t("common.close")}
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
