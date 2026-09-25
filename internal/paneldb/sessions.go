@@ -20,10 +20,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"time"
 )
 
@@ -33,20 +31,27 @@ import (
 // signature buys nothing here. Only the SHA-256 hash of a token is stored,
 // so a database leak alone doesn't hand out usable sessions.
 
+// newToken returns a random opaque token and the hash stored in its place.
+func newToken() (raw, hash string, err error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	raw = base64.RawURLEncoding.EncodeToString(b)
+	return raw, hashToken(raw), nil
+}
+
 // CreateSession mints a new session for userID, valid for ttl, and returns
 // the raw token to hand back to the client.
 func (s *Store) CreateSession(ctx context.Context, userID int64, ttl time.Duration) (token string, expiresAt time.Time, err error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	token, hash, err := newToken()
+	if err != nil {
 		return "", time.Time{}, err
 	}
-	token = base64.RawURLEncoding.EncodeToString(raw)
 	expiresAt = time.Now().Add(ttl)
-
-	_, err = s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
-		hashToken(token), userID, expiresAt)
-	if err != nil {
+		hash, userID, expiresAt); err != nil {
 		return "", time.Time{}, err
 	}
 	return token, expiresAt, nil
@@ -55,19 +60,11 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, ttl time.Durati
 // ValidateSession returns the user for token if it exists, isn't revoked,
 // and hasn't expired.
 func (s *Store) ValidateSession(ctx context.Context, token string) (*User, error) {
-	u := &User{}
-	row := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.is_admin, u.created_at
+	return scanUser(s.db.QueryRowContext(ctx, `
+		SELECT `+userColumns("u")+`
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
-		hashToken(token))
-	if err := row.Scan(&u.ID, &u.Username, &u.IsAdmin, &u.CreatedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return u, nil
+		hashToken(token)))
 }
 
 // RevokeSession invalidates token immediately (logout).
@@ -75,6 +72,23 @@ func (s *Store) RevokeSession(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL`,
 		hashToken(token))
+	return err
+}
+
+// RevokeUserSessions revokes every live session of userID except the one for
+// exceptToken ("" revokes all). Used after a password change or reset.
+func (s *Store) RevokeUserSessions(ctx context.Context, userID int64, exceptToken string) error {
+	return revokeUserSessions(ctx, s.db, userID, exceptToken)
+}
+
+func revokeUserSessions(ctx context.Context, q queryer, userID int64, exceptToken string) error {
+	except := ""
+	if exceptToken != "" {
+		except = hashToken(exceptToken)
+	}
+	_, err := q.ExecContext(ctx,
+		`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND token_hash <> $2`,
+		userID, except)
 	return err
 }
 
