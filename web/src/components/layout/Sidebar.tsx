@@ -6,6 +6,7 @@ import { useT } from "../../lib/i18n";
 import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import { Wordmark } from "../ui/Wordmark";
+import { Avatar } from "../ui/Avatar";
 
 const navItemClasses = ({ isActive }: { isActive: boolean }) =>
   clsx(
@@ -111,13 +112,15 @@ export function Sidebar({ onOpenPalette, onNavigate }: { onOpenPalette: () => vo
       </div>
 
       <div className="flex items-center gap-2.5 border-t border-border px-2 pt-3">
-        <div className="flex h-[28px] w-[28px] items-center justify-center bg-primary font-display text-sm font-bold text-on-primary">
-          {user?.username.slice(0, 1).toUpperCase()}
-        </div>
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate font-sans text-sm font-semibold text-text-primary">{user?.username}</span>
-          <span className="font-sans text-xs text-text-tertiary">{user?.isAdmin ? t("nav.roleAdmin") : t("nav.roleUser")}</span>
-        </div>
+        {user && (
+          <NavLink to="/account" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5 hover:opacity-80" title={t("nav.account")}>
+            <Avatar user={user} size="md" />
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate font-sans text-sm font-semibold text-text-primary">{user.displayName || user.username}</span>
+              <span className="font-sans text-xs text-text-tertiary">{user.isAdmin ? t("nav.roleAdmin") : t("nav.roleUser")}</span>
+            </div>
+          </NavLink>
+        )}
         <div className="ml-auto flex items-center gap-3">
           <ThemeToggle />
           <button onClick={() => void logout()} className="font-sans text-xs text-text-tertiary hover:text-text-primary">
