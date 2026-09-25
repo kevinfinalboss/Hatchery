@@ -95,3 +95,26 @@ func TestMemoryLoginLimiterPerIPCeiling(t *testing.T) {
 		t.Fatal("20 failures from one IP must block that IP even for a username it never tried")
 	}
 }
+
+func TestMemoryRequestLimiterFixedWindow(t *testing.T) {
+	now := time.Unix(1000, 0)
+	l := NewMemoryRequestLimiter()
+	l.Now = func() time.Time { return now }
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if ok, _, _ := l.Allow(ctx, "k", 3, time.Hour); !ok {
+			t.Fatalf("request %d refused", i+1)
+		}
+	}
+	ok, retry, _ := l.Allow(ctx, "k", 3, time.Hour)
+	if ok || retry <= 0 || retry > time.Hour {
+		t.Fatalf("4th: ok=%v retry=%v", ok, retry)
+	}
+	if ok, _, _ := l.Allow(ctx, "other", 3, time.Hour); !ok {
+		t.Fatal("keys must be independent")
+	}
+	now = now.Add(time.Hour)
+	if ok, _, _ := l.Allow(ctx, "k", 3, time.Hour); !ok {
+		t.Fatal("window did not reset")
+	}
+}
