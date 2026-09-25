@@ -88,6 +88,36 @@ spec:
         echo -e "Downloading MC server.properties"
         curl --user-agent "${USER_AGENT}" -o server.properties https://raw.githubusercontent.com/pterodactyl/game-eggs/main/minecraft/java/server.properties
       fi
+
+      # The mod installer reads the game version actually installed from here (the variable may be "latest").
+      mkdir -p /data/.hatchery
+      echo "${MINECRAFT_VERSION}" > /data/.hatchery/game-version
+  configure:
+    entrypoint: ["bash", "-c"]
+    script: |
+      #!/bin/bash
+      # Runs on every start: forces the keys the Wings used to rewrite (config.files) without
+      # touching the rest of server.properties.
+      cd /data
+      touch server.properties
+      setkey() {
+        grep -v "^$1=" server.properties > server.properties.tmp || true
+        printf '%s=%s\n' "$1" "$2" >> server.properties.tmp
+        mv server.properties.tmp server.properties
+      }
+      setkey server-ip 0.0.0.0
+      setkey server-port 25565
+      # The game runs as root in this image, so a plugins/ it creates on its first boot is root-owned and
+      # the sftp-agent (uid 1000) — file manager and mod installer — could not write to it.
+      mkdir -p /data/plugins
+      chown 1000:1000 /data/plugins
+  mods:
+    kind: plugin
+    loaders: [paper, spigot, bukkit]
+    directory: plugins
+    gameVersion:
+      variable: MINECRAFT_VERSION
+      file: .hatchery/game-version
   recommendedResources:
     cpu: "2"
     memory: 4Gi
