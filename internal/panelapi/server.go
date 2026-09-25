@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/kevinfinalboss/Hatchery/internal/mailer"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
@@ -67,6 +68,18 @@ type Server struct {
 	// set it because they have no kube-apiserver to exec through.
 	execFn func(ctx context.Context, namespace, pod, container string, cmd []string) (string, error)
 	disk   diskCache
+
+	// Mailer sends transactional e-mail; nil turns e-mail features off.
+	// PublicURL is the base of every e-mailed link (--public-url).
+	Mailer    mailer.Mailer
+	PublicURL string
+
+	// RequestLimiter throttles "forgot password" (every request sends mail).
+	RequestLimiter panelcache.RequestLimiter
+
+	// background runs fire-and-forget work (nil: a goroutine). Tests set it
+	// to run inline so they can assert on what was sent.
+	background func(func())
 }
 
 func NewServer(c client.Client, clientset kubernetes.Interface, cfg *rest.Config, db *paneldb.Store, sftpAgentImage string, allowedOrigins []string) *Server {
@@ -81,12 +94,19 @@ func (s *Server) Routes() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	mux.HandleFunc("GET /api/v1/auth/features", s.handleFeatures)
 	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 	mux.Handle("POST /api/v1/auth/logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 	mux.Handle("GET /api/v1/auth/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
+	mux.Handle("PATCH /api/v1/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
+	mux.Handle("POST /api/v1/me/password", s.requireAuth(http.HandlerFunc(s.handleChangePassword)))
+	mux.HandleFunc("POST /api/v1/auth/password/forgot", s.handleForgotPassword)
+	mux.HandleFunc("POST /api/v1/auth/password/reset", s.handleResetPassword)
+	mux.HandleFunc("POST /api/v1/auth/email/confirm", s.handleConfirmEmail)
+	mux.Handle("POST /api/v1/me/email", s.requireAuth(http.HandlerFunc(s.handleChangeEmail)))
 
 	mux.Handle("GET /api/v1/users", s.requireAdmin(http.HandlerFunc(s.handleListUsers)))
-	mux.Handle("POST /api/v1/users", s.requireAdmin(http.HandlerFunc(s.handleCreateUser)))
+	mux.Handle("PATCH /api/v1/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleSetUserAdmin)))
 	mux.Handle("DELETE /api/v1/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleDeleteUser)))
 
 	orgRoute := func(min paneldb.Role, action string, h http.HandlerFunc) http.Handler {
@@ -122,11 +142,17 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PATCH "+org+"/quota", s.requireAdmin(orgRoute(paneldb.RoleOwner, "", s.handleUpdateQuota)))
 
 	mux.Handle("GET "+org+"/members", orgRoute(paneldb.RoleMember, "", s.handleListMembers))
-	mux.Handle("POST "+org+"/members", orgRoute(paneldb.RoleAdmin, "", s.handleAddMember))
 	mux.Handle("PATCH "+org+"/members/{userId}", orgRoute(paneldb.RoleAdmin, "", s.handleSetMemberRole))
 	mux.Handle("DELETE "+org+"/members/{userId}", orgRoute(paneldb.RoleMember, "", s.handleRemoveMember))
 	mux.Handle("GET "+org+"/members/{userId}/permissions", orgRoute(paneldb.RoleAdmin, "", s.handleGetMemberPermissions))
 	mux.Handle("PUT "+org+"/members/{userId}/permissions", orgRoute(paneldb.RoleAdmin, "", s.handlePutMemberPermissions))
+
+	mux.Handle("GET "+org+"/invitations", orgRoute(paneldb.RoleAdmin, "", s.handleListInvitations))
+	mux.Handle("POST "+org+"/invitations", orgRoute(paneldb.RoleAdmin, "", s.handleCreateInvitation))
+	mux.Handle("POST "+org+"/invitations/{id}/resend", orgRoute(paneldb.RoleAdmin, "", s.handleResendInvitation))
+	mux.Handle("DELETE "+org+"/invitations/{id}", orgRoute(paneldb.RoleAdmin, "", s.handleDeleteInvitation))
+	mux.HandleFunc("POST /api/v1/invitations/lookup", s.handleLookupInvitation)
+	mux.HandleFunc("POST /api/v1/invitations/accept", s.handleAcceptInvitation)
 
 	mux.Handle("GET "+org+"/image-policy", orgRoute(paneldb.RoleMember, "", s.handleImagePolicy))
 	mux.Handle("GET "+org+"/eggs", orgRoute(paneldb.RoleMember, "", s.handleListOrgEggs))
