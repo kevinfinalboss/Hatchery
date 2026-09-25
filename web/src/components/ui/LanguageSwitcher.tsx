@@ -1,6 +1,8 @@
 import type { JSX } from "react";
 import clsx from "clsx";
 import { LOCALES, type Locale, useI18n } from "../../lib/i18n";
+import { useAuth } from "../../lib/auth";
+import { api } from "../../lib/api";
 
 function FlagBR() {
   return (
@@ -29,6 +31,14 @@ const flags: Record<Locale, () => JSX.Element> = { "pt-BR": FlagBR, en: FlagUS }
 
 export function LanguageSwitcher({ className }: { className?: string }) {
   const { locale, setLocale, t } = useI18n();
+  const { user, setUser } = useAuth();
+
+  function choose(l: Locale) {
+    setLocale(l);
+    if (user && user.locale !== l) {
+      api.updateMe({ locale: l }).then(setUser).catch(() => {});
+    }
+  }
 
   return (
     <div role="group" aria-label={t("language.label")} className={clsx("flex items-center gap-1.5", className)}>
@@ -38,7 +48,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
           <button
             key={l}
             type="button"
-            onClick={() => setLocale(l)}
+            onClick={() => choose(l)}
             aria-pressed={locale === l}
             title={l === "pt-BR" ? t("language.pt") : t("language.en")}
             className={clsx(
