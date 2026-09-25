@@ -16,6 +16,7 @@ import { OrgSettingsPage } from "./pages/OrgSettingsPage";
 import { OrgDetailPage } from "./pages/OrgDetailPage";
 import { OrgsPage } from "./pages/OrgsPage";
 import { UsersPage } from "./pages/UsersPage";
+import { AccountPage } from "./pages/AccountPage";
 
 export function App() {
   return (
@@ -31,6 +32,7 @@ export function App() {
         <Route path="/orgs/:org/servers/:name" element={<AppShell><ServerDetailPage /></AppShell>} />
         <Route path="/eggs" element={<AppShell><EggsPage /></AppShell>} />
         <Route path="/members" element={<AppShell><MembersPage /></AppShell>} />
+        <Route path="/account" element={<AppShell><AccountPage /></AppShell>} />
 
         <Route element={<RequireOrgAdmin />}>
           <Route path="/new-server" element={<AppShell><NewServerPage /></AppShell>} />
