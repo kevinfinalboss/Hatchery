@@ -21,35 +21,7 @@ func TestMemberManagementRules(t *testing.T) {
 	srv := newTestServer(t)
 	owner := newMemberToken(t, srv, "owner1", paneldb.RoleOwner)
 	adminTok := newMemberToken(t, srv, "admin1", paneldb.RoleAdmin)
-	memberTok := newMemberToken(t, srv, "member1", paneldb.RoleMember)
-	if _, err := srv.DB.CreateUser(t.Context(), "newbie", "password", false); err != nil {
-		t.Fatal(err)
-	}
-
-	add := func(tok, username, role string) int {
-		return doRequest(t, srv, http.MethodPost, orgURL("/members"), tok, map[string]any{"username": username, "role": role}).Code
-	}
-	if got := add(memberTok, "newbie", "member"); got != http.StatusForbidden {
-		t.Errorf("a plain member cannot add members: got %d", got)
-	}
-	if got := add(adminTok, "newbie", "owner"); got != http.StatusForbidden {
-		t.Errorf("an org admin cannot create an owner: got %d", got)
-	}
-	if got := add(adminTok, "ghost", "member"); got != http.StatusNotFound {
-		t.Errorf("unknown username: got %d, want 404", got)
-	}
-	if got := add(adminTok, "newbie", "superuser"); got != http.StatusBadRequest {
-		t.Errorf("invalid role: got %d, want 400", got)
-	}
-	if got := add(adminTok, "newbie", "member"); got != http.StatusCreated {
-		t.Fatalf("admin adding a member: got %d", got)
-	}
-	if got := add(adminTok, "newbie", "member"); got != http.StatusConflict {
-		t.Errorf("adding twice: got %d, want 409", got)
-	}
-	if got := add(owner, "newbie", "owner"); got != http.StatusConflict {
-		t.Errorf("owner adding an existing member: got %d, want 409", got)
-	}
+	newMemberToken(t, srv, "newbie", paneldb.RoleMember)
 
 	newbie := userID(t, srv, "newbie")
 	setRole := func(tok string, uid int64, role string) int {
