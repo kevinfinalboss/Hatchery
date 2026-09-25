@@ -33,9 +33,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/mailer"
 	"github.com/kevinfinalboss/Hatchery/internal/panelapi"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
+
+	_ "time/tzdata"
 )
 
 func main() {
@@ -49,6 +52,9 @@ func main() {
 	var redisURL, trustedProxies string
 	var backupEndpoint, backupBucket, backupSecret string
 	var uiDir string
+	var publicURL, bootstrapAdminEmail string
+	var smtpHost, smtpFrom, smtpTLS, smtpUsername string
+	var smtpPort int
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -79,6 +85,16 @@ func main() {
 	flag.StringVar(&uiDir, "ui-dir", os.Getenv("PANEL_UI_DIR"),
 		"Directory with the built web UI (web/dist) to serve on every non-API path. Empty serves no UI (local dev uses Vite). "+
 			"Defaults to $PANEL_UI_DIR.")
+	flag.StringVar(&publicURL, "public-url", os.Getenv("PANEL_PUBLIC_URL"),
+		"Public base URL of the panel (e.g. https://panel.example.com), used in e-mailed links. "+
+			"Without it e-mail features stay off. Defaults to $PANEL_PUBLIC_URL.")
+	flag.StringVar(&bootstrapAdminEmail, "bootstrap-admin-email", envOr("PANEL_BOOTSTRAP_ADMIN_EMAIL", "admin@hatchery.local"),
+		"E-mail of the first admin account. Defaults to $PANEL_BOOTSTRAP_ADMIN_EMAIL or admin@hatchery.local.")
+	flag.StringVar(&smtpHost, "smtp-host", os.Getenv("PANEL_SMTP_HOST"), "SMTP server host; empty turns e-mail off. Defaults to $PANEL_SMTP_HOST.")
+	flag.IntVar(&smtpPort, "smtp-port", 587, "SMTP server port.")
+	flag.StringVar(&smtpFrom, "smtp-from", os.Getenv("PANEL_SMTP_FROM"), `Sender, e.g. "Hatchery <noreply@example.com>". Defaults to $PANEL_SMTP_FROM.`)
+	flag.StringVar(&smtpTLS, "smtp-tls", "starttls", "starttls, tls (implicit, port 465) or none (local catcher only).")
+	flag.StringVar(&smtpUsername, "smtp-username", os.Getenv("PANEL_SMTP_USERNAME"), "SMTP user (password in $PANEL_SMTP_PASSWORD). Defaults to $PANEL_SMTP_USERNAME.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -146,7 +162,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := panelapi.BootstrapAdmin(ctx, c, db, adminSecretNamespace, adminSecretName, "admin@hatchery.local"); err != nil {
+	if err := panelapi.BootstrapAdmin(ctx, c, db, adminSecretNamespace, adminSecretName, bootstrapAdminEmail); err != nil {
 		log.Error(err, "failed to bootstrap admin user")
 		os.Exit(1)
 	}
@@ -160,6 +176,23 @@ func main() {
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
 	srv.TrustedProxies = proxyNets
 	srv.UIDir = uiDir
+
+	srv.RequestLimiter = panelcache.NewRedisRequestLimiter(rdb)
+	srv.PublicURL = strings.TrimRight(publicURL, "/")
+	if smtpHost != "" {
+		m, err := mailer.NewSMTP(mailer.SMTPConfig{Host: smtpHost, Port: smtpPort, From: smtpFrom, TLS: smtpTLS,
+			Username: smtpUsername, Password: os.Getenv("PANEL_SMTP_PASSWORD")})
+		if err != nil {
+			log.Error(err, "invalid SMTP configuration")
+			os.Exit(1)
+		}
+		srv.Mailer = m
+		if publicURL == "" {
+			log.Info("SMTP is configured but --public-url is empty: e-mail features stay off")
+		} else {
+			log.Info("e-mail enabled", "smtpHost", smtpHost, "publicURL", srv.PublicURL)
+		}
+	}
 
 	if backupBucket != "" {
 		ns, name, ok := strings.Cut(backupSecret, "/")
@@ -195,4 +228,11 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
