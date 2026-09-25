@@ -1,0 +1,53 @@
+[
+ {
+  "game_versions": [
+   "26.4-snapshot-1"
+  ],
+  "loaders": [
+   "fabric",
+   "quilt"
+  ],
+  "environment": "client_only",
+  "id": "B6sJIqHK",
+  "project_id": "mOgUt4GM",
+  "author_id": "uF4fzWRt",
+  "featured": false,
+  "name": "v22.0.0-alpha.1 for 26.4-snapshot-1",
+  "version_number": "22.0.0-alpha.1",
+  "changelog": "- Rebuild for Minecraft 26.4-snapshot-1",
+  "changelog_url": null,
+  "date_published": "2026-09-24T20:44:06.256867Z",
+  "downloads": 402,
+  "version_type": "alpha",
+  "status": "listed",
+  "requested_status": null,
+  "files": [
+   {
+    "id": "VnAVpLJr",
+    "hashes": {
+     "sha512": "01da407ce6ad6bbf21ff82d690343efb92d92aed137f380fa2d7cc02605b306b8b112eb49aec785fe116c114dbface985c2fcbb9686e51f9c259bc84b37b9c5b",
+     "sha1": "4be3557e31388bf09a7ed5dc04089548524f4411"
+    },
+    "url": "https://cdn.modrinth.com/data/mOgUt4GM/versions/B6sJIqHK/modmenu-22.0.0-alpha.1.jar",
+    "filename": "modmenu-22.0.0-alpha.1.jar",
+    "primary": true,
+    "size": 856814,
+    "file_type": null
+   }
+  ],
+  "dependencies": [
+   {
+    "version_id": null,
+    "project_id": "eXts2L7r",
+    "file_name": null,
+    "dependency_type": "required"
+   },
+   {
+    "version_id": null,
+    "project_id": "P7dR8mSH",
+    "file_name": null,
+    "dependency_type": "required"
+   }
+  ]
+ }
+]

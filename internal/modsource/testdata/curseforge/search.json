@@ -1,0 +1,2040 @@
+{
+ "data": [
+  {
+   "screenshots": [],
+   "id": 308702,
+   "gameId": 432,
+   "name": "Mod Menu",
+   "slug": "modmenu",
+   "links": {
+    "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/modmenu",
+    "wikiUrl": "https://github.com/terraformersmc/modmenu?tab=readme-ov-file#developers",
+    "issuesUrl": "https://github.com/Prospector/ModMenu/issues",
+    "sourceUrl": "https://github.com/Prospector/ModMenu"
+   },
+   "summary": "Adds a mod menu to view the list of mods you have installed.",
+   "status": 4,
+   "downloadCount": 81231106,
+   "isFeatured": false,
+   "primaryCategoryId": 425,
+   "categories": [
+    {
+     "id": 425,
+     "gameId": 432,
+     "name": "Miscellaneous",
+     "slug": "mc-miscellaneous",
+     "url": "https://www.curseforge.com/minecraft/mc-mods/mc-miscellaneous",
+     "iconUrl": "https://media.forgecdn.net/avatars/6/40/635351497693711265.png",
+     "dateModified": "2014-06-15T04:27:14.543Z",
+     "isClass": false,
+     "classId": 6,
+     "parentCategoryId": 6
+    }
+   ],
+   "classId": 6,
+   "authors": [
+    {
+     "id": 18470197,
+     "name": "Prospector",
+     "url": "https://www.curseforge.com/members/prospector",
+     "avatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/d6a6ebf2-6010-43b2-8fe9-6c74708fdfaf-profile_image-150x150.png",
+     "userTierInfo": {
+      "tierLevel": 4,
+      "downloadsThreshold": 10000000
+     }
+    }
+   ],
+   "logo": {
+    "id": 1577189,
+    "modId": 308702,
+    "title": "639021849968664892.png",
+    "description": "",
+    "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/1577/189/256/256/639021849968664892.png",
+    "url": "https://media.forgecdn.net/avatars/1577/189/639021849968664892.png"
+   },
+   "mainFileId": 8966634,
+   "latestFiles": [
+    {
+     "id": 2810461,
+     "gameId": 432,
+     "modId": 308702,
+     "isAvailable": true,
+     "displayName": "ModMenu v1.7.14.1.14.4+build.126 for 1.14.4",
+     "fileName": "modmenu-1.7.14.1.14.4+build.126.jar",
+     "releaseType": 1,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "45bb4929b145c6bc123142067f1f48685f9657f6",
+       "algo": 1
+      },
+      {
+       "value": "2b148dc4f44320aabecdc13b3a845e45",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2019-10-16T12:39:52.21Z",
+     "fileLength": 109147,
+     "downloadCount": 58279,
+     "downloadUrl": "https://edge.forgecdn.net/files/2810/461/modmenu-1.7.14.1.14.4%2bbuild.126.jar",
+     "gameVersions": [
+      "1.14.4"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "1.14.4",
+       "gameVersionPadded": "0000000001.0000000014.0000000004",
+       "gameVersion": "1.14.4",
+       "gameVersionReleaseDate": "2019-07-19T00:00:00Z",
+       "gameVersionTypeId": 64806
+      }
+     ],
+     "dependencies": [],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 1702489160,
+     "modules": [
+      {
+       "name": "LICENSE",
+       "fingerprint": 3043761048
+      },
+      {
+       "name": "assets",
+       "fingerprint": 4081445080
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 2674883324
+      },
+      {
+       "name": "mixins.modmenu.json",
+       "fingerprint": 228766295
+      },
+      {
+       "name": "modmenu.refmap.json",
+       "fingerprint": 1859892188
+      },
+      {
+       "name": "META-INF",
+       "fingerprint": 3298323684
+      },
+      {
+       "name": "io",
+       "fingerprint": 3682452053
+      }
+     ]
+    },
+    {
+     "id": 2837461,
+     "gameId": 432,
+     "modId": 308702,
+     "isAvailable": true,
+     "displayName": "ModMenu v1.8.0.1.15-pre6+build.15 for 1.15-pre6",
+     "fileName": "modmenu-1.8.0.1.15-pre6+build.15.jar",
+     "releaseType": 2,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "45c56381e23a3ed430cdb1271d9fedeeda341b60",
+       "algo": 1
+      },
+      {
+       "value": "670ab5ebfd95f42e2afd250270cd887b",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2019-12-06T14:29:19.467Z",
+     "fileLength": 81418,
+     "downloadCount": 5844,
+     "downloadUrl": "https://edge.forgecdn.net/files/2837/461/modmenu-1.8.0.1.15-pre6%2bbuild.15.jar",
+     "gameVersions": [
+      "1.15-Snapshot"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "1.15-Snapshot",
+       "gameVersionPadded": "0000000001.0000000015",
+       "gameVersion": "1.15",
+       "gameVersionReleaseDate": "2019-08-22T00:00:00Z",
+       "gameVersionTypeId": 68722
+      }
+     ],
+     "dependencies": [],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 3059515087,
+     "modules": [
+      {
+       "name": "LICENSE",
+       "fingerprint": 3043761048
+      },
+      {
+       "name": "assets",
+       "fingerprint": 4081445080
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 3761838018
+      },
+      {
+       "name": "mixins.modmenu.json",
+       "fingerprint": 228766295
+      },
+      {
+       "name": "modmenu.refmap.json",
+       "fingerprint": 1859892188
+      },
+      {
+       "name": "META-INF",
+       "fingerprint": 2464251221
+      },
+      {
+       "name": "io",
+       "fingerprint": 3128988637
+      }
+     ]
+    },
+    {
+     "id": 7813924,
+     "gameId": 432,
+     "modId": 308702,
+     "isAvailable": true,
+     "displayName": "v18.0.0-alpha.8 for 26.1",
+     "fileName": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "996783ff7b322e73c3a6799fecc5ca3023958514",
+       "algo": 1
+      },
+      {
+       "value": "a90a4e09c1880ea7c2bea73802a0791c",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2026-03-25T22:45:18.337Z",
+     "fileLength": 847389,
+     "downloadCount": 122357,
+     "fileSizeOnDisk": 1529608,
+     "downloadUrl": "https://edge.forgecdn.net/files/7813/924/modmenu-18.0.0-alpha.8.jar",
+     "gameVersions": [
+      "Fabric",
+      "Quilt",
+      "26.1",
+      "26.1.1",
+      "26.1.2"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "Fabric",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-09-01T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "Quilt",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-05-26T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "26.1",
+       "gameVersionPadded": "0000000026.0000000001",
+       "gameVersion": "26.1",
+       "gameVersionReleaseDate": "2026-03-24T16:40:19.29Z",
+       "gameVersionTypeId": 83806
+      },
+      {
+       "gameVersionName": "26.1.1",
+       "gameVersionPadded": "0000000026.0000000001.0000000001",
+       "gameVersion": "26.1.1",
+       "gameVersionReleaseDate": "2026-04-01T11:40:06.78Z",
+       "gameVersionTypeId": 83806
+      },
+      {
+       "gameVersionName": "26.1.2",
+       "gameVersionPadded": "0000000026.0000000001.0000000002",
+       "gameVersion": "26.1.2",
+       "gameVersionReleaseDate": "2026-04-09T11:39:54.243Z",
+       "gameVersionTypeId": 83806
+      }
+     ],
+     "dependencies": [
+      {
+       "modId": 306612,
+       "relationType": 3
+      },
+      {
+       "modId": 1037459,
+       "relationType": 3
+      }
+     ],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 2662170374,
+     "modules": [
+      {
+       "name": "META-INF",
+       "fingerprint": 425149349
+      },
+      {
+       "name": "com",
+       "fingerprint": 4180138348
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 2408344311
+      },
+      {
+       "name": "mixins.modmenu.json",
+       "fingerprint": 3526602303
+      },
+      {
+       "name": "assets",
+       "fingerprint": 3361753760
+      },
+      {
+       "name": "high_contrast",
+       "fingerprint": 1211014526
+      },
+      {
+       "name": "programmer_art",
+       "fingerprint": 1402335005
+      },
+      {
+       "name": "LICENSE_modmenu",
+       "fingerprint": 3914258567
+      }
+     ]
+    },
+    {
+     "id": 8854511,
+     "gameId": 432,
+     "modId": 308702,
+     "isAvailable": true,
+     "displayName": "v21.0.0-beta.1 for 26.3-rc-1",
+     "fileName": "modmenu-21.0.0-beta.1.jar",
+     "releaseType": 2,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "e75cdab1860f1efd2ac29876512f6d7da9edefdb",
+       "algo": 1
+      },
+      {
+       "value": "79f289bc9aad715e7a4ba48d72a645f7",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2026-09-11T00:58:08.72Z",
+     "fileLength": 856788,
+     "downloadCount": 51658,
+     "fileSizeOnDisk": 1540609,
+     "downloadUrl": "https://edge.forgecdn.net/files/8854/511/modmenu-21.0.0-beta.1.jar",
+     "gameVersions": [
+      "Client",
+      "Fabric",
+      "Quilt",
+      "26.3-snapshot",
+      "26.3"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "Client",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-12-08T00:00:00Z",
+       "gameVersionTypeId": 75208
+      },
+      {
+       "gameVersionName": "Fabric",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-09-01T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "Quilt",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-05-26T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "26.3-snapshot",
+       "gameVersionPadded": "0000000026.0000000003",
+       "gameVersion": "26.3",
+       "gameVersionReleaseDate": "2026-08-09T00:00:00Z",
+       "gameVersionTypeId": 81493
+      },
+      {
+       "gameVersionName": "26.3",
+       "gameVersionPadded": "0000000026.0000000003",
+       "gameVersion": "26.3",
+       "gameVersionReleaseDate": "2026-09-15T15:46:48.187Z",
+       "gameVersionTypeId": 88556
+      }
+     ],
+     "dependencies": [
+      {
+       "modId": 306612,
+       "relationType": 3
+      },
+      {
+       "modId": 1037459,
+       "relationType": 3
+      },
+      {
+       "modId": 306612,
+       "relationType": 3
+      },
+      {
+       "modId": 1037459,
+       "relationType": 3
+      }
+     ],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 3083111728,
+     "modules": [
+      {
+       "name": "META-INF",
+       "fingerprint": 2976850553
+      },
+      {
+       "name": "com",
+       "fingerprint": 4275593988
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 3131757904
+      },
+      {
+       "name": "mixins.modmenu.json",
+       "fingerprint": 2241593843
+      },
+      {
+       "name": "assets",
+       "fingerprint": 1201158379
+      },
+      {
+       "name": "high_contrast",
+       "fingerprint": 1434810650
+      },
+      {
+       "name": "programmer_art",
+       "fingerprint": 672685991
+      },
+      {
+       "name": "LICENSE_modmenu",
+       "fingerprint": 3914258567
+      }
+     ]
+    },
+    {
+     "id": 8966634,
+     "gameId": 432,
+     "modId": 308702,
+     "isAvailable": true,
+     "displayName": "v20.0.3 for 26.2",
+     "fileName": "modmenu-20.0.3.jar",
+     "releaseType": 1,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "9fc381627b471c18d67156e846228f51ff2ea5b4",
+       "algo": 1
+      },
+      {
+       "value": "191be5a18876d0605ba5118ff90ea92e",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2026-09-24T19:34:22.203Z",
+     "fileLength": 616919,
+     "downloadCount": 5422,
+     "fileSizeOnDisk": 1276791,
+     "downloadUrl": "https://edge.forgecdn.net/files/8966/634/modmenu-20.0.3.jar",
+     "gameVersions": [
+      "Client",
+      "Fabric",
+      "Server",
+      "Quilt",
+      "26.2"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "Client",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-12-08T00:00:00Z",
+       "gameVersionTypeId": 75208
+      },
+      {
+       "gameVersionName": "Fabric",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-09-01T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "Server",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-12-08T00:00:00Z",
+       "gameVersionTypeId": 75208
+      },
+      {
+       "gameVersionName": "Quilt",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-05-26T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "26.2",
+       "gameVersionPadded": "0000000026.0000000002",
+       "gameVersion": "26.2",
+       "gameVersionReleaseDate": "2026-06-16T15:39:22.26Z",
+       "gameVersionTypeId": 86297
+      }
+     ],
+     "dependencies": [
+      {
+       "modId": 1037459,
+       "relationType": 3
+      },
+      {
+       "modId": 306612,
+       "relationType": 3
+      }
+     ],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 1494587593,
+     "modules": [
+      {
+       "name": "META-INF",
+       "fingerprint": 1406295779
+      },
+      {
+       "name": "com",
+       "fingerprint": 3669735493
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 1439168118
+      },
+      {
+       "name": "mixins.modmenu.json",
+       "fingerprint": 2241593843
+      },
+      {
+       "name": "assets",
+       "fingerprint": 2514662789
+      },
+      {
+       "name": "high_contrast",
+       "fingerprint": 1434810650
+      },
+      {
+       "name": "programmer_art",
+       "fingerprint": 672685991
+      },
+      {
+       "name": "LICENSE_modmenu",
+       "fingerprint": 3914258567
+      }
+     ]
+    }
+   ],
+   "latestFilesIndexes": [
+    {
+     "gameVersion": "26.2",
+     "fileId": 8966634,
+     "filename": "modmenu-20.0.3.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 86297,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.2",
+     "fileId": 8966634,
+     "filename": "modmenu-20.0.3.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 86297,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 8966566,
+     "filename": "modmenu-18.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.11",
+     "fileId": 8966499,
+     "filename": "modmenu-17.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.11",
+     "fileId": 8966499,
+     "filename": "modmenu-17.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21",
+     "fileId": 8966434,
+     "filename": "modmenu-11.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21",
+     "fileId": 8966434,
+     "filename": "modmenu-11.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.1",
+     "fileId": 8966434,
+     "filename": "modmenu-11.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.1",
+     "fileId": 8966434,
+     "filename": "modmenu-11.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.3",
+     "fileId": 8958984,
+     "filename": "modmenu-21.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 88556,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.3",
+     "fileId": 8958984,
+     "filename": "modmenu-21.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 88556,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.3",
+     "fileId": 8854511,
+     "filename": "modmenu-21.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 81493,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.3",
+     "fileId": 8854511,
+     "filename": "modmenu-21.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 81493,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.14.4",
+     "fileId": 8613102,
+     "filename": "modmenu-1.7.18.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.11",
+     "fileId": 8397851,
+     "filename": "modmenu-17.0.1-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.11",
+     "fileId": 8397851,
+     "filename": "modmenu-17.0.1-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.2",
+     "fileId": 8302403,
+     "filename": "modmenu-20.0.0-beta.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 86297,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.2",
+     "fileId": 8302403,
+     "filename": "modmenu-20.0.0-beta.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 86297,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 8065321,
+     "filename": "modmenu-18.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 7813924,
+     "filename": "modmenu-18.0.0-alpha.8.jar",
+     "releaseType": 3,
+     "gameVersionTypeId": 83806,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.9",
+     "fileId": 7808781,
+     "filename": "modmenu-16.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.9",
+     "fileId": 7808781,
+     "filename": "modmenu-16.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.10",
+     "fileId": 7808781,
+     "filename": "modmenu-16.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.10",
+     "fileId": 7808781,
+     "filename": "modmenu-16.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.8",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.8",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.6",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.6",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.7",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.7",
+     "fileId": 7808770,
+     "filename": "modmenu-15.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.5",
+     "fileId": 7808731,
+     "filename": "modmenu-14.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.5",
+     "fileId": 7808731,
+     "filename": "modmenu-14.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.4",
+     "fileId": 7808596,
+     "filename": "modmenu-13.0.4.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.4",
+     "fileId": 7808596,
+     "filename": "modmenu-13.0.4.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.3",
+     "fileId": 7808559,
+     "filename": "modmenu-12.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.3",
+     "fileId": 7808559,
+     "filename": "modmenu-12.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.2",
+     "fileId": 7808559,
+     "filename": "modmenu-12.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.2",
+     "fileId": 7808559,
+     "filename": "modmenu-12.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.9",
+     "fileId": 7368052,
+     "filename": "modmenu-16.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.9",
+     "fileId": 7368052,
+     "filename": "modmenu-16.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.10",
+     "fileId": 7368052,
+     "filename": "modmenu-16.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.10",
+     "fileId": 7368052,
+     "filename": "modmenu-16.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.6",
+     "fileId": 6676751,
+     "filename": "modmenu-15.0.0-beta.3.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.6",
+     "fileId": 6676751,
+     "filename": "modmenu-15.0.0-beta.3.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.5",
+     "fileId": 6347337,
+     "filename": "modmenu-14.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.5",
+     "fileId": 6347337,
+     "filename": "modmenu-14.0.0-rc.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.4",
+     "fileId": 5960785,
+     "filename": "modmenu-13.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.4",
+     "fileId": 5960785,
+     "filename": "modmenu-13.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.3",
+     "fileId": 5810609,
+     "filename": "modmenu-12.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.3",
+     "fileId": 5810609,
+     "filename": "modmenu-12.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21.2",
+     "fileId": 5810609,
+     "filename": "modmenu-12.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.2",
+     "fileId": 5810609,
+     "filename": "modmenu-12.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.4",
+     "fileId": 5441535,
+     "filename": "modmenu-9.2.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.4",
+     "fileId": 5441535,
+     "filename": "modmenu-9.2.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.5",
+     "fileId": 5441532,
+     "filename": "modmenu-10.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.5",
+     "fileId": 5441532,
+     "filename": "modmenu-10.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.6",
+     "fileId": 5441532,
+     "filename": "modmenu-10.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.6",
+     "fileId": 5441532,
+     "filename": "modmenu-10.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.21",
+     "fileId": 5435026,
+     "filename": "modmenu-11.0.0-rc.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21",
+     "fileId": 5435026,
+     "filename": "modmenu-11.0.0-rc.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 77784,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.5",
+     "fileId": 5283168,
+     "filename": "modmenu-10.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.5",
+     "fileId": 5283168,
+     "filename": "modmenu-10.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.6",
+     "fileId": 5283168,
+     "filename": "modmenu-10.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.6",
+     "fileId": 5283168,
+     "filename": "modmenu-10.0.0-beta.1.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.4",
+     "fileId": 5283074,
+     "filename": "modmenu-9.2.0-beta.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.4",
+     "fileId": 5283074,
+     "filename": "modmenu-9.2.0-beta.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.3",
+     "fileId": 5162846,
+     "filename": "modmenu-9.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.3",
+     "fileId": 5162846,
+     "filename": "modmenu-9.0.0.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.2",
+     "fileId": 5162840,
+     "filename": "modmenu-8.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.2",
+     "fileId": 5162840,
+     "filename": "modmenu-8.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20.1",
+     "fileId": 5162837,
+     "filename": "modmenu-7.2.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.1",
+     "fileId": 5162837,
+     "filename": "modmenu-7.2.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.20",
+     "fileId": 5162837,
+     "filename": "modmenu-7.2.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20",
+     "fileId": 5162837,
+     "filename": "modmenu-7.2.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19.4",
+     "fileId": 5162830,
+     "filename": "modmenu-6.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.4",
+     "fileId": 5162830,
+     "filename": "modmenu-6.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19.4",
+     "fileId": 4441645,
+     "filename": "modmenu-6.1.0-rc.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.4",
+     "fileId": 4441645,
+     "filename": "modmenu-6.1.0-rc.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19.3",
+     "fileId": 4401053,
+     "filename": "modmenu-5.1.0-beta.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.3",
+     "fileId": 4401053,
+     "filename": "modmenu-5.1.0-beta.4.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19.2",
+     "fileId": 4401051,
+     "filename": "modmenu-4.2.0-beta.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.2",
+     "fileId": 4401051,
+     "filename": "modmenu-4.2.0-beta.2.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19.3",
+     "fileId": 4159524,
+     "filename": "modmenu-5.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.3",
+     "fileId": 4159524,
+     "filename": "modmenu-5.0.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.17.1",
+     "fileId": 4145216,
+     "filename": "modmenu-2.0.17.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73242,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.17",
+     "fileId": 4145216,
+     "filename": "modmenu-2.0.17.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73242,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.18.2",
+     "fileId": 4145213,
+     "filename": "modmenu-3.2.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73250,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.2",
+     "fileId": 4145207,
+     "filename": "modmenu-4.1.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.2",
+     "fileId": 4145207,
+     "filename": "modmenu-4.1.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.15.2",
+     "fileId": 4031627,
+     "filename": "modmenu-1.10.7.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 68722,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.1",
+     "fileId": 3902967,
+     "filename": "modmenu-4.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.1",
+     "fileId": 3902967,
+     "filename": "modmenu-4.0.5.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.19",
+     "fileId": 3873988,
+     "filename": "modmenu-4.0.4.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19",
+     "fileId": 3873988,
+     "filename": "modmenu-4.0.4.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.16.5",
+     "fileId": 3850092,
+     "filename": "modmenu-1.16.23.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.18.2",
+     "fileId": 3789482,
+     "filename": "modmenu-3.2.2.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73250,
+     "modLoader": 5
+    },
+    {
+     "gameVersion": "1.18.1",
+     "fileId": 3570652,
+     "filename": "modmenu-3.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73250,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.18",
+     "fileId": 3570652,
+     "filename": "modmenu-3.0.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73250,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.17",
+     "fileId": 3329119,
+     "filename": "modmenu-2.0.0-beta.5.jar",
+     "releaseType": 2,
+     "gameVersionTypeId": 73242,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.16.4",
+     "fileId": 3199797,
+     "filename": "modmenu-1.16.7.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.16.3",
+     "fileId": 3110701,
+     "filename": "modmenu-1.14.9+build.13.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.16.2",
+     "fileId": 3023985,
+     "filename": "modmenu-1.14.6+build.31.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.16.1",
+     "fileId": 3006672,
+     "filename": "modmenu-1.14.5+build.30.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.16",
+     "fileId": 2986623,
+     "filename": "modmenu-1.12.2+build.16.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 70886,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.15.1",
+     "fileId": 2854748,
+     "filename": "modmenu-1.8.3+build.19.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 68722,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.15",
+     "fileId": 2846500,
+     "filename": "modmenu-1.8.2+build.18.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 68722,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.14.4",
+     "fileId": 2810461,
+     "filename": "modmenu-1.7.14.1.14.4+build.126.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806
+    },
+    {
+     "gameVersion": "1.14.3",
+     "fileId": 2739004,
+     "filename": "modmenu-1.6.3+build.101.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.14.2",
+     "fileId": 2719901,
+     "filename": "ModMenu-1.6.2-92.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.14.1",
+     "fileId": 2710904,
+     "filename": "ModMenu-1.5.4-85.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.14",
+     "fileId": 2709204,
+     "filename": "ModMenu-1.5.3-84.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 64806,
+     "modLoader": 4
+    }
+   ],
+   "latestEarlyAccessFilesIndexes": [],
+   "dateCreated": "2018-12-10T16:47:08.667Z",
+   "dateModified": "2026-09-24T19:37:18.467Z",
+   "dateReleased": "2026-09-24T19:34:22.203Z",
+   "allowModDistribution": true,
+   "gamePopularityRank": 170,
+   "isAvailable": true,
+   "hasCommentsEnabled": false,
+   "thumbsUpCount": 0,
+   "serverAffiliation": {
+    "isEnabled": true,
+    "isDefaultBanner": false,
+    "hasDiscount": false,
+    "affiliationService": 2,
+    "customImageUrl": "https://media.forgecdn.net/banner/console-affiliation-banners/banner_f3d90a3a-060e-4cf6-ae04-a44ab391219d.png",
+    "affiliationLink": "https://modrinth.host?from=modmenu"
+   },
+   "featuredProjectTag": 0
+  },
+  {
+   "screenshots": [
+    {
+     "id": 731410,
+     "modId": 914586,
+     "title": "Permission",
+     "description": "",
+     "thumbnailUrl": "https://media.forgecdn.net/attachments/thumbnails/731/410/310/172/per.png",
+     "url": "https://media.forgecdn.net/attachments/731/410/per.png"
+    }
+   ],
+   "id": 914586,
+   "gameId": 432,
+   "name": "ModMenu Badges Lib",
+   "slug": "modmenu-badges-lib",
+   "links": {
+    "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/modmenu-badges-lib",
+    "wikiUrl": "",
+    "issuesUrl": "https://github.com/syorito-hatsuki/modmenu-badges-lib/issues",
+    "sourceUrl": "https://github.com/syorito-hatsuki/modmenu-badges-lib"
+   },
+   "summary": "More badge!!!",
+   "status": 4,
+   "downloadCount": 2205559,
+   "isFeatured": false,
+   "primaryCategoryId": 421,
+   "categories": [
+    {
+     "id": 423,
+     "gameId": 432,
+     "name": "Map and Information",
+     "slug": "map-information",
+     "url": "https://www.curseforge.com/minecraft/mc-mods/map-information",
+     "iconUrl": "https://media.forgecdn.net/avatars/6/38/635351497437388438.png",
+     "dateModified": "2014-05-08T17:42:23.74Z",
+     "isClass": false,
+     "classId": 6,
+     "parentCategoryId": 6
+    },
+    {
+     "id": 421,
+     "gameId": 432,
+     "name": "API and Library",
+     "slug": "library-api",
+     "url": "https://www.curseforge.com/minecraft/mc-mods/library-api",
+     "iconUrl": "https://media.forgecdn.net/avatars/6/36/635351496947765531.png",
+     "dateModified": "2014-05-23T03:21:44.06Z",
+     "isClass": false,
+     "classId": 6,
+     "parentCategoryId": 6
+    },
+    {
+     "id": 424,
+     "gameId": 432,
+     "name": "Cosmetic",
+     "slug": "cosmetic",
+     "url": "https://www.curseforge.com/minecraft/mc-mods/cosmetic",
+     "iconUrl": "https://media.forgecdn.net/avatars/6/39/635351497555976928.png",
+     "dateModified": "2014-05-08T17:42:35.597Z",
+     "isClass": false,
+     "classId": 6,
+     "parentCategoryId": 6
+    }
+   ],
+   "classId": 6,
+   "authors": [
+    {
+     "id": 20887925,
+     "name": "DuckyHatsu",
+     "url": "https://www.curseforge.com/members/duckyhatsu",
+     "avatarUrl": "https://static-cdn.jtvnw.net/jtv_user_pictures/fd5a024e-558d-4e7b-8acf-379c3f118105-profile_image-150x150.png",
+     "userTierInfo": {
+      "tierLevel": 3,
+      "downloadsThreshold": 1000000
+     }
+    }
+   ],
+   "logo": {
+    "id": 879355,
+    "modId": 914586,
+    "title": "638306735063892792.jpeg",
+    "description": "",
+    "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/879/355/256/256/638306735063892792.jpeg",
+    "url": "https://media.forgecdn.net/avatars/879/355/638306735063892792.jpeg"
+   },
+   "mainFileId": 7844808,
+   "latestFiles": [
+    {
+     "id": 7844808,
+     "gameId": 432,
+     "modId": 914586,
+     "isAvailable": true,
+     "displayName": "ModMenu Badges Lib 2026.3.1",
+     "fileName": "modmenu-badges-lib-2026.3.1.jar",
+     "releaseType": 1,
+     "fileStatus": 4,
+     "hashes": [
+      {
+       "value": "21f6b35d0c010edf46dcbfcd56d61e05cab558f9",
+       "algo": 1
+      },
+      {
+       "value": "781b5f43d20de964a93b08b03159a106",
+       "algo": 2
+      }
+     ],
+     "fileDate": "2026-03-30T09:12:03.847Z",
+     "fileLength": 22417,
+     "downloadCount": 5112,
+     "fileSizeOnDisk": 44190,
+     "downloadUrl": "https://edge.forgecdn.net/files/7844/808/modmenu-badges-lib-2026.3.1.jar",
+     "gameVersions": [
+      "Client",
+      "Fabric",
+      "26.1",
+      "26.1.1",
+      "26.1.2",
+      "26.2"
+     ],
+     "sortableGameVersions": [
+      {
+       "gameVersionName": "Client",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-12-08T00:00:00Z",
+       "gameVersionTypeId": 75208
+      },
+      {
+       "gameVersionName": "Fabric",
+       "gameVersionPadded": "0",
+       "gameVersion": "",
+       "gameVersionReleaseDate": "2022-09-01T00:00:00Z",
+       "gameVersionTypeId": 68441
+      },
+      {
+       "gameVersionName": "26.1",
+       "gameVersionPadded": "0000000026.0000000001",
+       "gameVersion": "26.1",
+       "gameVersionReleaseDate": "2026-03-24T16:40:19.29Z",
+       "gameVersionTypeId": 83806
+      },
+      {
+       "gameVersionName": "26.1.1",
+       "gameVersionPadded": "0000000026.0000000001.0000000001",
+       "gameVersion": "26.1.1",
+       "gameVersionReleaseDate": "2026-04-01T11:40:06.78Z",
+       "gameVersionTypeId": 83806
+      },
+      {
+       "gameVersionName": "26.1.2",
+       "gameVersionPadded": "0000000026.0000000001.0000000002",
+       "gameVersion": "26.1.2",
+       "gameVersionReleaseDate": "2026-04-09T11:39:54.243Z",
+       "gameVersionTypeId": 83806
+      },
+      {
+       "gameVersionName": "26.2",
+       "gameVersionPadded": "0000000026.0000000002",
+       "gameVersion": "26.2",
+       "gameVersionReleaseDate": "2026-06-16T15:39:22.26Z",
+       "gameVersionTypeId": 86297
+      }
+     ],
+     "dependencies": [
+      {
+       "modId": 306612,
+       "relationType": 3
+      },
+      {
+       "modId": 308702,
+       "relationType": 3
+      }
+     ],
+     "alternateFileId": 0,
+     "isServerPack": false,
+     "fileFingerprint": 2602189477,
+     "modules": [
+      {
+       "name": "META-INF",
+       "fingerprint": 2883914090
+      },
+      {
+       "name": "dev",
+       "fingerprint": 3731475729
+      },
+      {
+       "name": "fabric.mod.json",
+       "fingerprint": 991935457
+      },
+      {
+       "name": "modmenubadgeslib.mixins.json",
+       "fingerprint": 629322616
+      },
+      {
+       "name": "assets",
+       "fingerprint": 1256190873
+      }
+     ]
+    }
+   ],
+   "latestFilesIndexes": [
+    {
+     "gameVersion": "26.1",
+     "fileId": 7844808,
+     "filename": "modmenu-badges-lib-2026.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.1",
+     "fileId": 7844808,
+     "filename": "modmenu-badges-lib-2026.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.1.2",
+     "fileId": 7844808,
+     "filename": "modmenu-badges-lib-2026.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 83806,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "26.2",
+     "fileId": 7844808,
+     "filename": "modmenu-badges-lib-2026.3.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 86297,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.8",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.6",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.7",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.9",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.10",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.11",
+     "fileId": 7588467,
+     "filename": "modmenu-badges-lib-2026.2.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.5",
+     "fileId": 6466209,
+     "filename": "modmenu-badges-lib-2025.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.18.2",
+     "fileId": 4758382,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73250,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.3",
+     "fileId": 4758381,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.4",
+     "fileId": 4758381,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.2",
+     "fileId": 4758381,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19.1",
+     "fileId": 4758381,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.19",
+     "fileId": 4758381,
+     "filename": "modmenu-badges-lib-2023.4.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 73407,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.2",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.5",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.4",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.3",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.1",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.6",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.20.4",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 75125,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.3",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.1",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    },
+    {
+     "gameVersion": "1.21.2",
+     "fileId": 4758379,
+     "filename": "modmenu-badges-lib-2023.6.1.jar",
+     "releaseType": 1,
+     "gameVersionTypeId": 77784,
+     "modLoader": 4
+    }
+   ],
+   "latestEarlyAccessFilesIndexes": [],
+   "dateCreated": "2023-09-20T06:52:31.453Z",
+   "dateModified": "2026-03-30T09:20:23.71Z",
+   "dateReleased": "2026-03-30T09:12:03.847Z",
+   "allowModDistribution": false,
+   "gamePopularityRank": 3244,
+   "isAvailable": true,
+   "hasCommentsEnabled": true,
+   "thumbsUpCount": 0,
+   "socialLinks": [
+    {
+     "type": 2,
+     "url": "https://discord.gg/pbwnMwnUD6"
+    }
+   ],
+   "featuredProjectTag": 0
+  }
+ ],
+ "pagination": {
+  "index": 0,
+  "pageSize": 3,
+  "resultCount": 3,
+  "totalCount": 10
+ }
+}

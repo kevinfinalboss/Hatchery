@@ -1,0 +1,65 @@
+{
+ "data": [
+  {
+   "id": 7001,
+   "modId": 308702,
+   "displayName": "Mod Menu 18.0.0",
+   "fileName": "modmenu-18.0.0.jar",
+   "fileLength": 123456,
+   "downloadUrl": "https://edge.forgecdn.net/files/7001/modmenu-18.0.0.jar",
+   "fileDate": "2026-09-01T10:00:00Z",
+   "hashes": [
+    {
+     "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "algo": 1
+    },
+    {
+     "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "algo": 2
+    }
+   ],
+   "gameVersions": [
+    "26.3",
+    "Fabric"
+   ],
+   "dependencies": [
+    {
+     "modId": 306612,
+     "relationType": 3
+    },
+    {
+     "modId": 999,
+     "relationType": 2
+    }
+   ],
+   "fileFingerprint": 111
+  },
+  {
+   "id": 6001,
+   "modId": 308702,
+   "displayName": "Mod Menu 17.0.0",
+   "fileName": "modmenu-17.0.0.jar",
+   "fileLength": 120000,
+   "downloadUrl": null,
+   "fileDate": "2026-06-01T10:00:00Z",
+   "hashes": [
+    {
+     "value": "cccccccccccccccccccccccccccccccccccccccc",
+     "algo": 1
+    }
+   ],
+   "gameVersions": [
+    "26.2",
+    "Fabric"
+   ],
+   "dependencies": [],
+   "fileFingerprint": 222
+  }
+ ],
+ "pagination": {
+  "index": 0,
+  "pageSize": 50,
+  "resultCount": 2,
+  "totalCount": 2
+ }
+}

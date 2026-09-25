@@ -1,0 +1,16 @@
+{
+ "data": [
+  {
+   "id": 308702,
+   "name": "Mod Menu",
+   "slug": "modmenu",
+   "logo": {
+    "thumbnailUrl": "https://media.forgecdn.net/x.png"
+   },
+   "links": {
+    "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/modmenu"
+   },
+   "allowModDistribution": true
+  }
+ ]
+}
