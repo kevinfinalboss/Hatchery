@@ -18,14 +18,26 @@ package paneldb
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 )
+
+func insertLegacyUser(t *testing.T, ctx context.Context, db *sql.DB, username string) *User {
+	t.Helper()
+	u := &User{Username: username}
+	if err := db.QueryRowContext(ctx,
+		`INSERT INTO users (username, password_hash, is_admin) VALUES ($1, 'x', false) RETURNING id, created_at`,
+		username).Scan(&u.ID, &u.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
 
 func TestMemberGrantsRoundTripAndCascade(t *testing.T) {
 	s := newTestStore(t) // store_test.go: disposable database per package
 	ctx := context.Background()
-	owner, _ := s.CreateUser(ctx, "owner", "pw", false)
-	m, _ := s.CreateUser(ctx, "mod", "pw", false)
+	owner, _ := s.CreateUser(ctx, "owner", "owner@example.com", "pw", false)
+	m, _ := s.CreateUser(ctx, "mod", "mod@example.com", "pw", false)
 	org, err := s.CreateOrg(ctx, "acme", "Acme", owner.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -87,9 +99,10 @@ func TestMigration0004GrantsExistingMembers(t *testing.T) {
 		}
 	}
 	s := NewStore(db)
-	owner, _ := s.CreateUser(ctx, "owner", "pw", false)
-	mem, _ := s.CreateUser(ctx, "mem", "pw", false)
-	adm, _ := s.CreateUser(ctx, "adm", "pw", false)
+
+	owner := insertLegacyUser(t, ctx, db, "owner")
+	mem := insertLegacyUser(t, ctx, db, "mem")
+	adm := insertLegacyUser(t, ctx, db, "adm")
 	org, err := s.CreateOrg(ctx, "acme", "Acme", owner.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +110,7 @@ func TestMigration0004GrantsExistingMembers(t *testing.T) {
 	_ = s.AddMember(ctx, org.ID, mem.ID, RoleMember)
 	_ = s.AddMember(ctx, org.ID, adm.ID, RoleAdmin)
 
-	if err := Migrate(ctx, db); err != nil {
+	if err := applyMigration(ctx, db, "0004_member_permissions.sql"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.ListMemberGrants(ctx, org.ID, mem.ID)
