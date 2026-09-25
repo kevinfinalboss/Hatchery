@@ -24,7 +24,7 @@ import (
 
 func TestLoginSuccessAndFailure(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "alice", "correct-password", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "alice", "alice@example.com", "correct-password", false); err != nil {
 		t.Fatal(err)
 	}
 

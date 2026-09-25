@@ -17,6 +17,7 @@ limitations under the License.
 package panelapi
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -39,9 +40,16 @@ type loginRequest struct {
 }
 
 type userResponse struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"isAdmin"`
+	ID                int64  `json:"id"`
+	Username          string `json:"username"`
+	Email             string `json:"email"`
+	IsAdmin           bool   `json:"isAdmin"`
+	DisplayName       string `json:"displayName"`
+	Locale            string `json:"locale"`
+	TimeZone          string `json:"timeZone"`
+	Discord           string `json:"discord"`
+	MinecraftUsername string `json:"minecraftUsername"`
+	SteamID           string `json:"steamId"`
 }
 
 type loginResponse struct {
@@ -51,7 +59,18 @@ type loginResponse struct {
 }
 
 func toUserResponse(u *paneldb.User) userResponse {
-	return userResponse{ID: u.ID, Username: u.Username, IsAdmin: u.IsAdmin}
+	return userResponse{ID: u.ID, Username: u.Username, Email: u.Email, IsAdmin: u.IsAdmin,
+		DisplayName: u.DisplayName, Locale: u.Locale, TimeZone: u.TimeZone, Discord: u.Discord,
+		MinecraftUsername: u.MinecraftUsername, SteamID: u.SteamID}
+}
+
+func (s *Server) limiterKey(ctx context.Context, login string) string {
+	if strings.Contains(login, "@") {
+		if u, err := s.DB.GetUserByEmail(ctx, login); err == nil {
+			return u.Username
+		}
+	}
+	return strings.ToLower(login)
 }
 
 var authLog = logf.Log.WithName("panelapi-auth")
@@ -75,12 +94,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := clientIP(r, s.TrustedProxies)
 	loggedName := truncate(req.Username, maxLoggedUsername)
+	key := s.limiterKey(r.Context(), req.Username)
 
 	// The limiter is asked BEFORE the password is checked: a blocked client
 	// must not be able to learn whether a guess was right. A limiter error
 	// fails open — a Redis outage should not lock everyone out of the panel —
 	// and is logged so the gap in protection is visible.
-	blocked, retryAfter, err := s.LoginLimiter.Blocked(r.Context(), req.Username, ip)
+	blocked, retryAfter, err := s.LoginLimiter.Blocked(r.Context(), key, ip)
 	if err != nil {
 		authLog.Error(err, "login rate limiter unavailable, failing open")
 	} else if blocked {
@@ -92,14 +112,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.DB.VerifyPassword(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if rerr := s.LoginLimiter.RecordFailure(r.Context(), req.Username, ip); rerr != nil {
+		if rerr := s.LoginLimiter.RecordFailure(r.Context(), key, ip); rerr != nil {
 			authLog.Error(rerr, "could not record failed login")
 		}
 		s.auditEvent(r, "", "login.failure", "user", loggedName, "denied", nil)
-		writeError(w, http.StatusUnauthorized, "invalid username or password")
+		writeError(w, http.StatusUnauthorized, "invalid username, e-mail or password")
 		return
 	}
-	if rerr := s.LoginLimiter.RecordSuccess(r.Context(), req.Username, ip); rerr != nil {
+	if rerr := s.LoginLimiter.RecordSuccess(r.Context(), key, ip); rerr != nil {
 		authLog.Error(rerr, "could not reset failed-login counter")
 	}
 
