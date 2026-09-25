@@ -20,6 +20,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -53,7 +54,9 @@ func statusForSFTP(err error) int {
 	case errors.Is(err, os.ErrExist):
 		return http.StatusConflict
 	default:
-		return http.StatusInternalServerError
+		// Anything else failed on the SFTP connection or during the transfer: the file
+		// manager's upstream (the sftp-agent) is the one that broke, so 502.
+		return http.StatusBadGateway
 	}
 }
 
@@ -261,23 +264,41 @@ func (s *Server) handleDeleteFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	result := deleteFilesResult{Deleted: []string{}, Failed: []deleteFailure{}}
 	for _, p := range req.Paths {
-		info, err := conn.Stat(p)
-		if err != nil {
-			writeError(w, statusForSFTP(err), err.Error())
-			return
+		if err := removePath(conn, p); err != nil {
+			result.Failed = append(result.Failed, deleteFailure{Path: p, Error: err.Error()})
+			continue
 		}
-		if info.IsDir() {
-			err = conn.RemoveDirectory(p) // server-side Rmdir is recursive — see internal/sftpagent/server.go's Filecmd
-		} else {
-			err = conn.Remove(p)
-		}
-		if err != nil {
-			writeError(w, statusForSFTP(err), err.Error())
-			return
-		}
+		result.Deleted = append(result.Deleted, p)
+	}
+	if len(result.Failed) > 0 {
+		writeJSON(w, http.StatusMultiStatus, result)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type deleteFailure struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+type deleteFilesResult struct {
+	Deleted []string        `json:"deleted"`
+	Failed  []deleteFailure `json:"failed"`
+}
+
+// removePath deletes a file, or a directory recursively (the sftp-agent's Rmdir is recursive).
+func removePath(conn *sftpConn, p string) error {
+	info, err := conn.Stat(p)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return conn.RemoveDirectory(p)
+	}
+	return conn.Remove(p)
 }
 
 type copyRequest struct {
@@ -457,18 +478,22 @@ func (s *Server) handleDownloadFiles(w http.ResponseWriter, r *http.Request) {
 // handleDownloadFiles above and handleCompressFiles (Task 6) so the
 // tree-walking logic exists exactly once.
 func writeZipEntries(zw *zip.Writer, conn *sftpConn, paths []string) error {
+	// Entries are named relative to the selection's common parent, so two files with the same
+	// name in different folders ("a/config.yml", "b/config.yml") do not collide.
+	root := commonParent(paths)
 	for _, p := range paths {
+		p = path.Clean("/" + p)
 		info, err := conn.Stat(p)
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
-			if err := addFileToZip(zw, conn, p, path.Base(p)); err != nil {
+			if err := addFileToZip(zw, conn, p, relativeTo(root, p)); err != nil {
 				return err
 			}
 			continue
 		}
-		base := path.Base(p)
+		base := relativeTo(root, p)
 		walker := conn.Walk(p)
 		for walker.Step() {
 			if err := walker.Err(); err != nil {
@@ -484,6 +509,33 @@ func writeZipEntries(zw *zip.Writer, conn *sftpConn, paths []string) error {
 		}
 	}
 	return nil
+}
+
+// commonParent is the deepest directory containing every path's parent ("/" at worst).
+func commonParent(paths []string) string {
+	var common []string
+	for i, p := range paths {
+		dir := strings.Split(strings.Trim(path.Dir(path.Clean("/"+p)), "/"), "/")
+		if dir[0] == "" {
+			dir = nil
+		}
+		if i == 0 {
+			common = dir
+			continue
+		}
+		n := 0
+		for n < len(common) && n < len(dir) && common[n] == dir[n] {
+			n++
+		}
+		common = common[:n]
+	}
+	return "/" + strings.Join(common, "/")
+}
+
+// relativeTo is p without the root prefix and its leading slash.
+func relativeTo(root, p string) string {
+	rel := strings.TrimPrefix(p, root)
+	return strings.TrimPrefix(rel, "/")
 }
 
 func addFileToZip(zw *zip.Writer, conn *sftpConn, srcPath, zipName string) error {
@@ -538,10 +590,15 @@ func (s *Server) handleCompressFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := zw.Close(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, statusForSFTP(err), err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// insideDir reports whether p (clean, absolute) is dir or below it.
+func insideDir(dir, p string) bool {
+	return p == dir || dir == "/" || strings.HasPrefix(p, dir+"/")
 }
 
 type decompressRequest struct {
@@ -586,8 +643,17 @@ func (s *Server) handleDecompressFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "not a valid zip file: "+err.Error())
 		return
 	}
+	// Every entry must land inside dest — checked for all of them before anything is written,
+	// so a malicious archive ("../../x") is refused whole instead of half-extracted.
+	dest := path.Clean("/" + req.Dest)
 	for _, f := range zr.File {
-		destPath := path.Join(req.Dest, f.Name)
+		if !insideDir(dest, path.Join(dest, f.Name)) {
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("archive entry %q would be extracted outside %s", f.Name, dest))
+			return
+		}
+	}
+	for _, f := range zr.File {
+		destPath := path.Join(dest, f.Name)
 		if f.FileInfo().IsDir() {
 			if err := conn.MkdirAll(destPath); err != nil {
 				writeError(w, statusForSFTP(err), err.Error())
