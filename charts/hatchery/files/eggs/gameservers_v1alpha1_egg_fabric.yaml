@@ -26,6 +26,9 @@ spec:
       image: ghcr.io/ptero-eggs/yolks:java_11
     - name: "Java 8"
       image: ghcr.io/ptero-eggs/yolks:java_8
+  # The yolks images run as root; running the game as 1000 (the sftp-agent's uid) keeps what it
+  # creates writable from the file manager. See EggSpec.RunAsUser.
+  runAsUser: 1000
   startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
   stopCommand: "stop"
   stopSignal: SIGTERM
@@ -92,10 +95,6 @@ spec:
       }
       setkey server-ip 0.0.0.0
       setkey server-port 25565
-      # The game runs as root in this image, so a mods/ it creates on its first boot is root-owned and
-      # the sftp-agent (uid 1000) — file manager and mod installer — could not write to it.
-      mkdir -p /data/mods
-      chown 1000:1000 /data/mods
   mods:
     kind: mod
     loaders: [fabric]
