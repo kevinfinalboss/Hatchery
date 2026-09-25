@@ -1,5 +1,6 @@
 import type {
   AuditPage,
+  AuthFeatures,
   BackupItem,
   BackupList,
   BackupRestore,
@@ -15,12 +16,16 @@ import type {
   GameServerList,
   GameServerState,
   ImagePolicy,
+  Invitation,
+  InvitationPreview,
+  InviteResponse,
   LoginResponse,
   Member,
   OrgDetail,
   OrgQuota,
   OrgRole,
   OrgSummary,
+  Profile,
   QuotaUsage,
   ScheduleItem,
   ScheduleWrite,
@@ -104,10 +109,32 @@ export const api = {
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<User>("/auth/me"),
 
+  features: () => request<AuthFeatures>("/auth/features"),
+  updateMe: (patch: Partial<Profile>) => request<User>("/me", { method: "PATCH", body: JSON.stringify(patch) }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>("/me/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
+  requestEmailChange: (newEmail: string, currentPassword: string) =>
+    request<User | undefined>("/me/email", { method: "POST", body: JSON.stringify({ newEmail, currentPassword }) }),
+  confirmEmail: (token: string) => request<User>("/auth/email/confirm", { method: "POST", body: JSON.stringify({ token }) }),
+  forgotPassword: (email: string) => request<{ status: string }>("/auth/password/forgot", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, password: string) =>
+    request<void>("/auth/password/reset", { method: "POST", body: JSON.stringify({ token, password }) }),
+
+  listInvitations: (org: string) => request<Invitation[]>(`/orgs/${org}/invitations`),
+  invite: (org: string, email: string, role: OrgRole) =>
+    request<InviteResponse>(`/orgs/${org}/invitations`, { method: "POST", body: JSON.stringify({ email, role }) }),
+  resendInvitation: (org: string, id: number) => request<InviteResponse>(`/orgs/${org}/invitations/${id}/resend`, { method: "POST" }),
+  revokeInvitation: (org: string, id: number) => request<void>(`/orgs/${org}/invitations/${id}`, { method: "DELETE" }),
+  lookupInvitation: (token: string) =>
+    request<InvitationPreview>("/invitations/lookup", { method: "POST", body: JSON.stringify({ token }) }),
+  acceptInvitation: (token: string, account?: { username: string; password: string; displayName: string }) =>
+    request<LoginResponse | { orgSlug: string }>("/invitations/accept", { method: "POST", body: JSON.stringify({ token, ...account }) }),
+  setUserAdmin: (id: number, isAdmin: boolean) => request<User>(`/users/${id}`, { method: "PATCH", body: JSON.stringify({ isAdmin }) }),
+
   // Organizations
   listOrgs: () => request<OrgSummary[]>("/orgs"),
   getOrg: (org: string) => request<OrgDetail>(`/orgs/${org}`),
-  createOrg: (body: { slug: string; name: string; ownerUsername: string; quota: OrgQuota }) =>
+  createOrg: (body: { slug: string; name: string; ownerEmail: string; quota: OrgQuota }) =>
     request<OrgSummary>("/orgs", { method: "POST", body: JSON.stringify(body) }),
   updateOrgQuota: (org: string, quota: OrgQuota) =>
     request<OrgQuota>(`/orgs/${org}/quota`, { method: "PATCH", body: JSON.stringify(quota) }),
@@ -115,8 +142,6 @@ export const api = {
 
   // Members
   listMembers: (org: string) => request<Member[]>(`/orgs/${org}/members`),
-  addMember: (org: string, username: string, role: OrgRole) =>
-    request<Member>(`/orgs/${org}/members`, { method: "POST", body: JSON.stringify({ username, role }) }),
   setMemberRole: (org: string, userId: number, role: OrgRole) =>
     request<{ role: OrgRole; hasServerAccess: boolean }>(`/orgs/${org}/members/${userId}`, {
       method: "PATCH",
@@ -239,8 +264,6 @@ export const api = {
   },
 
   listUsers: () => request<User[]>("/users"),
-  createUser: (body: { username: string; password: string; isAdmin: boolean }) =>
-    request<User>("/users", { method: "POST", body: JSON.stringify(body) }),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
 
   getBackupSettings: (org: string) => request<BackupSettings>(`/orgs/${org}/backup-settings`),
