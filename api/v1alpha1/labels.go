@@ -35,3 +35,12 @@ func GameServerLabels(name string) map[string]string {
 		LabelGameServer: name,
 	}
 }
+
+// ModpackEggLabel marks an Egg whose servers are built from a modpack (the Panel shows the
+// modpack picker and card for them). Value "true".
+const ModpackEggLabel = "gameservers.hatchery.io/modpack-egg"
+
+// IsModpack reports whether e is a modpack Egg (see ModpackEggLabel).
+func (e *Egg) IsModpack() bool {
+	return e.Labels[ModpackEggLabel] == "true"
+}
