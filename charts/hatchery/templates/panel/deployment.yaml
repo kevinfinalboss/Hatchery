@@ -70,6 +70,16 @@ spec:
             - --backup-s3-endpoint={{ .Values.backup.platform.endpoint }}
             - --backup-s3-secret={{ .Release.Namespace }}/{{ .Values.backup.platform.secretName }}
             {{- end }}
+            - --bootstrap-admin-email={{ .Values.panel.bootstrapAdmin.email }}
+            {{- with .Values.panel.publicURL }}
+            - --public-url={{ . }}
+            {{- end }}
+            {{- if .Values.panel.smtp.host }}
+            - --smtp-host={{ .Values.panel.smtp.host }}
+            - --smtp-port={{ .Values.panel.smtp.port }}
+            - --smtp-from={{ .Values.panel.smtp.from }}
+            - --smtp-tls={{ .Values.panel.smtp.tls }}
+            {{- end }}
           env:
             {{- if .Values.postgres.enabled }}
             - name: POSTGRES_PASSWORD
@@ -89,6 +99,12 @@ spec:
             {{- else }}
             - name: PANEL_REDIS_URL
               valueFrom: {secretKeyRef: {name: {{ .Values.externalValkey.urlSecret.name }}, key: {{ .Values.externalValkey.urlSecret.key }}}}
+            {{- end }}
+            {{- with .Values.panel.smtp.existingSecret }}
+            - name: PANEL_SMTP_USERNAME
+              valueFrom: {secretKeyRef: {name: {{ . }}, key: username}}
+            - name: PANEL_SMTP_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ . }}, key: password}}
             {{- end }}
           ports:
             - {name: http, containerPort: 8090, protocol: TCP}
