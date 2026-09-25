@@ -97,7 +97,7 @@ func TestAuditFailureDoesNotBreakTheRequest(t *testing.T) {
 
 func TestLoginEventsAreRecordedWithoutThePassword(t *testing.T) {
 	srv := newTestServer(t)
-	if _, err := srv.DB.CreateUser(t.Context(), "u", "correct", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "u", "u@example.com", "correct", false); err != nil {
 		t.Fatal(err)
 	}
 	login(t, srv, "203.0.113.5:1", "", "u", "hunter2-wrong")
@@ -187,7 +187,7 @@ func TestPlatformAuditIsPlatformAdminOnly(t *testing.T) {
 
 func TestOrgAuditNeverShowsAnotherOrgsEvents(t *testing.T) {
 	srv := newTestServer(t)
-	other, _ := srv.DB.CreateUser(t.Context(), "elsewhere", "password", false)
+	other, _ := srv.DB.CreateUser(t.Context(), "elsewhere", "elsewhere@example.com", "password", false)
 	if _, err := srv.DB.CreateOrg(t.Context(), "otherorg", "Other", other.ID); err != nil {
 		t.Fatal(err)
 	}
