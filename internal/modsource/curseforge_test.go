@@ -110,3 +110,14 @@ func TestCurseForgeIdentify(t *testing.T) {
 		t.Errorf("26.2: unexpected update %+v", got["sha-known"].Latest)
 	}
 }
+
+func TestCurseForgeModpackSearchUsesModpacksClass(t *testing.T) {
+	c, reqs, _ := curseForgeServer(t, map[string]string{"/v1/mods/search": "curseforge/search.json"})
+	if _, err := c.Search(context.Background(), SearchQuery{Filter: Filter{Kind: KindModpack}}); err != nil {
+		t.Fatal(err)
+	}
+	q := reqs["/v1/mods/search"].URL.Query()
+	if q.Get("classId") != "4471" || q.Has("modLoaderType") {
+		t.Errorf("params: %v", q)
+	}
+}

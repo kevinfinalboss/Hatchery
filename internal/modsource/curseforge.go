@@ -27,13 +27,15 @@ import (
 	"time"
 )
 
-// CurseForge IDs and enums, confirmed against the live API on 2026-09-25: game and class IDs via
+// CurseForge IDs and enums, confirmed against the live API on 2026-09-25: game and class IDs (Modpacks
+// 4471 included) via
 // /v1/games and /v1/categories; modLoaderType 4 returns Fabric files; relationType 3 is a required
 // dependency; hash algo 1 is SHA1.
 const (
 	cfGameMinecraft      = 432
 	cfClassMods          = 6
 	cfClassBukkitPlugins = 5
+	cfClassModpacks      = 4471
 	cfRelationRequired   = 3
 	cfHashSHA1           = 1
 )
@@ -93,8 +95,11 @@ type cfFile struct {
 // cfClassAndLoader: plugins live in the Bukkit Plugins class and have no loader type; mods use the
 // first of the Egg's loaders CurseForge knows.
 func cfClassAndLoader(f Filter) (classID, loader int) {
-	if f.Kind == KindPlugin {
+	switch f.Kind {
+	case KindPlugin:
 		return cfClassBukkitPlugins, 0
+	case KindModpack:
+		return cfClassModpacks, 0
 	}
 	for _, l := range f.Loaders {
 		if t, ok := cfLoaderType[l]; ok {
