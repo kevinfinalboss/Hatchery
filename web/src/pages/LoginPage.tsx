@@ -20,7 +20,7 @@ export function LoginPage() {
   const { data: features } = useQuery({ queryKey: ["auth-features"], queryFn: api.features });
 
   const rawNext = new URLSearchParams(location.search).get("next");
-  const next = rawNext && rawNext.startsWith("/") ? rawNext : "/";
+  const next = rawNext && /^\/(?![/\\])/.test(rawNext) ? rawNext : "/";
 
   if (user) return <Navigate to={next} replace />;
 
