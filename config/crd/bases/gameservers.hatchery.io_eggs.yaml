@@ -114,6 +114,42 @@ spec:
                 required:
                 - script
                 type: object
+              mods:
+                description: Mods turns on the mod/plugin installer for servers of
+                  this Egg.
+                properties:
+                  directory:
+                    description: Directory is relative to the server's data directory,
+                      e.g. "plugins".
+                    type: string
+                  gameVersion:
+                    description: |-
+                      EggModsGameVersion says where the running game version comes from: Variable when it holds a
+                      concrete version, else File (written by the install script with the version it downloaded).
+                    properties:
+                      file:
+                        type: string
+                      variable:
+                        type: string
+                    type: object
+                  kind:
+                    description: EggModsKind says what the mod installer puts in EggMods.Directory.
+                    enum:
+                    - plugin
+                    - mod
+                    type: string
+                  loaders:
+                    description: Loaders the installed files must target, in Modrinth's
+                      names (see KnownModLoaders).
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - directory
+                - kind
+                - loaders
+                type: object
               ports:
                 description: Ports declares the network ports this Egg's process listens
                   on.
@@ -170,6 +206,18 @@ spec:
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                 type: object
+              runAsUser:
+                description: |-
+                  RunAsUser runs the game (and the configure step) as this uid and gid instead of the
+                  image's user. Set it for images that would otherwise run as root (e.g. the yolks
+                  images): files the game creates then belong to the same uid as the sftp-agent (1000),
+                  so the file manager can write them. Install stays as root, and a "fix-owner" step
+                  chowns the data volume once per install revision. Leave unset for images whose
+                  entrypoint must start as root and drops privileges itself (itzg/*).
+                format: int64
+                maximum: 65535
+                minimum: 1
+                type: integer
               startCommand:
                 description: |-
                   StartCommand starts the server process. It may reference variables declared
