@@ -34,6 +34,7 @@ import (
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/mailer"
+	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelapi"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
@@ -55,6 +56,7 @@ func main() {
 	var publicURL, bootstrapAdminEmail string
 	var smtpHost, smtpFrom, smtpTLS, smtpUsername string
 	var smtpPort int
+	var modsUserAgent string
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -94,6 +96,9 @@ func main() {
 	flag.IntVar(&smtpPort, "smtp-port", 587, "SMTP server port.")
 	flag.StringVar(&smtpFrom, "smtp-from", os.Getenv("PANEL_SMTP_FROM"), `Sender, e.g. "Hatchery <noreply@example.com>". Defaults to $PANEL_SMTP_FROM.`)
 	flag.StringVar(&smtpTLS, "smtp-tls", "starttls", "starttls, tls (implicit, port 465) or none (local catcher only).")
+	flag.StringVar(&modsUserAgent, "mods-user-agent", os.Getenv("PANEL_MODS_USER_AGENT"),
+		"User-Agent sent to Modrinth/CurseForge (Modrinth requires one that identifies the application). "+
+			"Defaults to $PANEL_MODS_USER_AGENT, else hatchery/dev (+<public-url>). The CurseForge API key is read from $PANEL_CURSEFORGE_API_KEY.")
 	flag.StringVar(&smtpUsername, "smtp-username", os.Getenv("PANEL_SMTP_USERNAME"), "SMTP user (password in $PANEL_SMTP_PASSWORD). Defaults to $PANEL_SMTP_USERNAME.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
@@ -178,6 +183,18 @@ func main() {
 	srv.UIDir = uiDir
 
 	srv.RequestLimiter = panelcache.NewRedisRequestLimiter(rdb)
+	if modsUserAgent == "" {
+		modsUserAgent = "hatchery/dev"
+		if publicURL != "" {
+			modsUserAgent += " (+" + strings.TrimRight(publicURL, "/") + ")"
+		}
+	}
+	srv.ModSources = map[string]modsource.Source{"modrinth": modsource.NewModrinth(modsUserAgent)}
+	if key := os.Getenv("PANEL_CURSEFORGE_API_KEY"); key != "" {
+		srv.ModSources["curseforge"] = modsource.NewCurseForge(key, modsUserAgent)
+	}
+	srv.ModHashes = panelcache.NewRedisModHashCache(rdb)
+	log.Info("mod sources enabled", "sources", len(srv.ModSources), "curseforge", srv.ModSources["curseforge"] != nil)
 	srv.PublicURL = strings.TrimRight(publicURL, "/")
 	if smtpHost != "" {
 		m, err := mailer.NewSMTP(mailer.SMTPConfig{Host: smtpHost, Port: smtpPort, From: smtpFrom, TLS: smtpTLS,
