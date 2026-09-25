@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kevinfinalboss/Hatchery/internal/mailer"
+	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
@@ -53,6 +54,19 @@ type Server struct {
 	Metrics panelcache.MetricsStore
 
 	Backup BackupConfig
+
+	// ModSources are the mod catalogs by name ("modrinth", "curseforge"); empty turns the mod
+	// installer's catalogs off.
+	ModSources map[string]modsource.Source
+	// ModHashes caches the hashes of installed mod files (nil: hash on every listing).
+	ModHashes panelcache.ModHashCache
+	// GameVersions remembers each server's last known game version (nil: no fallback while its
+	// files are unreachable).
+	GameVersions panelcache.GameVersionCache
+	// modHTTP downloads mod files (nil: a client with a 2-minute timeout); modMaxBytesOverride
+	// lowers the 256 MB cap in tests.
+	modHTTP             *http.Client
+	modMaxBytesOverride int64
 
 	// TrustedProxies are the peers whose X-Forwarded-For header is believed
 	// when working out the client IP (see clientIP in clientip.go).
@@ -194,6 +208,18 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET "+gs+"/logs", gsPermRoute(paneldb.PermConsoleRead, "", s.handleLogs))
 	mux.Handle("GET "+gs+"/crash-log", gsPermRoute(paneldb.PermConsoleRead, "", s.handleCrashLog))
 	mux.Handle("POST "+gs+"/sftp-session", gsPermRoute(paneldb.PermFilesWrite, "gameserver.sftp-session", s.handleSFTPSession))
+
+	mux.Handle("GET "+org+"/modpacks/search", orgRoute(paneldb.RoleAdmin, "", s.handleSearchModpacks))
+	mux.Handle("GET "+org+"/modpacks/{source}/{projectId}/versions", orgRoute(paneldb.RoleAdmin, "", s.handleModpackVersions))
+	mux.Handle("GET "+gs+"/modpack", gsPermRoute("", "", s.handleModpackStatus))
+	mux.Handle("POST "+gs+"/modpack/update", gsAdminRoute("", s.handleUpdateModpack))
+	mux.Handle("GET "+gs+"/mods/context", gsPermRoute(paneldb.PermFilesRead, "", s.handleModsContext))
+	mux.Handle("GET "+gs+"/mods/search", gsPermRoute(paneldb.PermFilesRead, "", s.handleSearchMods))
+	mux.Handle("GET "+gs+"/mods/projects/{source}/{projectId}/versions", gsPermRoute(paneldb.PermFilesRead, "", s.handleModVersions))
+	mux.Handle("GET "+gs+"/mods/installed", gsPermRoute(paneldb.PermFilesRead, "", s.handleListInstalledMods))
+	mux.Handle("POST "+gs+"/mods/install", gsPermRoute(paneldb.PermFilesWrite, "", s.handleInstallMod))
+	mux.Handle("POST "+gs+"/mods/update", gsPermRoute(paneldb.PermFilesWrite, "", s.handleUpdateMod))
+	mux.Handle("DELETE "+gs+"/mods/installed", gsPermRoute(paneldb.PermFilesWrite, "", s.handleRemoveMod))
 
 	mux.Handle("GET "+gs+"/files", gsPermRoute(paneldb.PermFilesRead, "", s.handleListFiles))
 	mux.Handle("GET "+gs+"/files/content", gsPermRoute(paneldb.PermFilesRead, "", s.handleGetFileContent))
