@@ -303,13 +303,22 @@ export interface EggSpec {
   variables?: EggVariable[];
   ports?: EggPort[];
   recommendedResources?: { cpu?: string; memory?: string; disk?: string };
+  mods?: EggMods;
   [extra: string]: unknown;
+}
+
+export interface EggMods {
+  kind: "plugin" | "mod";
+  loaders: string[];
+  directory: string;
+  gameVersion?: { variable?: string; file?: string };
 }
 
 export interface EggEntry {
   name: string;
   scope: EggScope;
   spec: EggSpec;
+  modpack?: boolean;
 }
 
 export interface AuditEvent {
