@@ -18,9 +18,12 @@ package panelapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
 func TestUserManagementIsAdminOnly(t *testing.T) {
@@ -31,37 +34,25 @@ func TestUserManagementIsAdminOnly(t *testing.T) {
 		method, path string
 	}{
 		{http.MethodGet, "/api/v1/users"},
-		{http.MethodPost, "/api/v1/users"},
+		{http.MethodPatch, "/api/v1/users/1"},
 	} {
-		rec := doRequest(t, srv, req.method, req.path, nonAdmin, createUserRequest{})
+		rec := doRequest(t, srv, req.method, req.path, nonAdmin, nil)
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("%s %s as non-admin: expected 403, got %d", req.method, req.path, rec.Code)
 		}
 	}
 }
 
-func TestCreateListDeleteUser(t *testing.T) {
+func TestListDeleteUser(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
 
-	rec := doRequest(t, srv, http.MethodPost, "/api/v1/users", admin, createUserRequest{Username: "newbie", Password: "password"})
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var created userResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+	created, err := srv.DB.CreateUser(t.Context(), "newbie", "newbie@example.com", "password", false)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if created.IsAdmin {
-		t.Fatal("expected a non-admin user")
-	}
 
-	rec = doRequest(t, srv, http.MethodPost, "/api/v1/users", admin, createUserRequest{Username: "newbie", Password: "password"})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("duplicate username: expected 409, got %d", rec.Code)
-	}
-
-	rec = doRequest(t, srv, http.MethodGet, "/api/v1/users", admin, nil)
+	rec := doRequest(t, srv, http.MethodGet, "/api/v1/users", admin, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: expected 200, got %d", rec.Code)
 	}
@@ -87,6 +78,48 @@ func TestCreateListDeleteUser(t *testing.T) {
 	}
 }
 
+func TestSetPlatformAdmin(t *testing.T) {
+	srv := newTestServer(t)
+	adminTok := newUserToken(t, srv, "boss", true)
+	newUserToken(t, srv, "bob", false)
+	bob := userID(t, srv, "bob")
+	boss := userID(t, srv, "boss")
+
+	patch := func(id int64, isAdmin bool) int {
+		return doRequest(t, srv, http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", id), adminTok, map[string]bool{"isAdmin": isAdmin}).Code
+	}
+	if got := patch(boss, false); got != http.StatusConflict {
+		t.Errorf("demoting yourself: %d", got)
+	}
+	if got := patch(bob, true); got != http.StatusOK {
+		t.Fatalf("promoting bob: %d", got)
+	}
+	u, _ := srv.DB.GetUser(t.Context(), bob)
+	if !u.IsAdmin {
+		t.Fatal("bob not promoted")
+	}
+	if got := patch(999999, true); got != http.StatusNotFound {
+		t.Errorf("unknown user: %d", got)
+	}
+	if got := doRequest(t, srv, http.MethodPost, "/api/v1/users", adminTok, map[string]any{"username": "x", "password": "password1"}).Code; got != http.StatusMethodNotAllowed && got != http.StatusNotFound {
+		t.Errorf("POST /users still exists: %d", got)
+	}
+}
+
+func TestLastPlatformAdminCannotBeDemotedByAnother(t *testing.T) {
+	srv := newTestServer(t)
+	// Two admins; one demotes the other, then the survivor cannot be demoted
+	// through the store (the handler blocks self-demotion earlier).
+	a := newUserToken(t, srv, "a", true)
+	newUserToken(t, srv, "b", true)
+	if got := doRequest(t, srv, http.MethodPatch, fmt.Sprintf("/api/v1/users/%d", userID(t, srv, "b")), a, map[string]bool{"isAdmin": false}).Code; got != http.StatusOK {
+		t.Fatalf("demoting b: %d", got)
+	}
+	if err := srv.DB.SetAdmin(t.Context(), userID(t, srv, "a"), false); !errors.Is(err, paneldb.ErrLastAdmin) {
+		t.Fatalf("store let the last admin go: %v", err)
+	}
+}
+
 func TestDeleteUserIsRefusedForTheSoleOwnerOfAnOrg(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
@@ -100,7 +133,7 @@ func TestDeleteUserIsRefusedForTheSoleOwnerOfAnOrg(t *testing.T) {
 func TestDeleteUserIsRefusedForTheInitialAdmin(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
-	initial, err := srv.DB.CreateUser(t.Context(), BootstrapAdminUsername, "password", true)
+	initial, err := srv.DB.CreateUser(t.Context(), BootstrapAdminUsername, "admin@example.com", "password", true)
 	if err != nil {
 		t.Fatal(err)
 	}

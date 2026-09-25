@@ -41,33 +41,43 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-type createUserRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	IsAdmin  bool   `json:"isAdmin"`
+type setAdminRequest struct {
+	IsAdmin *bool `json:"isAdmin"`
 }
 
-func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	var req createUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-		return
-	}
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username and password are required")
-		return
-	}
-
-	user, err := s.DB.CreateUser(r.Context(), req.Username, req.Password, req.IsAdmin)
+func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
+	id, err := userIDFromPath(r)
 	if err != nil {
-		if errors.Is(err, paneldb.ErrAlreadyExists) {
-			writeError(w, http.StatusConflict, "username already exists")
-			return
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req setAdminRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil || req.IsAdmin == nil {
+		writeError(w, http.StatusBadRequest, `body must be {"isAdmin": true|false}`)
+		return
+	}
+	if id == userFromContext(r.Context()).ID {
+		writeError(w, http.StatusConflict, "you cannot change your own admin flag")
+		return
+	}
+	if err := s.DB.SetAdmin(r.Context(), id, *req.IsAdmin); err != nil {
+		switch {
+		case errors.Is(err, paneldb.ErrNotFound):
+			writeError(w, http.StatusNotFound, "user not found")
+		case errors.Is(err, paneldb.ErrLastAdmin):
+			writeError(w, http.StatusConflict, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
 		}
+		return
+	}
+	target, err := s.DB.GetUser(r.Context(), id)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, toUserResponse(user))
+	s.auditEvent(r, "", "user.admin.update", "user", target.Username, "success", map[string]string{"isAdmin": strconv.FormatBool(*req.IsAdmin)})
+	writeJSON(w, http.StatusOK, toUserResponse(target))
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
