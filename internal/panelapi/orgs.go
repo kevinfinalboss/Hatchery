@@ -17,6 +17,9 @@ type orgSummary struct {
 	Slug string       `json:"slug"`
 	Name string       `json:"name"`
 	Role paneldb.Role `json:"role"`
+
+	InviteURL   string `json:"inviteUrl,omitempty"`
+	InviteError string `json:"inviteError,omitempty"`
 }
 
 type orgDetail struct {
@@ -57,10 +60,10 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request) {
 }
 
 type createOrgRequest struct {
-	Slug          string       `json:"slug"`
-	Name          string       `json:"name"`
-	OwnerUsername string       `json:"ownerUsername"`
-	Quota         quotaRequest `json:"quota"`
+	Slug       string       `json:"slug"`
+	Name       string       `json:"name"`
+	OwnerEmail string       `json:"ownerEmail"`
+	Quota      quotaRequest `json:"quota"`
 }
 
 // handleCreateOrg creates the org row (with its first owner) and then the
@@ -85,17 +88,24 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	owner, err := s.DB.GetUserByUsername(r.Context(), req.OwnerUsername)
+	ownerEmail, err := validateEmail(req.OwnerEmail)
 	if err != nil {
-		if errors.Is(err, paneldb.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "owner user not found")
-			return
-		}
+		writeError(w, http.StatusUnprocessableEntity, "ownerEmail: "+err.Error())
+		return
+	}
+	var ownerID int64
+	owner, err := s.DB.GetUserByEmail(r.Context(), ownerEmail)
+	switch {
+	case err == nil:
+		ownerID = owner.ID
+	case errors.Is(err, paneldb.ErrNotFound):
+		owner = nil // invited below, once the org exists
+	default:
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	org, err := s.DB.CreateOrg(r.Context(), req.Slug, req.Name, owner.ID)
+	org, err := s.DB.CreateOrg(r.Context(), req.Slug, req.Name, ownerID)
 	if err != nil {
 		if errors.Is(err, paneldb.ErrAlreadyExists) {
 			writeError(w, http.StatusConflict, "an organization with this slug already exists")
@@ -116,8 +126,23 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auditEvent(r, org.Slug, "org.create", "org", org.Slug, "success", map[string]string{"owner": owner.Username})
-	writeJSON(w, http.StatusCreated, orgSummary{Slug: org.Slug, Name: org.Name, Role: paneldb.RoleOwner})
+	resp := orgSummary{Slug: org.Slug, Name: org.Name, Role: paneldb.RoleOwner}
+	if owner == nil {
+		admin := userFromContext(r.Context())
+		inv, token, err := s.DB.CreateInvitation(r.Context(), org.ID, ownerEmail, paneldb.RoleOwner, admin.Locale, admin.ID, invitationTTL)
+		if err == nil {
+			resp.InviteURL, err = s.deliverInvitation(r.Context(), inv, token)
+		}
+		if err != nil {
+			// The org exists either way; the invitation can be resent from Members.
+			mailLog.Error(err, "inviting the new org's owner", "org", org.Slug)
+			resp.InviteError = "the organization was created but the owner invitation could not be sent: resend it from Members"
+		} else {
+			s.auditEvent(r, org.Slug, "invitation.create", "email", ownerEmail, "success", map[string]string{"role": "owner"})
+		}
+	}
+	s.auditEvent(r, org.Slug, "org.create", "org", org.Slug, "success", map[string]string{"owner": ownerEmail})
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 // handleGetOrg returns the org with the live state of its Tenant, so the UI

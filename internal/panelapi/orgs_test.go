@@ -17,12 +17,12 @@ var goodQuota = map[string]any{"cpu": "4", "memory": "8Gi", "storage": "50Gi", "
 func TestCreateOrgCreatesRowMembershipAndTenant(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
-	if _, err := srv.DB.CreateUser(t.Context(), "future-owner", "password", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "future-owner", "future-owner@example.com", "password", false); err != nil {
 		t.Fatal(err)
 	}
 
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/orgs", admin, map[string]any{
-		"slug": "acme", "name": "Acme Games", "ownerUsername": "future-owner", "quota": goodQuota,
+		"slug": "acme", "name": "Acme Games", "ownerEmail": "future-owner@example.com", "quota": goodQuota,
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
@@ -48,27 +48,27 @@ func TestCreateOrgCreatesRowMembershipAndTenant(t *testing.T) {
 func TestCreateOrgValidation(t *testing.T) {
 	srv := newTestServer(t)
 	admin := adminToken(t, srv)
-	if _, err := srv.DB.CreateUser(t.Context(), "o", "password", false); err != nil {
+	if _, err := srv.DB.CreateUser(t.Context(), "o", "o@example.com", "password", false); err != nil {
 		t.Fatal(err)
 	}
 	post := func(body map[string]any) int {
 		return doRequest(t, srv, http.MethodPost, "/api/v1/orgs", admin, body).Code
 	}
-	if got := post(map[string]any{"slug": "Bad Slug", "name": "x", "ownerUsername": "o", "quota": goodQuota}); got != http.StatusBadRequest {
+	if got := post(map[string]any{"slug": "Bad Slug", "name": "x", "ownerEmail": "o@example.com", "quota": goodQuota}); got != http.StatusBadRequest {
 		t.Errorf("invalid slug: got %d, want 400", got)
 	}
 	for _, reserved := range []string{"system", "catalog"} {
-		if got := post(map[string]any{"slug": reserved, "name": "x", "ownerUsername": "o", "quota": goodQuota}); got != http.StatusBadRequest {
+		if got := post(map[string]any{"slug": reserved, "name": "x", "ownerEmail": "o@example.com", "quota": goodQuota}); got != http.StatusBadRequest {
 			t.Errorf("reserved slug %q: got %d, want 400", reserved, got)
 		}
 	}
-	if got := post(map[string]any{"slug": "ok", "name": "x", "ownerUsername": "ghost", "quota": goodQuota}); got != http.StatusNotFound {
-		t.Errorf("unknown owner: got %d, want 404", got)
+	if got := post(map[string]any{"slug": "ok", "name": "x", "ownerEmail": "ghost@example.com", "quota": goodQuota}); got != http.StatusCreated {
+		t.Errorf("unknown owner: got %d, want 201 (org created empty, owner invited)", got)
 	}
-	if got := post(map[string]any{"slug": "ok", "name": "x", "ownerUsername": "o", "quota": map[string]any{"cpu": "4"}}); got != http.StatusBadRequest {
+	if got := post(map[string]any{"slug": "ok2", "name": "x", "ownerEmail": "o@example.com", "quota": map[string]any{"cpu": "4"}}); got != http.StatusBadRequest {
 		t.Errorf("incomplete quota: got %d, want 400", got)
 	}
-	if got := post(map[string]any{"slug": testOrgSlug, "name": "dup", "ownerUsername": "o", "quota": goodQuota}); got != http.StatusConflict {
+	if got := post(map[string]any{"slug": testOrgSlug, "name": "dup", "ownerEmail": "o@example.com", "quota": goodQuota}); got != http.StatusConflict {
 		t.Errorf("duplicate slug: got %d, want 409", got)
 	}
 }
@@ -84,7 +84,7 @@ func TestOnlyPlatformAdminCreatesOrgs(t *testing.T) {
 func TestListOrgsShowsOnlyTheUsersOrgsExceptForPlatformAdmin(t *testing.T) {
 	srv := newTestServer(t)
 	member := newMemberToken(t, srv, "m", paneldb.RoleMember)
-	other, _ := srv.DB.CreateUser(t.Context(), "other-owner", "password", false)
+	other, _ := srv.DB.CreateUser(t.Context(), "other-owner", "other-owner@example.com", "password", false)
 	if _, err := srv.DB.CreateOrg(t.Context(), "secretorg", "Secret", other.ID); err != nil {
 		t.Fatal(err)
 	}
