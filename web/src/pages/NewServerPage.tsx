@@ -10,6 +10,8 @@ import { ByteInput, CpuInput, ImageSelect, VariableFields, editableVariables, va
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Field, Input } from "../components/ui/Input";
+import { ModpackPicker, type PickedModpack } from "../components/server/ModpackPicker";
+import { MODPACK_VARS } from "../lib/modpacks";
 
 const DEFAULT_CPU = "1";
 const DEFAULT_MEM: ByteQuantity = { value: 2, unit: "Gi" };
@@ -68,6 +70,7 @@ export function NewServerPage() {
   const [disk, setDisk] = useState<ByteQuantity>(DEFAULT_DISK);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modpack, setModpack] = useState<PickedModpack | null>(null);
 
   const eggOptions: EggEntry[] = eggs ?? [];
   const selectedEgg = eggOptions.find((egg) => `${egg.scope}:${egg.name}` === eggChoice);
@@ -76,12 +79,28 @@ export function NewServerPage() {
   const images = selectedEgg?.spec.images ?? [];
   const variablesOk = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null);
   const provisioning = orgDetail !== undefined && !orgDetail.ready;
+  const isModpackEgg = !!selectedEgg?.modpack;
+
+  const pickModpack = (p: PickedModpack | null) => {
+    setModpack(p);
+    if (!p) return;
+    setValues((cur) => ({
+      ...cur,
+      [MODPACK_VARS.source]: p.source,
+      [MODPACK_VARS.pack]: p.source === "curseforge" ? p.result.slug : p.result.projectId,
+      [MODPACK_VARS.projectId]: p.result.projectId,
+      [MODPACK_VARS.version]: p.version.id,
+    }));
+    setImageName(p.version.imageName);
+    if (!displayName.trim()) setDisplayName(p.result.title.slice(0, 64));
+  };
 
   const chooseEgg = (choice: string) => {
     const egg = eggOptions.find((e) => `${e.scope}:${e.name}` === choice);
     const rec = egg?.spec.recommendedResources;
     setEggChoice(choice);
     setEulaAccepted(false);
+    setModpack(null);
     setImageName(egg?.spec.images?.[0]?.name ?? "");
     setValues(defaultValues(egg?.spec));
     setCpu(rec?.cpu ?? DEFAULT_CPU);
@@ -122,7 +141,8 @@ export function NewServerPage() {
     onError: (err) => setError(err instanceof Error ? err.message : t("dashboard.createFailed")),
   });
 
-  const canSubmit = !!selectedEgg && !create.isPending && !overQuota && variablesOk && !provisioning && (!needsEula || eulaAccepted);
+  const canSubmit =
+    !!selectedEgg && !create.isPending && !overQuota && variablesOk && !provisioning && (!needsEula || eulaAccepted) && (!isModpackEgg || !!modpack);
 
   return (
     <div className="flex flex-col gap-5">
@@ -181,7 +201,13 @@ export function NewServerPage() {
             )}
           </Section>
 
-          {selectedEgg && variables.length > 0 && (
+          {isModpackEgg && (
+            <Section title={t("modpacks.section")}>
+              <ModpackPicker org={org} picked={modpack} onPick={pickModpack} />
+            </Section>
+          )}
+
+          {selectedEgg && !isModpackEgg && variables.length > 0 && (
             <Section title={t("dashboard.settingsSection")}>
               <VariableFields
                 variables={variables}
@@ -224,6 +250,7 @@ export function NewServerPage() {
             <SummaryRow label={t("dashboard.displayName")} value={displayName.trim() || "—"} />
             <SummaryRow label="id" value={displayName.trim() ? slugPreview(displayName) : "—"} />
             <SummaryRow label="Egg" value={selectedEgg?.name ?? t("dashboard.noEggYet")} />
+            {modpack && <SummaryRow label={t("modpacks.section")} value={`${modpack.result.title} ${modpack.version.versionNumber}`} />}
             {images.length > 1 && <SummaryRow label={t("dashboard.image")} value={imageName} />}
             <SummaryRow label={t("dashboard.cpu")} value={cpu || "—"} />
             <SummaryRow label={t("dashboard.memory")} value={Number.isFinite(mem.value) ? joinBytes(mem) : "—"} />
