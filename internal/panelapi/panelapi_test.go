@@ -104,10 +104,11 @@ func newTestServer(t *testing.T, objs ...client.Object) *Server {
 	srv := NewServer(c, nil, nil, newTestStore(t), "example.com/sftp-agent:test", nil)
 	srv.Tickets = panelcache.NewMemoryTicketStore()
 	srv.LoginLimiter = panelcache.NewMemoryLoginLimiter(panelcache.DefaultLoginLimits)
+	srv.RequestLimiter = panelcache.NewMemoryRequestLimiter()
 
 	// Every test server has one org, "testorg", owned by a fixture user. Tests
 	// that need other identities add them with newMemberToken/newUserToken.
-	owner, err := srv.DB.CreateUser(context.Background(), "fixture-owner", "password", false)
+	owner, err := srv.DB.CreateUser(context.Background(), "fixture-owner", "fixture-owner@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ func orgURL(rest string) string { return "/api/v1/orgs/" + testOrgSlug + rest }
 // returns a live session token for them.
 func newMemberToken(t *testing.T, srv *Server, username string, role paneldb.Role) string {
 	t.Helper()
-	u, err := srv.DB.CreateUser(context.Background(), username, "password", false)
+	u, err := srv.DB.CreateUser(context.Background(), username, username+"@example.com", "password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +160,7 @@ func adminToken(t *testing.T, srv *Server) string {
 // token for them.
 func newUserToken(t *testing.T, srv *Server, username string, isAdmin bool) string {
 	t.Helper()
-	u, err := srv.DB.CreateUser(context.Background(), username, "password", isAdmin)
+	u, err := srv.DB.CreateUser(context.Background(), username, username+"@example.com", "password", isAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
