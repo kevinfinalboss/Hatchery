@@ -46,7 +46,7 @@ const BootstrapAdminUsername = "admin"
 // retry after exactly that crash just resets the same admin's password and
 // writes the Secret it's missing, rather than silently doing nothing because
 // the user row was already there.
-func BootstrapAdmin(ctx context.Context, k8sClient client.Client, db *paneldb.Store, namespace, secretName string) error {
+func BootstrapAdmin(ctx context.Context, k8sClient client.Client, db *paneldb.Store, namespace, secretName, email string) error {
 	var existing corev1.Secret
 	err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &existing)
 	if err == nil {
@@ -60,7 +60,7 @@ func BootstrapAdmin(ctx context.Context, k8sClient client.Client, db *paneldb.St
 	if err != nil {
 		return fmt.Errorf("generating admin password: %w", err)
 	}
-	if _, err := db.UpsertUser(ctx, BootstrapAdminUsername, password, true); err != nil {
+	if _, err := db.UpsertUser(ctx, BootstrapAdminUsername, email, password, true); err != nil {
 		return fmt.Errorf("creating admin user: %w", err)
 	}
 

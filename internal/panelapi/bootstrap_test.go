@@ -32,7 +32,7 @@ func TestBootstrapAdminCreatesUserAndSecret(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := t.Context()
 
-	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName); err != nil {
+	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName, "admin@hatchery.local"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,13 +52,18 @@ func TestBootstrapAdminCreatesUserAndSecret(t *testing.T) {
 	if _, err := srv.DB.VerifyPassword(ctx, BootstrapAdminUsername, password); err != nil {
 		t.Fatalf("expected the generated password to verify: %v", err)
 	}
+
+	u, err := srv.DB.GetUserByUsername(ctx, BootstrapAdminUsername)
+	if err != nil || u.Email != "admin@hatchery.local" {
+		t.Fatalf("bootstrap admin = %+v, %v", u, err)
+	}
 }
 
 func TestBootstrapAdminIsANoOpWhenSecretAlreadyExists(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := t.Context()
 
-	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName); err != nil {
+	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName, "admin@hatchery.local"); err != nil {
 		t.Fatal(err)
 	}
 	var first corev1.Secret
@@ -66,7 +71,7 @@ func TestBootstrapAdminIsANoOpWhenSecretAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName); err != nil {
+	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName, "admin@hatchery.local"); err != nil {
 		t.Fatal(err)
 	}
 	var second corev1.Secret
@@ -88,11 +93,11 @@ func TestBootstrapAdminRecoversFromPartialFailure(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := t.Context()
 
-	if _, err := srv.DB.UpsertUser(ctx, BootstrapAdminUsername, "some-password-nobody-will-ever-know", true); err != nil {
+	if _, err := srv.DB.UpsertUser(ctx, BootstrapAdminUsername, "admin@example.com", "some-password-nobody-will-ever-know", true); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName); err != nil {
+	if err := BootstrapAdmin(ctx, srv.Client, srv.DB, testAdminSecretNamespace, testAdminSecretName, "admin@hatchery.local"); err != nil {
 		t.Fatal(err)
 	}
 
