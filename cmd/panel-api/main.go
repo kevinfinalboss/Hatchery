@@ -194,6 +194,7 @@ func main() {
 		srv.ModSources["curseforge"] = modsource.NewCurseForge(key, modsUserAgent)
 	}
 	srv.ModHashes = panelcache.NewRedisModHashCache(rdb)
+	srv.GameVersions = panelcache.NewRedisGameVersionCache(rdb)
 	log.Info("mod sources enabled", "sources", len(srv.ModSources), "curseforge", srv.ModSources["curseforge"] != nil)
 	srv.PublicURL = strings.TrimRight(publicURL, "/")
 	if smtpHost != "" {
