@@ -554,8 +554,13 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			Env:             append(append([]corev1.EnvVar{}, env...), corev1.EnvVar{Name: installRevisionEnv, Value: strconv.FormatInt(gs.Spec.InstallRevision, 10)}),
 			VolumeMounts:    mounts,
 			SecurityContext: gameContainerSecurityContext(),
+			Resources:       gs.Spec.Resources,
 		})
 	}
+	if uid := egg.Spec.RunAsUser; uid != nil {
+		initContainers = append(initContainers, fixOwnerContainer(serverImage, *uid, gs.Spec.InstallRevision, mounts))
+	}
+	gameSecurity := gameContainerSecurityContextFor(egg)
 	if c := egg.Spec.Configure; c != nil {
 		image := c.Image
 		if image == "" {
@@ -572,7 +577,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			Command:         append(append([]string{}, entrypoint...), c.Script),
 			Env:             env,
 			VolumeMounts:    mounts,
-			SecurityContext: gameContainerSecurityContext(),
+			SecurityContext: gameSecurity,
 		})
 	}
 	automountToken := false
@@ -626,7 +631,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				Stdin:           true,
 				StdinOnce:       false,
 				TTY:             false,
-				SecurityContext: gameContainerSecurityContext(),
+				SecurityContext: gameSecurity,
 			},
 				sftpagent.Container(sftpAgentImage, secretName, string(gs.UID), dataVolumeName, dataMountPath),
 			},
@@ -634,6 +639,42 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 		},
 	}
 	return pod, nil
+}
+
+// gameContainerSecurityContextFor is the security context of the game and configure
+// containers: the image's user, or the Egg's runAsUser (uid and gid) when set.
+func gameContainerSecurityContextFor(egg *gameserversv1alpha1.Egg) *corev1.SecurityContext {
+	sc := gameContainerSecurityContext()
+	if uid := egg.Spec.RunAsUser; uid != nil {
+		sc.RunAsUser = ptr.To(*uid)
+		sc.RunAsGroup = ptr.To(*uid)
+	}
+	return sc
+}
+
+// fixOwnerScript chowns the data volume to HATCHERY_OWNER once per install revision: the
+// marker makes later starts free, while a reinstall (new revision, files written by the root
+// install) or an Egg switching to runAsUser runs it again.
+const fixOwnerScript = `want="${HATCHERY_OWNER}:${HATCHERY_INSTALL_REVISION}"
+if [ "$(cat /data/.hatchery-owner 2>/dev/null)" != "$want" ]; then
+  echo "hatchery: chown -R ${HATCHERY_OWNER} /data"
+  chown -R "${HATCHERY_OWNER}" /data && echo "$want" > /data/.hatchery-owner && chown "${HATCHERY_OWNER}" /data/.hatchery-owner
+fi`
+
+func fixOwnerContainer(image string, uid, installRevision int64, mounts []corev1.VolumeMount) corev1.Container {
+	owner := strconv.FormatInt(uid, 10) + ":" + strconv.FormatInt(uid, 10)
+	return corev1.Container{
+		Name:       "fix-owner",
+		Image:      image,
+		WorkingDir: dataMountPath,
+		Command:    []string{"/bin/sh", "-c", fixOwnerScript},
+		Env: []corev1.EnvVar{
+			{Name: "HATCHERY_OWNER", Value: owner},
+			{Name: installRevisionEnv, Value: strconv.FormatInt(installRevision, 10)},
+		},
+		VolumeMounts:    mounts,
+		SecurityContext: gameContainerSecurityContext(),
+	}
 }
 
 func gameContainerSecurityContext() *corev1.SecurityContext {
