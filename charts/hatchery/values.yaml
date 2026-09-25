@@ -119,6 +119,10 @@ catalogEggs:
     - minecraft-paper
     - minecraft-purpur
     - minecraft-fabric
+    - minecraft-neoforge
+    - minecraft-quilt
+    - minecraft-spigot
+    - minecraft-modpack
     - terraria-vanilla
     - project-zomboid   # install validated; the server boot itself was not
 
