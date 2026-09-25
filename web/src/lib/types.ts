@@ -132,9 +132,21 @@ export interface EggPort {
   default?: boolean;
 }
 
-export interface User {
+export type ProfileLocale = "" | "pt-BR" | "en";
+
+export interface Profile {
+  displayName: string;
+  locale: ProfileLocale;
+  timeZone: string;
+  discord: string;
+  minecraftUsername: string;
+  steamId: string;
+}
+
+export interface User extends Profile {
   id: number;
   username: string;
+  email: string;
   isAdmin: boolean;
 }
 
@@ -188,6 +200,8 @@ export interface OrgSummary {
   slug: string;
   name: string;
   role: OrgRole;
+  inviteUrl?: string;
+  inviteError?: string;
 }
 
 export interface BackupLimits {
@@ -269,6 +283,11 @@ export interface Member {
   userId: number;
   username: string;
   role: OrgRole;
+  displayName: string;
+  discord: string;
+  minecraftUsername: string;
+  steamId: string;
+  email?: string;
 }
 
 export type EggScope = "Catalog" | "Namespace";
@@ -374,4 +393,32 @@ export interface ScheduleWrite {
   suspend: boolean;
   onlyWhenRunning?: boolean;
   tasks: ScheduleTask[];
+}
+
+export interface Invitation {
+  id: number;
+  email: string;
+  role: OrgRole;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
+export interface InviteResponse {
+  invitation: Invitation;
+  inviteUrl?: string;
+}
+
+export interface InvitationPreview {
+  orgName: string;
+  orgSlug: string;
+  role: OrgRole;
+  email: string;
+  invitedBy: string;
+  accountExists: boolean;
+}
+
+export interface AuthFeatures {
+  passwordReset: boolean;
 }
