@@ -14,6 +14,8 @@ import { CrashBanner } from "../components/server/CrashBanner";
 import { FileManager } from "../components/files/FileManager";
 import { ServerMetrics } from "../components/server/ServerMetrics";
 import { ServerBackups } from "../components/server/ServerBackups";
+import { ServerMods } from "../components/server/ServerMods";
+import { ModpackCard } from "../components/server/ModpackCard";
 import { ServerSchedules } from "../components/server/ServerSchedules";
 import { ServerSettings } from "../components/server/ServerSettings";
 import { restartRequired, serverTitle } from "../lib/gameserver";
@@ -21,33 +23,34 @@ import { errorMessage } from "../lib/errors";
 import { can } from "../lib/permissions";
 import type { UpdateGameServerRequest } from "../lib/types";
 
-type Section = "console" | "metrics" | "files" | "backups" | "schedules" | "settings";
+type Section = "console" | "files" | "mods" | "backups" | "schedules" | "settings";
 
 const SECTIONS: {
   id: Section;
   label:
     | "server.sectionConsole"
-    | "server.sectionMetrics"
     | "server.sectionFiles"
+    | "server.sectionMods"
+    | "server.sectionPlugins"
     | "server.sectionBackups"
     | "server.sectionSchedules"
     | "server.sectionSettings";
 }[] = [
   { id: "console", label: "server.sectionConsole" },
-  { id: "metrics", label: "server.sectionMetrics" },
   { id: "files", label: "server.sectionFiles" },
+  { id: "mods", label: "server.sectionMods" },
   { id: "backups", label: "server.sectionBackups" },
   { id: "schedules", label: "server.sectionSchedules" },
   { id: "settings", label: "server.sectionSettings" },
 ];
 
 function sectionOf(raw: string | null): Section {
-  return raw === "metrics" || raw === "files" || raw === "backups" || raw === "schedules" || raw === "settings" ? raw : "console";
+  return raw === "files" || raw === "mods" || raw === "backups" || raw === "schedules" || raw === "settings" ? raw : "console";
 }
 
 function visibleSectionOf(raw: string | null, visible: Section[]): Section {
   const requested = sectionOf(raw);
-  return visible.includes(requested) ? requested : "metrics";
+  return visible.includes(requested) ? requested : "console";
 }
 
 export function ServerDetailPage() {
@@ -132,12 +135,12 @@ export function ServerDetailPage() {
   const canSchedules = can(server, "schedules");
 
   const visibleSections = SECTIONS.filter((s) => {
-    if (s.id === "console") return canConsoleRead;
     if (s.id === "files") return canFilesRead;
+    if (s.id === "mods") return canFilesRead && !!egg?.spec.mods;
     if (s.id === "backups") return canBackupsRead;
     if (s.id === "schedules") return canSchedules;
     if (s.id === "settings") return canEdit;
-    return true; // metrics is always visible
+    return true; // console (with metrics below) is always visible
   }).map((s) => s.id);
   const section = visibleSectionOf(params.get("s"), visibleSections);
 
@@ -186,6 +189,10 @@ export function ServerDetailPage() {
 
       {!locked && <CrashBanner org={org} server={server} canReadLog={canConsoleRead} />}
 
+      {!locked && egg?.modpack && (
+        <ModpackCard org={org} name={name} canUpdate={canEdit} onBackups={() => setParams({ s: "backups" }, { replace: true })} />
+      )}
+
       {!locked && canPower && restartRequired(server) && desiredRunning && (
         <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface px-4 py-2.5 font-sans text-sm text-text-primary">
           <span>{t("server.restartPending")}</span>
@@ -215,7 +222,7 @@ export function ServerDetailPage() {
               <span aria-hidden className="w-2">
                 {section === s.id ? ">" : ""}
               </span>
-              {t(s.label)}
+              {t(s.id === "mods" && egg?.spec.mods?.kind === "plugin" ? "server.sectionPlugins" : s.label)}
             </button>
           ))}
         </nav>
@@ -224,11 +231,18 @@ export function ServerDetailPage() {
           {locked && section !== "settings" ? (
             <div className="font-prose text-sm text-text-secondary">{t("server.suspendedLocked")}</div>
           ) : section === "console" ? (
-            <ServerConsole org={org} name={name} running={podRunning} installing={installing} canWrite={canConsoleWrite} />
-          ) : section === "metrics" ? (
-            <ServerMetrics org={org} name={name} server={server} running={podRunning} />
+            <div className="flex h-full flex-col gap-6 overflow-y-auto">
+              {canConsoleRead && (
+                <div className="h-[60vh] min-h-80 shrink-0">
+                  <ServerConsole org={org} name={name} running={podRunning} installing={installing} canWrite={canConsoleWrite} />
+                </div>
+              )}
+              <ServerMetrics org={org} name={name} server={server} running={podRunning} />
+            </div>
           ) : section === "files" ? (
             <FileManager org={org} name={name} readOnly={!canFilesWrite} />
+          ) : section === "mods" ? (
+            <ServerMods org={org} name={name} server={server} canWrite={canFilesWrite} />
           ) : section === "backups" ? (
             <ServerBackups org={org} name={name} server={server} canManage={canBackupsManage} />
           ) : section === "schedules" ? (
