@@ -82,6 +82,13 @@ type TenantQuota struct {
 	// +kubebuilder:validation:items:MaxLength=253
 	// +optional
 	ExtraImageRegistries []string `json:"extraImageRegistries,omitempty"`
+
+	// AuditRetentionDays is how long the organization's audit events are kept. Unset uses the
+	// platform default (panel-api --audit-retention-days). Only the platform admin edits it.
+	// +kubebuilder:validation:Minimum=7
+	// +kubebuilder:validation:Maximum=3650
+	// +optional
+	AuditRetentionDays *int32 `json:"auditRetentionDays,omitempty"`
 }
 
 // TenantBackupQuota bounds an organization's use of the platform's backup storage.
