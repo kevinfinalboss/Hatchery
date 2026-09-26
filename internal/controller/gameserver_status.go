@@ -42,6 +42,21 @@ func (c ClientsetLogReader) TailLogs(ctx context.Context, namespace, pod, contai
 	return string(raw), err
 }
 
+// BackupLogReader reads a container's console from a point in time on. The backup controller uses
+// it so a save line printed before its commands were sent doesn't count.
+type BackupLogReader interface {
+	LogsSince(ctx context.Context, namespace, pod, container string, since time.Time) (string, error)
+}
+
+func (c ClientsetLogReader) LogsSince(ctx context.Context, namespace, pod, container string, since time.Time) (string, error) {
+	t := metav1.NewTime(since)
+	raw, err := c.Clientset.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{
+		Container: container,
+		SinceTime: &t,
+	}).DoRaw(ctx)
+	return string(raw), err
+}
+
 // observation is what the controller concludes about a server from its Pod.
 type observation struct {
 	phase   gameserversv1alpha1.GameServerPhase
