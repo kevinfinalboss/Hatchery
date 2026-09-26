@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -341,6 +342,10 @@ type backupItem struct {
 	CompletionTime string       `json:"completionTime,omitempty"`
 	Deleting       bool         `json:"deleting,omitempty"`
 	Restore        *restoreItem `json:"restore,omitempty"`
+	// Quiesce is "timeout" or "sendFailed" when the backup ran without the world save being paused.
+	Quiesce string `json:"quiesce,omitempty"`
+	// ResumeError is set when saving could not be turned back on after the backup.
+	ResumeError string `json:"resumeError,omitempty"`
 }
 
 type backupListResponse struct {
@@ -398,6 +403,15 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 		}
 		if b.Status.CompletionTime != nil {
 			item.CompletionTime = b.Status.CompletionTime.UTC().Format(time.RFC3339)
+		}
+		if c := apimeta.FindStatusCondition(b.Status.Conditions, gameserversv1alpha1.BackupConditionQuiesced); c != nil && c.Status == metav1.ConditionFalse {
+			item.Quiesce = "timeout"
+			if c.Reason == gameserversv1alpha1.QuiesceReasonSendFailed {
+				item.Quiesce = "sendFailed"
+			}
+		}
+		if c := apimeta.FindStatusCondition(b.Status.Conditions, gameserversv1alpha1.BackupConditionResumed); c != nil && c.Status == metav1.ConditionFalse {
+			item.ResumeError = c.Message
 		}
 		if rs := latest[b.Name]; rs != nil {
 			item.Restore = &restoreItem{Name: rs.Name, Phase: string(rs.Status.Phase), CreatedAt: rs.CreationTimestamp.UTC().Format(time.RFC3339)}

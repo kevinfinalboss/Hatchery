@@ -430,3 +430,40 @@ func TestOrgQuotaCarriesTheBackupLimits(t *testing.T) {
 		t.Fatalf("a retention below 1 day: got %d, want 400", rec.Code)
 	}
 }
+
+func TestListBackupsReportsTheWorldSavePause(t *testing.T) {
+	gs := &gameserversv1alpha1.GameServer{ObjectMeta: metav1.ObjectMeta{Name: "mc", Namespace: testOrgNS()},
+		Spec: gameserversv1alpha1.GameServerSpec{EggRef: gameserversv1alpha1.GameServerEggRef{Name: "egg"}, Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"}}}
+	mk := func(name string, conds ...metav1.Condition) *gameserversv1alpha1.GameServerBackup {
+		return &gameserversv1alpha1.GameServerBackup{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testOrgNS(), Labels: map[string]string{gameserversv1alpha1.BackupGameServerLabel: "mc"}},
+			Status:     gameserversv1alpha1.GameServerBackupStatus{Phase: gameserversv1alpha1.GameServerBackupPhaseCompleted, Conditions: conds},
+		}
+	}
+	srv := newTestServer(t, testTenant(), gs,
+		mk("ok", metav1.Condition{Type: "Quiesced", Status: metav1.ConditionTrue, Reason: "Saved"}),
+		mk("late", metav1.Condition{Type: "Quiesced", Status: metav1.ConditionFalse, Reason: "Timeout"}),
+		mk("stuck", metav1.Condition{Type: "Resumed", Status: metav1.ConditionFalse, Reason: "SendFailed", Message: "world saving may still be paused"}),
+	)
+	rec := doRequest(t, srv, http.MethodGet, orgURL("/gameservers/mc/backups"), adminToken(t, srv), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	var resp backupListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]backupItem{}
+	for _, it := range resp.Items {
+		got[it.Name] = it
+	}
+	if got["ok"].Quiesce != "" || got["ok"].ResumeError != "" {
+		t.Errorf("ok: %+v", got["ok"])
+	}
+	if got["late"].Quiesce != "timeout" {
+		t.Errorf("late: %+v", got["late"])
+	}
+	if got["stuck"].ResumeError != "world saving may still be paused" {
+		t.Errorf("stuck: %+v", got["stuck"])
+	}
+}
