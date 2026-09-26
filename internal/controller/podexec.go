@@ -56,3 +56,9 @@ func NewPodExec(cfg *rest.Config, cs kubernetes.Interface) PodExecFunc {
 		return nil
 	}
 }
+
+// stdinCommand builds the exec command that writes one line to the game's console (the stdin of
+// PID 1). The command is an argument, never part of the script: nothing in it is interpreted.
+func stdinCommand(command string) []string {
+	return []string{"sh", "-c", `printf '%s\n' "$1" > /proc/1/fd/0`, "sh", command}
+}
