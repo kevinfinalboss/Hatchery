@@ -125,6 +125,7 @@ type quotaRequest struct {
 	MaxGameServers       int32         `json:"maxGameServers"`
 	Backups              *backupLimits `json:"backups,omitempty"`
 	ExtraImageRegistries []string      `json:"extraImageRegistries,omitempty"`
+	AuditRetentionDays   *int32        `json:"auditRetentionDays,omitempty"`
 }
 
 // toQuota parses the quantities. Every field is required: an empty quantity
@@ -177,6 +178,12 @@ func (q quotaRequest) toQuota() (gameserversv1alpha1.TenantQuota, error) {
 	if len(out.ExtraImageRegistries) > 20 {
 		return out, fmt.Errorf("quota.extraImageRegistries: at most 20 entries")
 	}
+	if d := q.AuditRetentionDays; d != nil {
+		if *d < 7 || *d > 3650 {
+			return out, fmt.Errorf("quota.auditRetentionDays must be between 7 and 3650")
+		}
+		out.AuditRetentionDays = d
+	}
 	return out, nil
 }
 
@@ -186,5 +193,6 @@ func quotaResponseFrom(q gameserversv1alpha1.TenantQuota) quotaRequest {
 		out.Backups = &backupLimits{MaxPerServer: b.MaxPerServer, MaxPerOrg: b.MaxPerOrg, RetentionDays: b.RetentionDays}
 	}
 	out.ExtraImageRegistries = q.ExtraImageRegistries
+	out.AuditRetentionDays = q.AuditRetentionDays
 	return out
 }
