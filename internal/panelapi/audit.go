@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -145,6 +147,8 @@ const (
 type auditPageResponse struct {
 	Events     []paneldb.AuditEvent `json:"events"`
 	NextBefore *int64               `json:"nextBefore"`
+	// RetentionDays is how long these events are kept; 0 means forever.
+	RetentionDays int `json:"retentionDays"`
 }
 
 func (s *Server) serveAudit(w http.ResponseWriter, r *http.Request, orgSlug string) {
@@ -179,6 +183,13 @@ func (s *Server) serveAudit(w http.ResponseWriter, r *http.Request, orgSlug stri
 	if len(events) == limit {
 		last := events[len(events)-1].ID
 		resp.NextBefore = &last
+	}
+	resp.RetentionDays = s.AuditRetentionDays
+	if orgSlug != "" {
+		var tenant gameserversv1alpha1.Tenant
+		if err := s.Client.Get(r.Context(), client.ObjectKey{Name: orgSlug}, &tenant); err == nil && tenant.Spec.Quota.AuditRetentionDays != nil {
+			resp.RetentionDays = int(*tenant.Spec.Quota.AuditRetentionDays)
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
