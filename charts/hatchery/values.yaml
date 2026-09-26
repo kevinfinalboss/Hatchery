@@ -68,6 +68,10 @@ panel:
     from: ""              # e.g. "Hatchery <noreply@example.com>"
     tls: starttls         # starttls | tls (implicit, 465) | none (local catcher such as Mailpit only)
     existingSecret: ""    # Secret in the release namespace with keys "username" and "password"
+  # Audit log retention for organizations without their own (quota), deleted organizations and
+  # platform events. 0 = keep forever.
+  audit:
+    retentionDays: 365
   # Mod/plugin installer (Modrinth needs no key; CurseForge needs one from console.curseforge.com).
   mods:
     # User-Agent sent to the catalogs; empty = hatchery/dev (+<publicURL>). Modrinth requires one
