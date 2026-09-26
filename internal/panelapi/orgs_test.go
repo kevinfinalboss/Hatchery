@@ -3,6 +3,7 @@ package panelapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -157,5 +158,26 @@ func TestUpdateQuotaIsPlatformAdminOnly(t *testing.T) {
 	}
 	if tenant.Spec.Quota.MaxGameServers != 9 {
 		t.Fatalf("quota not updated: %+v", tenant.Spec.Quota)
+	}
+}
+
+func TestQuotaCarriesAuditRetention(t *testing.T) {
+	srv := newTestServer(t, testTenant())
+	platform := adminToken(t, srv)
+	base := func(days any) map[string]any {
+		return map[string]any{"cpu": "4", "memory": "8Gi", "storage": "20Gi", "maxGameServers": 3, "auditRetentionDays": days}
+	}
+	rec := doRequest(t, srv, http.MethodPatch, orgURL("/quota"), platform, base(30))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"auditRetentionDays":30`) {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	for _, bad := range []int{6, 3651} {
+		if rec := doRequest(t, srv, http.MethodPatch, orgURL("/quota"), platform, base(bad)); rec.Code != http.StatusBadRequest {
+			t.Errorf("auditRetentionDays=%d: got %d, want 400", bad, rec.Code)
+		}
+	}
+	rec = doRequest(t, srv, http.MethodGet, orgURL("/audit"), platform, nil)
+	if !strings.Contains(rec.Body.String(), `"retentionDays":30`) {
+		t.Fatalf("audit page must report the org's retention: %s", rec.Body.String())
 	}
 }
