@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 func (s *EggSpec) Validate() []string {
@@ -16,6 +17,7 @@ func (s *EggSpec) Validate() []string {
 		}
 	}
 	msgs = append(msgs, s.validateMods()...)
+	msgs = append(msgs, s.validateBackup()...)
 	return msgs
 }
 
@@ -51,4 +53,27 @@ func (s *EggSpec) validateMods() []string {
 // cleanRelative: non-empty, relative, already clean and not escaping the base directory.
 func cleanRelative(p string) bool {
 	return p != "" && p != "." && !path.IsAbs(p) && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../")
+}
+
+func (s *EggSpec) validateBackup() []string {
+	b := s.Backup
+	if b == nil {
+		return nil
+	}
+	var msgs []string
+	check := func(field string, cmds []string) {
+		for i, c := range cmds {
+			if c == "" || len(c) > 512 || strings.IndexFunc(c, unicode.IsControl) >= 0 {
+				msgs = append(msgs, fmt.Sprintf("backup.%s[%d] must be one line of 1 to 512 characters", field, i))
+			}
+		}
+	}
+	check("before", b.Before)
+	check("after", b.After)
+	if b.SavedRegex != "" {
+		if _, err := regexp.Compile(b.SavedRegex); err != nil {
+			msgs = append(msgs, fmt.Sprintf("backup.savedRegex: %v", err))
+		}
+	}
+	return msgs
 }
