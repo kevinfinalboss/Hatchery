@@ -29,6 +29,11 @@ spec:
   stopTimeoutSeconds: 90
   startupDetection:
     regex: "\\)! For help, type "
+  backup:
+    before: ["save-off", "save-all flush"]
+    after: ["save-on"]
+    savedRegex: "Saved the game"
+    timeoutSeconds: 60
   install:
     image: ghcr.io/ptero-eggs/installers:alpine
     entrypoint: ["ash", "-c"]

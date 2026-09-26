@@ -46,6 +46,44 @@ spec:
           spec:
             description: spec defines the desired state of Egg
             properties:
+              backup:
+                description: Backup pauses world saving around backups of a running
+                  server; see EggBackup.
+                properties:
+                  after:
+                    description: After are console commands sent once the copy is
+                      over, successful or not, e.g. ["save-on"].
+                    items:
+                      type: string
+                    maxItems: 5
+                    type: array
+                  before:
+                    description: Before are console commands sent before the copy,
+                      e.g. ["save-off", "save-all flush"].
+                    items:
+                      type: string
+                    maxItems: 5
+                    type: array
+                  delaySeconds:
+                    description: DelaySeconds is the fixed wait used when SavedRegex
+                      is empty. Defaults to 10.
+                    format: int32
+                    maximum: 300
+                    minimum: 0
+                    type: integer
+                  savedRegex:
+                    description: |-
+                      SavedRegex (RE2) is matched against the console written after Before was sent; a match means
+                      the world is on disk. Without it the operator waits DelaySeconds.
+                    type: string
+                  timeoutSeconds:
+                    description: TimeoutSeconds is how long to wait for SavedRegex
+                      before backing up anyway. Defaults to 60.
+                    format: int32
+                    maximum: 600
+                    minimum: 1
+                    type: integer
+                type: object
               configure:
                 description: Configure runs on every start after Install; see EggConfigure.
                 properties:

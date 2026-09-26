@@ -57,6 +57,14 @@ spec:
               quota:
                 description: Quota is the tenant's resource budget.
                 properties:
+                  auditRetentionDays:
+                    description: |-
+                      AuditRetentionDays is how long the organization's audit events are kept. Unset uses the
+                      platform default (panel-api --audit-retention-days). Only the platform admin edits it.
+                    format: int32
+                    maximum: 3650
+                    minimum: 7
+                    type: integer
                   backups:
                     description: |-
                       Backups limits what the organization may keep on the platform's own backup storage. Without

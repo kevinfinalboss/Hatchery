@@ -205,6 +205,32 @@ spec:
               phase:
                 description: Phase summarizes the current lifecycle state of the backup.
                 type: string
+              quiesce:
+                description: Quiesce tracks the world-save pause of a backup of a
+                  running server.
+                properties:
+                  beforeSentAt:
+                    description: BeforeSentAt is when the Before commands were (about
+                      to be) sent.
+                    format: date-time
+                    type: string
+                  podUID:
+                    description: PodUID is the game Pod the Before commands were sent
+                      to; After goes only to that same Pod.
+                    type: string
+                  resumeAttempts:
+                    description: ResumeAttempts counts failed attempts at sending
+                      After.
+                    format: int32
+                    type: integer
+                  resumedAt:
+                    description: 'ResumedAt is when the After step ended: sent, skipped,
+                      or given up.'
+                    format: date-time
+                    type: string
+                required:
+                - podUID
+                type: object
               startTime:
                 description: StartTime is when the backup Job was created.
                 format: date-time

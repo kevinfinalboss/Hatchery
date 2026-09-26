@@ -33,6 +33,11 @@ spec:
   stopTimeoutSeconds: 90
   startupDetection:
     regex: "\\)! For help, type "
+  backup:
+    before: ["save-off", "save-all flush"]
+    after: ["save-on"]
+    savedRegex: "Saved the game"
+    timeoutSeconds: 60
   install:
     image: eclipse-temurin:21-jdk-jammy
     entrypoint: ["bash", "-c"]
