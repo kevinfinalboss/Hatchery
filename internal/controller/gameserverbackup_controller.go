@@ -46,6 +46,12 @@ const backupJobPollInterval = 5 * time.Second
 type GameServerBackupReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Exec writes Egg.spec.backup commands to the game's console. nil turns the world-save pause off.
+	Exec PodExecFunc
+	// Logs reads the console to spot Egg.spec.backup.savedRegex.
+	Logs BackupLogReader
+	// Now is the clock; nil means time.Now.
+	Now func() time.Time
 }
 
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameserverbackups,verbs=get;list;watch;create;update;patch;delete
@@ -53,6 +59,10 @@ type GameServerBackupReconciler struct {
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameserverbackups/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=eggs;gameservers,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 // Reconcile drives a GameServerBackup through Pending -> Running -> Completed
 // (or Failed) by running a restic Job (see internal/backup) against the
@@ -86,6 +96,9 @@ func (r *GameServerBackupReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return r.pollJob(ctx, &bkp)
 	default:
 		log.V(1).Info("backup already in a terminal phase", "phase", bkp.Status.Phase)
+		if pending, res, err := r.resume(ctx, &bkp); pending || err != nil {
+			return res, err
+		}
 		return r.enforceRetention(ctx, &bkp)
 	}
 }
@@ -116,6 +129,9 @@ func (r *GameServerBackupReconciler) enforceRetention(ctx context.Context, bkp *
 // startJob validates the target GameServer's PVC exists and creates the
 // backup Job.
 func (r *GameServerBackupReconciler) startJob(ctx context.Context, bkp *gameserversv1alpha1.GameServerBackup) (ctrl.Result, error) {
+	if done, res, err := r.quiesce(ctx, bkp); err != nil || !done {
+		return res, err
+	}
 	pvcName := bkp.Spec.GameServerRef.Name
 	var pvc corev1.PersistentVolumeClaim
 	if err := r.Get(ctx, types.NamespacedName{Namespace: bkp.Namespace, Name: pvcName}, &pvc); err != nil {
@@ -193,6 +209,9 @@ func (r *GameServerBackupReconciler) completeJob(ctx context.Context, bkp *games
 func (r *GameServerBackupReconciler) reconcileDelete(ctx context.Context, bkp *gameserversv1alpha1.GameServerBackup) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(bkp, gameserversv1alpha1.GameServerBackupFinalizer) {
 		return ctrl.Result{}, nil
+	}
+	if pending, res, err := r.resume(ctx, bkp); pending || err != nil {
+		return res, err
 	}
 
 	if bkp.Status.Phase != gameserversv1alpha1.GameServerBackupPhaseCompleted &&
