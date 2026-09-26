@@ -57,6 +57,7 @@ func main() {
 	var smtpHost, smtpFrom, smtpTLS, smtpUsername string
 	var smtpPort int
 	var modsUserAgent string
+	var auditRetentionDays int
 	flag.StringVar(&bindAddr, "bind-address", ":8090", "Address the Panel API HTTP server binds to.")
 	flag.StringVar(&sftpAgentImage, "sftp-agent-image", "hatchery/sftp-agent:dev",
 		"Container image used for the on-demand SFTP maintenance Pod created for a Stopped GameServer.")
@@ -101,12 +102,18 @@ func main() {
 			"Defaults to $PANEL_MODS_USER_AGENT, else hatchery/dev (+<public-url>). The CurseForge API key is read from $PANEL_CURSEFORGE_API_KEY.")
 	flag.StringVar(&smtpUsername, "smtp-username", os.Getenv("PANEL_SMTP_USERNAME"), "SMTP user (password in $PANEL_SMTP_PASSWORD). Defaults to $PANEL_SMTP_USERNAME.")
 	opts := zap.Options{Development: false}
+	flag.IntVar(&auditRetentionDays, "audit-retention-days", 365,
+		"Days audit events are kept for organizations without their own retention, deleted organizations and platform events; 0 keeps them forever.")
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("setup")
 
+	if auditRetentionDays < 0 {
+		log.Error(nil, "--audit-retention-days must not be negative")
+		os.Exit(1)
+	}
 	if postgresDSN == "" {
 		log.Error(nil, "--postgres-dsn (or $POSTGRES_DSN) is required")
 		os.Exit(1)
@@ -225,6 +232,9 @@ func main() {
 	metricsStore := panelcache.NewRedisMetricsStore(rdb)
 	srv.Metrics = metricsStore
 	go panelapi.NewMetricsSampler(c, clientset, metricsStore).Run(ctx)
+
+	srv.AuditRetentionDays = auditRetentionDays
+	go (&panelapi.AuditPruner{Client: c, DB: srv.DB, DefaultDays: auditRetentionDays}).Run(ctx)
 
 	log.Info("starting panel-api", "bindAddress", bindAddr)
 	if err := http.ListenAndServe(bindAddr, srv.Routes()); err != nil {
