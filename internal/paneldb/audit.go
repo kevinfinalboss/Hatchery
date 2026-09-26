@@ -3,6 +3,8 @@ package paneldb
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -21,7 +23,8 @@ type AuditEvent struct {
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
-// RecordAudit appends an event. The Store exposes no way to update or delete one.
+// RecordAudit appends an event. The Store exposes no way to update one; PruneOrgAudit and
+// PruneAuditExcept delete events by age.
 func (s *Store) RecordAudit(ctx context.Context, e AuditEvent) error {
 	org := sql.NullString{String: e.OrgSlug, Valid: e.OrgSlug != ""}
 	actor := sql.NullInt64{}
@@ -68,4 +71,33 @@ func (s *Store) ListAudit(ctx context.Context, orgSlug string, limit int, before
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// PruneOrgAudit deletes orgSlug's events created before before.
+func (s *Store) PruneOrgAudit(ctx context.Context, orgSlug string, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM audit_events WHERE org_slug = $1 AND created_at < $2`, orgSlug, before)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// PruneAuditExcept deletes events created before before that belong to no org (platform events) or
+// to an org not in keep — keep lists the orgs with a retention of their own.
+func (s *Store) PruneAuditExcept(ctx context.Context, before time.Time, keep []string) (int64, error) {
+	query := `DELETE FROM audit_events WHERE created_at < $1`
+	args := []any{before}
+	if len(keep) > 0 {
+		marks := make([]string, len(keep))
+		for i, slug := range keep {
+			args = append(args, slug)
+			marks[i] = fmt.Sprintf("$%d", i+2)
+		}
+		query += ` AND (org_slug IS NULL OR org_slug NOT IN (` + strings.Join(marks, ", ") + `))`
+	}
+	res, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
