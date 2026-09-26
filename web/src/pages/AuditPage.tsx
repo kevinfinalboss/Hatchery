@@ -65,6 +65,13 @@ export function AuditPage() {
           <div className="mt-0.5 font-sans text-sm text-text-secondary">
             {platform ? t("audit.platformSubtitle") : t("audit.orgSubtitle", { org: current?.name ?? "" })}
           </div>
+          {data?.pages[0] && (
+            <div className="mt-0.5 font-sans text-xs text-text-tertiary">
+              {data.pages[0].retentionDays > 0
+                ? t("audit.retention", { days: data.pages[0].retentionDays })
+                : t("audit.retentionForever")}
+            </div>
+          )}
         </div>
         {user?.isAdmin && (
           <select
