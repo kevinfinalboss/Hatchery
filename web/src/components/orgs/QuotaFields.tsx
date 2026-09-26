@@ -75,6 +75,20 @@ export function QuotaFields({ quota, onChange }: { quota: OrgQuota; onChange: (q
           </div>
         )}
       </div>
+      <Field label={t("orgs.auditRetention")} htmlFor="q-audit-days">
+        <Input
+          id="q-audit-days"
+          type="number"
+          min={7}
+          max={3650}
+          value={quota.auditRetentionDays ?? ""}
+          onChange={(e) =>
+            onChange({ ...quota, auditRetentionDays: e.target.value === "" ? undefined : Number(e.target.value) })
+          }
+          className="w-28"
+        />
+        <span className="font-prose text-xs text-text-tertiary">{t("orgs.auditRetentionHint")}</span>
+      </Field>
       <Field label={t("orgs.extraRegistries")} htmlFor="q-registries">
         <textarea
           id="q-registries"
