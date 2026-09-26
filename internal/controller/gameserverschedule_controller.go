@@ -227,9 +227,7 @@ func (r *GameServerScheduleReconciler) runTask(ctx context.Context, s *v1alpha1.
 		if r.Exec == nil {
 			return errors.New("running commands is not configured in the operator")
 		}
-		// The command is an argument, never part of the script: nothing in it is interpreted.
-		return r.Exec(ctx, gs.Namespace, gs.Status.PodName, "server",
-			[]string{"sh", "-c", `printf '%s\n' "$1" > /proc/1/fd/0`, "sh", task.Command})
+		return r.Exec(ctx, gs.Namespace, gs.Status.PodName, serverContainerName, stdinCommand(task.Command))
 	case v1alpha1.ScheduleActionRestart:
 		if !running {
 			return nil // nothing to restart; not a failure
