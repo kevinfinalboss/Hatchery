@@ -71,6 +71,7 @@ spec:
             - --backup-s3-secret={{ .Release.Namespace }}/{{ .Values.backup.platform.secretName }}
             {{- end }}
             - --bootstrap-admin-email={{ .Values.panel.bootstrapAdmin.email }}
+            - --audit-retention-days={{ .Values.panel.audit.retentionDays }}
             {{- with .Values.panel.mods.userAgent }}
             - --mods-user-agent={{ . }}
             {{- end }}
