@@ -17,6 +17,10 @@ spec:
   stopTimeoutSeconds: 60
   startupDetection:
     regex: "Server started"
+  backup:
+    before: ["save"]
+    savedRegex: "Backing up world file"
+    timeoutSeconds: 60
   install:
     image: ghcr.io/ptero-eggs/installers:debian
     entrypoint: ["bash", "-c"]

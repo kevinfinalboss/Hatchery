@@ -26,8 +26,6 @@ spec:
       image: ghcr.io/ptero-eggs/yolks:java_11
     - name: "Java 8"
       image: ghcr.io/ptero-eggs/yolks:java_8
-  # The yolks images run as root; running the game as 1000 (the sftp-agent's uid) keeps what it
-  # creates writable from the file manager. See EggSpec.RunAsUser.
   runAsUser: 1000
   startCommand: "java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}"
   stopCommand: "stop"
@@ -35,6 +33,11 @@ spec:
   stopTimeoutSeconds: 90
   startupDetection:
     regex: "\\)! For help, type "
+  backup:
+    before: ["save-off", "save-all flush"]
+    after: ["save-on"]
+    savedRegex: "Saved the game"
+    timeoutSeconds: 60
   install:
     image: eclipse-temurin:21-jdk-jammy
     entrypoint: ["bash", "-c"]
