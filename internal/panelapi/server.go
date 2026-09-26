@@ -43,6 +43,10 @@ type Server struct {
 
 	AllowedImageRegistries []string
 
+	// AuditRetentionDays is the platform's default audit retention (panel --audit-retention-days);
+	// 0 keeps events forever. Organizations may override it in their quota.
+	AuditRetentionDays int
+
 	UIDir string
 
 	// Tickets stores single-use console tickets; LoginLimiter throttles failed
