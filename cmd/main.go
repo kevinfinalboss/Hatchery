@@ -279,6 +279,9 @@ func main() {
 	if err := (&controller.GameServerBackupReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Exec:   controller.NewPodExec(mgr.GetConfig(), clientset),
+		Logs:   controller.ClientsetLogReader{Clientset: clientset},
+		Now:    time.Now,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "gameserverbackup")
 		os.Exit(1)
