@@ -217,6 +217,7 @@ export interface OrgQuota {
   maxGameServers: number;
   backups?: BackupLimits;
   extraImageRegistries?: string[];
+  auditRetentionDays?: number;
 }
 
 export interface ImagePolicy {
@@ -247,6 +248,8 @@ export interface BackupItem {
   completionTime?: string;
   deleting?: boolean;
   restore?: BackupRestore;
+  quiesce?: "timeout" | "sendFailed";
+  resumeError?: string;
 }
 
 export interface BackupList {
@@ -338,6 +341,7 @@ export interface AuditEvent {
 export interface AuditPage {
   events: AuditEvent[];
   nextBefore: number | null;
+  retentionDays: number; // 0 = forever
 }
 
 export interface ConsoleTicketResponse {
