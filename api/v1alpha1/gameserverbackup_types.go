@@ -104,6 +104,37 @@ const (
 	GameServerBackupPhaseDeleting  GameServerBackupPhase = "Deleting"
 )
 
+// Condition types and reasons of a GameServerBackup's world-save pause (Egg.spec.backup).
+const (
+	BackupConditionQuiesced = "Quiesced"
+	BackupConditionResumed  = "Resumed"
+
+	QuiesceReasonSaved      = "Saved"
+	QuiesceReasonDelay      = "Delay"
+	QuiesceReasonTimeout    = "Timeout"
+	QuiesceReasonSendFailed = "SendFailed"
+
+	ResumeReasonSent          = "Sent"
+	ResumeReasonPodReplaced   = "PodReplaced"
+	ResumeReasonNothingToSend = "NothingToSend"
+)
+
+// BackupQuiesceStatus records the world-save pause around this backup so a restarted operator
+// resumes it instead of sending the commands twice.
+type BackupQuiesceStatus struct {
+	// PodUID is the game Pod the Before commands were sent to; After goes only to that same Pod.
+	PodUID string `json:"podUID"`
+	// BeforeSentAt is when the Before commands were (about to be) sent.
+	// +optional
+	BeforeSentAt *metav1.Time `json:"beforeSentAt,omitempty"`
+	// ResumedAt is when the After step ended: sent, skipped, or given up.
+	// +optional
+	ResumedAt *metav1.Time `json:"resumedAt,omitempty"`
+	// ResumeAttempts counts failed attempts at sending After.
+	// +optional
+	ResumeAttempts int32 `json:"resumeAttempts,omitempty"`
+}
+
 // GameServerBackupStatus defines the observed state of GameServerBackup.
 type GameServerBackupStatus struct {
 	// Phase summarizes the current lifecycle state of the backup.
@@ -122,6 +153,10 @@ type GameServerBackupStatus struct {
 	// CompletionTime is when the backup Job finished, successfully or not.
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+
+	// Quiesce tracks the world-save pause of a backup of a running server.
+	// +optional
+	Quiesce *BackupQuiesceStatus `json:"quiesce,omitempty"`
 
 	// conditions represent the current state of the GameServerBackup resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
