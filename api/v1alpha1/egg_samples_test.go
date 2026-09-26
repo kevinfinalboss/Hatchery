@@ -81,3 +81,34 @@ func TestModpackEggSample(t *testing.T) {
 		t.Fatalf("start command: %v", errs)
 	}
 }
+
+func TestSampleEggsPauseSavingForBackups(t *testing.T) {
+	minecraft := []string{"paper", "purpur", "fabric", "quilt", "neoforge", "spigot"}
+	for _, file := range append(minecraft, "terraria") {
+		raw, err := os.ReadFile("../../config/samples/gameservers_v1alpha1_egg_" + file + ".yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var egg Egg
+		if err := yaml.UnmarshalStrict(raw, &egg); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if msgs := egg.Spec.Validate(); len(msgs) != 0 {
+			t.Errorf("%s: %v", file, msgs)
+		}
+		b := egg.Spec.Backup
+		if b == nil || len(b.Before) == 0 {
+			t.Errorf("%s: missing backup.before", file)
+			continue
+		}
+		if file == "terraria" {
+			if b.SavedRegex != "Backing up world file" || b.Before[0] != "save" {
+				t.Errorf("terraria: backup = %+v", b)
+			}
+			continue
+		}
+		if strings.Join(b.Before, "|") != "save-off|save-all flush" || strings.Join(b.After, "|") != "save-on" || b.SavedRegex != "Saved the game" {
+			t.Errorf("%s: backup = %+v", file, b)
+		}
+	}
+}

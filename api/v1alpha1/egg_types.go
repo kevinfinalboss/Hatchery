@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -122,6 +124,54 @@ type EggStartupDetection struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+}
+
+// EggBackup pauses the game's world saving around a backup of a running server, so the snapshot
+// isn't taken in the middle of a write. The operator writes Before to the game's console, waits for
+// SavedRegex (or DelaySeconds without one), runs the backup, then writes After.
+type EggBackup struct {
+	// Before are console commands sent before the copy, e.g. ["save-off", "save-all flush"].
+	// +kubebuilder:validation:MaxItems=5
+	// +optional
+	Before []string `json:"before,omitempty"`
+
+	// After are console commands sent once the copy is over, successful or not, e.g. ["save-on"].
+	// +kubebuilder:validation:MaxItems=5
+	// +optional
+	After []string `json:"after,omitempty"`
+
+	// SavedRegex (RE2) is matched against the console written after Before was sent; a match means
+	// the world is on disk. Without it the operator waits DelaySeconds.
+	// +optional
+	SavedRegex string `json:"savedRegex,omitempty"`
+
+	// TimeoutSeconds is how long to wait for SavedRegex before backing up anyway. Defaults to 60.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=600
+	// +optional
+	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
+
+	// DelaySeconds is the fixed wait used when SavedRegex is empty. Defaults to 10.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=300
+	// +optional
+	DelaySeconds *int32 `json:"delaySeconds,omitempty"`
+}
+
+// Timeout is TimeoutSeconds with its default applied.
+func (b *EggBackup) Timeout() time.Duration {
+	if b.TimeoutSeconds == nil {
+		return 60 * time.Second
+	}
+	return time.Duration(*b.TimeoutSeconds) * time.Second
+}
+
+// Delay is DelaySeconds with its default applied.
+func (b *EggBackup) Delay() time.Duration {
+	if b.DelaySeconds == nil {
+		return 10 * time.Second
+	}
+	return time.Duration(*b.DelaySeconds) * time.Second
 }
 
 // EggConfigure is a step that runs on every start, after install and before the game, to (re)write
@@ -231,6 +281,10 @@ type EggSpec struct {
 	// Mods turns on the mod/plugin installer for servers of this Egg.
 	// +optional
 	Mods *EggMods `json:"mods,omitempty"`
+
+	// Backup pauses world saving around backups of a running server; see EggBackup.
+	// +optional
+	Backup *EggBackup `json:"backup,omitempty"`
 
 	// RunAsUser runs the game (and the configure step) as this uid and gid instead of the
 	// image's user. Set it for images that would otherwise run as root (e.g. the yolks
