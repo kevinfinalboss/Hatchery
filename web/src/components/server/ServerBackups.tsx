@@ -172,6 +172,10 @@ function BackupRow({
           {restoring && ` · ${t("backups.restoreRunning")}`}
           {item.restore?.phase === "Completed" && ` · ${t("backups.restoreDone")} ${fmt(item.restore.createdAt)}`}
           {item.restore?.phase === "Failed" && ` · ${t("backups.restoreFailed")}`}
+          {item.quiesce && ` · ${t("backups.notQuiesced")}`}
+          {item.resumeError && (
+            <span className="text-status-failed" title={item.resumeError}>{` · ${t("backups.resumeFailed")}`}</span>
+          )}
         </div>
       </div>
       {canManage && (
