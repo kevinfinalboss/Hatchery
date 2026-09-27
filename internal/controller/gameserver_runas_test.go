@@ -42,8 +42,11 @@ func TestBuildPodRunAsUser(t *testing.T) {
 		t.Fatalf("init containers = %v", names)
 	}
 	install, fix, configure := pod.Spec.InitContainers[0], pod.Spec.InitContainers[1], pod.Spec.InitContainers[2]
-	if install.SecurityContext.RunAsUser != nil || fix.SecurityContext.RunAsUser != nil {
-		t.Error("install and fix-owner must run as the image's user (root) to chown")
+	if install.SecurityContext.RunAsUser != nil {
+		t.Error("install runs as the image's user")
+	}
+	if u, g := fix.SecurityContext.RunAsUser, fix.SecurityContext.RunAsGroup; u == nil || *u != 0 || g == nil || *g != 0 {
+		t.Errorf("fix-owner must run as root (0:0) to chown, got %v:%v", u, g)
 	}
 	for _, c := range []struct {
 		name string
