@@ -6,10 +6,12 @@ import { ApiError, api } from "../../lib/api";
 import type { FileEntry } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { FileEditor } from "./FileEditor";
+import { PathBreadcrumb } from "./PathBreadcrumb";
 
 const EDITABLE_TEXT_EXTENSIONS = new Set([
   "txt", "json", "yml", "yaml", "properties", "toml", "cfg", "conf",
   "js", "mjs", "cjs", "lua", "sh", "log", "md",
+  "ini", "xml", "csv", "env", "json5", "mcmeta", "html", "css",
 ]);
 const MAX_EDITABLE_SIZE = 2 * 1024 * 1024;
 
@@ -131,8 +133,6 @@ export function FileManager({ org, name, readOnly }: { org: string; name: string
     onError: reportError,
   });
 
-  const breadcrumbs = currentPath === "/" ? [] : currentPath.split("/").filter(Boolean);
-
   function toggleSelected(path: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -179,6 +179,10 @@ export function FileManager({ org, name, readOnly }: { org: string; name: string
         readOnly={readOnly}
         onSave={(content) => saveMutation.mutate({ path: editingPath, content })}
         onClose={() => setEditingPath(null)}
+        onNavigate={(dir) => {
+          setEditingPath(null);
+          navigateTo(dir);
+        }}
       />
     );
   }
@@ -201,22 +205,7 @@ export function FileManager({ org, name, readOnly }: { org: string; name: string
         Array.from(e.dataTransfer.files).forEach((file) => uploadMutation.mutate(file));
       }}
     >
-      <div className="flex flex-wrap items-center gap-1 font-mono text-sm text-text-secondary">
-        <button className="hover:text-text-primary" onClick={() => navigateTo("/")}>
-          /
-        </button>
-        {breadcrumbs.map((segment, i) => (
-          <span key={i} className="flex items-center gap-1">
-            <button
-              className="hover:text-text-primary"
-              onClick={() => navigateTo("/" + breadcrumbs.slice(0, i + 1).join("/"))}
-            >
-              {segment}
-            </button>
-            {i < breadcrumbs.length - 1 && <span>/</span>}
-          </span>
-        ))}
-      </div>
+      <PathBreadcrumb path={currentPath} onNavigate={navigateTo} />
 
       {error && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-status-failed px-3 py-2 font-sans text-sm text-status-failed">
