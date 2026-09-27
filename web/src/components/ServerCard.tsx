@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Card } from "./ui/Card";
 import { StatusBadge } from "./ui/StatusBadge";
+import { PlayersCount } from "./PlayersCount";
 import { useT } from "../lib/i18n";
 import type { GameServer } from "../lib/types";
 import { serverTitle } from "../lib/gameserver";
@@ -17,7 +18,10 @@ export function ServerCard({ org, server }: { org: string; server: GameServer })
           <div className="truncate font-display text-[15px] font-semibold text-text-primary">{serverTitle(server)}</div>
           <div className="truncate font-sans text-xs text-text-tertiary">{spec.eggRef.name}</div>
         </Link>
-        <StatusBadge phase={status?.phase ?? ""} />
+        <div className="flex shrink-0 items-center gap-2">
+          {server.players && <PlayersCount players={server.players} />}
+          <StatusBadge phase={status?.phase ?? ""} />
+        </div>
       </div>
       <div className="flex gap-4 font-sans text-xs text-text-secondary">
         <span>
