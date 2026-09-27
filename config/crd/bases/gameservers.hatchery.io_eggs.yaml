@@ -221,6 +221,27 @@ spec:
                   - name
                   type: object
                 type: array
+              query:
+                description: Query lets the Panel show how many players are online;
+                  see EggQuery.
+                properties:
+                  port:
+                    description: |-
+                      Port is the name of an entry in spec.ports (e.g. "game"): only declared ports are
+                      reachable through the server's Service and NetworkPolicy.
+                    minLength: 1
+                    type: string
+                  protocol:
+                    description: EggQueryProtocol is how the Panel asks a running
+                      server who is online.
+                    enum:
+                    - minecraft
+                    - a2s
+                    type: string
+                required:
+                - port
+                - protocol
+                type: object
               recommendedResources:
                 description: RecommendedResources pre-fills the create-server form;
                   the user may change them.

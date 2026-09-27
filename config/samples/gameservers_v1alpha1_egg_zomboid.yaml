@@ -12,7 +12,11 @@ spec:
       image: ghcr.io/ptero-eggs/steamcmd:debian
   runAsUser: 1000
   startCommand: >-
-    bash -c 'export PATH="./jre64/bin:$PATH";
+    bash -c 'limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null);
+    if [ -n "$limit" ] && [ "$limit" != max ]; then xmx=$((limit / 1048576 * 7 / 10));
+    sed -i -E "s/-Xmx[0-9]+[kKmMgG]?/-Xmx${xmx}m/" ProjectZomboid64.json;
+    echo "hatchery: JVM heap -Xmx${xmx}m (70% of the container memory limit)"; fi;
+    export PATH="./jre64/bin:$PATH";
     export LD_LIBRARY_PATH="./linux64:./natives:.:./jre64/lib/amd64:${LD_LIBRARY_PATH}";
     export LD_PRELOAD="${LD_PRELOAD}:libjsig.so";
     exec ./ProjectZomboid64 -port 16261 -udpport "$STEAM_PORT" -cachedir=/data/.cache
@@ -48,7 +52,9 @@ spec:
         ARGS=(+force_install_dir /data +login anonymous +app_update "${SRCDS_APPID}")
         [ -n "${BRANCH}" ] && ARGS+=(-beta "${BRANCH}")
         ARGS+=(validate +quit)
-        ./steamcmd.sh "${ARGS[@]}" || { echo "steamcmd failed"; exit 1; }
+        # A freshly downloaded steamcmd updates itself, restarts and then often fails the
+        # app_update of that same run with "Missing configuration"; the second run works.
+        ./steamcmd.sh "${ARGS[@]}" || ./steamcmd.sh "${ARGS[@]}" || { echo "steamcmd failed"; exit 1; }
 
         mkdir -p /data/.steam/sdk32 /data/.steam/sdk64
         cp -v linux32/steamclient.so /data/.steam/sdk32/steamclient.so
@@ -112,3 +118,6 @@ spec:
     - name: steam
       containerPort: 16262
       protocol: UDP
+  query:
+    protocol: a2s
+    port: game
