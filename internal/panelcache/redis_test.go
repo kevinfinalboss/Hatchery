@@ -173,3 +173,24 @@ func TestRedisModHashCache(t *testing.T) {
 	rdb, prefix := testRedis(t)
 	testModHashCache(t, newRedisModHashCache(rdb, prefix))
 }
+
+func TestRedisPlayersStore(t *testing.T) {
+	rdb, prefix := testRedis(t)
+	s := newRedisPlayersStore(rdb, prefix)
+	ctx := context.Background()
+	at := time.Now().Truncate(time.Second)
+	if err := s.Set(ctx, "ns", "mc", PlayersSnapshot{Online: 1, Max: 20, Players: []string{"Kevin"}, At: at}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetMany(ctx, "ns", []string{"ghost", "mc"})
+	if err != nil || len(got) != 1 || got["mc"].Online != 1 || !got["mc"].At.Equal(at) {
+		t.Fatalf("GetMany = %+v, %v", got, err)
+	}
+	ttl := rdb.TTL(ctx, prefix+"players:ns/mc").Val()
+	if ttl <= 0 || ttl > PlayersTTL {
+		t.Fatalf("ttl = %v", ttl)
+	}
+	if got, err := s.GetMany(ctx, "ns", nil); err != nil || len(got) != 0 {
+		t.Fatalf("empty names: %+v, %v", got, err)
+	}
+}
