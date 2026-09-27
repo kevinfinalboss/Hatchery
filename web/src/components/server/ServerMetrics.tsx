@@ -69,7 +69,6 @@ export function ServerMetrics({
   const { t, locale, formatDateTime } = useI18n();
   const [range, setRange] = useState<MetricsRange>("1h");
   const [samplePref, setSamplePref] = usePersistedChoice<"on" | "off">("hatchery_mock_metrics", ["on", "off"], "off");
-  // Dados de exemplo só existem em `npm run dev`; o build de produção nunca os liga.
   const mock = import.meta.env.DEV && samplePref === "on";
 
   const limits = server.spec.resources?.limits;
@@ -86,7 +85,7 @@ export function ServerMetrics({
   });
 
   const runtime = useServerRuntime(org, name, server.status?.phase);
-  const runtimeCards = runtime.data ? <RuntimeCards runtime={runtime.data} now={runtime.dataUpdatedAt} /> : null;
+  const runtimeCards = runtime.data ? <RuntimeCards runtime={runtime.data} now={runtime.dataUpdatedAt} server={server} /> : null;
 
   if (!running) {
     return (
