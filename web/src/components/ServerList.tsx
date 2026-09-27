@@ -5,6 +5,7 @@ import { serverTitle } from "../lib/gameserver";
 import type { GameServer } from "../lib/types";
 import { Card } from "./ui/Card";
 import { StatusBadge } from "./ui/StatusBadge";
+import { PlayersCount } from "./PlayersCount";
 
 const COLUMNS = "grid grid-cols-[1.4fr_1fr] gap-4 md:grid-cols-[1.4fr_1fr_1fr_1fr_4rem]";
 
@@ -24,7 +25,10 @@ function ServerRow({ org, server }: { org: string; server: GameServer }) {
       <Link to={path} onClick={(e) => e.stopPropagation()} className="truncate font-sans text-sm font-semibold text-text-primary">
         {serverTitle(server)}
       </Link>
-      <StatusBadge phase={status?.phase ?? ""} />
+      <div className="flex items-center gap-2">
+        <StatusBadge phase={status?.phase ?? ""} />
+        {server.players && <PlayersCount players={server.players} />}
+      </div>
       <span className="hidden truncate font-sans text-sm text-text-secondary md:block">{spec.eggRef.name}</span>
       <span className="hidden font-sans text-sm text-text-secondary md:block">{spec.storage.size}</span>
       <button
