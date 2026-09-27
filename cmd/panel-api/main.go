@@ -233,6 +233,10 @@ func main() {
 	srv.Metrics = metricsStore
 	go panelapi.NewMetricsSampler(c, clientset, metricsStore).Run(ctx)
 
+	playersStore := panelcache.NewRedisPlayersStore(rdb)
+	srv.Players = playersStore
+	go panelapi.NewPlayersSampler(c, playersStore).Run(ctx)
+
 	srv.AuditRetentionDays = auditRetentionDays
 	go (&panelapi.AuditPruner{Client: c, DB: srv.DB, DefaultDays: auditRetentionDays}).Run(ctx)
 
