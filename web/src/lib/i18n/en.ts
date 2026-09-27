@@ -175,6 +175,7 @@ export const en: Dictionary = {
     storage: "storage",
     state: "state",
     console: "▸ console",
+    players: "{online} of {max} players online",
   },
   serverList: {
     name: "name",
@@ -417,6 +418,10 @@ export const en: Dictionary = {
     diskUsed: "{used} of {total}",
     diskUsedOnly: "{used} used",
     diskUnavailable: "unavailable",
+    players: "Players",
+    playersNone: "nobody online",
+    playersNoAnswer: "the server didn't answer the query",
+    playersMore: "+{count}",
   },
   console: {
     stopped: "○ server stopped — history returns when it starts",

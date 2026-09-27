@@ -173,6 +173,7 @@ export const ptBR = {
     storage: "storage",
     state: "estado",
     console: "▸ console",
+    players: "{online} de {max} jogadores online",
   },
   serverList: {
     name: "nome",
@@ -415,6 +416,10 @@ export const ptBR = {
     diskUsed: "{used} de {total}",
     diskUsedOnly: "{used} usados",
     diskUnavailable: "indisponível",
+    players: "Jogadores",
+    playersNone: "ninguém online",
+    playersNoAnswer: "o servidor não respondeu à consulta",
+    playersMore: "+{count}",
   },
   console: {
     stopped: "○ servidor parado — o histórico volta quando ele iniciar",
