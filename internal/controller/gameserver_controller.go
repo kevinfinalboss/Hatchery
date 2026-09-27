@@ -673,8 +673,15 @@ func fixOwnerContainer(image string, uid, installRevision int64, mounts []corev1
 			{Name: installRevisionEnv, Value: strconv.FormatInt(installRevision, 10)},
 		},
 		VolumeMounts:    mounts,
-		SecurityContext: gameContainerSecurityContext(),
+		SecurityContext: rootSecurityContext(),
 	}
+}
+
+func rootSecurityContext() *corev1.SecurityContext {
+	sc := gameContainerSecurityContext()
+	sc.RunAsUser = ptr.To[int64](0)
+	sc.RunAsGroup = ptr.To[int64](0)
+	return sc
 }
 
 func gameContainerSecurityContext() *corev1.SecurityContext {
