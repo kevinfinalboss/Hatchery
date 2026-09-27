@@ -53,14 +53,34 @@ func (s *Server) handleListGameServers(w http.ResponseWriter, r *http.Request) {
 			visible = append(visible, gs)
 		}
 	}
-	list.Items = visible
-	writeJSON(w, http.StatusOK, list)
+	snaps := s.playersFor(r.Context(), r.PathValue("namespace"), visible)
+	items := make([]gameServerListItem, 0, len(visible))
+	for _, gs := range visible {
+		it := gameServerListItem{GameServer: gs}
+		if p, ok := snaps[gs.Name]; ok {
+			it.Players = &playersCountJSON{Online: p.Online, Max: p.Max}
+		}
+		items = append(items, it)
+	}
+	writeJSON(w, http.StatusOK, gameServerListResponse{Items: items})
+}
+
+// gameServerListItem is a GameServer plus its live player count, when there is one.
+type gameServerListItem struct {
+	gameserversv1alpha1.GameServer
+	Players *playersCountJSON `json:"players,omitempty"`
+}
+
+type gameServerListResponse struct {
+	Items []gameServerListItem `json:"items"`
 }
 
 // gameServerWithAccess is a GameServer plus what the caller may do on it (the UI hides the rest).
 type gameServerWithAccess struct {
 	gameserversv1alpha1.GameServer
-	Access serverAccess `json:"access"`
+	Access       serverAccess `json:"access"`
+	Players      *playersJSON `json:"players,omitempty"`
+	QueryEnabled bool         `json:"queryEnabled"`
 }
 
 type serverAccess struct {
@@ -77,7 +97,19 @@ func (s *Server) handleGetGameServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc := orgAccessFromContext(r.Context())
-	writeJSON(w, http.StatusOK, gameServerWithAccess{GameServer: gs, Access: serverAccess{Permissions: acc.Effective(gs.Name)}})
+	out := gameServerWithAccess{
+		GameServer:   gs,
+		Access:       serverAccess{Permissions: acc.Effective(gs.Name)},
+		QueryEnabled: s.eggQueryEnabled(r.Context(), &gs),
+	}
+	if p, ok := s.playersFor(r.Context(), gs.Namespace, []gameserversv1alpha1.GameServer{gs})[gs.Name]; ok {
+		names := p.Players
+		if names == nil {
+			names = []string{}
+		}
+		out.Players = &playersJSON{Online: p.Online, Max: p.Max, Names: names, At: p.At}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // createGameServerRequest is a thin envelope around GameServerSpec. There is
