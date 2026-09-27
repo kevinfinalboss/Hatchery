@@ -112,3 +112,35 @@ func TestSampleEggsPauseSavingForBackups(t *testing.T) {
 		}
 	}
 }
+
+func TestSampleEggsDeclarePlayerQuery(t *testing.T) {
+	want := map[string]*EggQuery{
+		"gameservers_v1alpha1_egg.yaml":          {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_paper.yaml":    {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_purpur.yaml":   {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_fabric.yaml":   {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_quilt.yaml":    {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_neoforge.yaml": {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_spigot.yaml":   {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_modpack.yaml":  {Protocol: EggQueryMinecraft, Port: "game"},
+		"gameservers_v1alpha1_egg_terraria.yaml": nil,
+		"gameservers_v1alpha1_egg_zomboid.yaml":  {Protocol: EggQueryA2S, Port: "game"},
+	}
+	for file, w := range want {
+		raw, err := os.ReadFile("../../config/samples/" + file)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		var egg Egg
+		if err := yaml.UnmarshalStrict(raw, &egg); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if msgs := egg.Spec.Validate(); len(msgs) != 0 {
+			t.Errorf("%s: %v", file, msgs)
+		}
+		got := egg.Spec.Query
+		if (got == nil) != (w == nil) || (got != nil && *got != *w) {
+			t.Errorf("%s: query = %+v, want %+v", file, got, w)
+		}
+	}
+}

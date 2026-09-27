@@ -221,6 +221,26 @@ type EggMods struct {
 	GameVersion EggModsGameVersion `json:"gameVersion,omitempty"`
 }
 
+// EggQueryProtocol is how the Panel asks a running server who is online.
+// +kubebuilder:validation:Enum=minecraft;a2s
+type EggQueryProtocol string
+
+const (
+	// EggQueryMinecraft is the Minecraft Server List Ping (1.7+), over TCP.
+	EggQueryMinecraft EggQueryProtocol = "minecraft"
+	// EggQueryA2S is Valve's A2S_INFO/A2S_PLAYER, over UDP.
+	EggQueryA2S EggQueryProtocol = "a2s"
+)
+
+// EggQuery lets the Panel ask the running game how many players are online.
+type EggQuery struct {
+	Protocol EggQueryProtocol `json:"protocol"`
+	// Port is the name of an entry in spec.ports (e.g. "game"): only declared ports are
+	// reachable through the server's Service and NetworkPolicy.
+	// +kubebuilder:validation:MinLength=1
+	Port string `json:"port"`
+}
+
 type EggSpec struct {
 	// Images are the container images the game server process can run with. The first is the
 	// default; a GameServer picks another by name through spec.imageName.
@@ -296,6 +316,10 @@ type EggSpec struct {
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	RunAsUser *int64 `json:"runAsUser,omitempty"`
+
+	// Query lets the Panel show how many players are online; see EggQuery.
+	// +optional
+	Query *EggQuery `json:"query,omitempty"`
 }
 
 // EggStatus defines the observed state of Egg.
