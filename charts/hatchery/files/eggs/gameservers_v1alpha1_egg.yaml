@@ -38,3 +38,6 @@ spec:
       containerPort: 25565
       protocol: TCP
       default: true
+  query:
+    protocol: minecraft
+    port: game
