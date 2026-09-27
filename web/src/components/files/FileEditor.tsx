@@ -6,6 +6,7 @@ import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
 import { useT } from "../../lib/i18n";
 import { Button } from "../ui/Button";
+import { PathBreadcrumb } from "./PathBreadcrumb";
 
 function languageFor(filename: string): Extension[] {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -29,6 +30,7 @@ export function FileEditor({
   content,
   onSave,
   onClose,
+  onNavigate,
   saving,
   readOnly,
 }: {
@@ -36,6 +38,7 @@ export function FileEditor({
   content: string;
   onSave: (content: string) => void;
   onClose: () => void;
+  onNavigate: (dir: string) => void;
   saving: boolean;
   readOnly: boolean;
 }) {
@@ -69,9 +72,9 @@ export function FileEditor({
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-sm text-text-secondary">{path}</span>
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <PathBreadcrumb path={path} file onNavigate={onNavigate} />
+        <div className="flex shrink-0 gap-2">
           <Button variant="secondary" onClick={onClose}>
             {t("common.close")}
           </Button>
