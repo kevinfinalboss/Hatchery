@@ -56,6 +56,8 @@ type Server struct {
 	LoginLimiter panelcache.LoginLimiter
 
 	Metrics panelcache.MetricsStore
+	// Players holds the online-player snapshots written by the PlayersSampler (nil: none shown).
+	Players panelcache.PlayersStore
 
 	Backup BackupConfig
 
