@@ -105,11 +105,20 @@ export interface GameServerAccess {
   permissions: Permission[];
 }
 
+export interface OnlinePlayers {
+  online: number;
+  max: number;
+  names?: string[];
+  at?: string;
+}
+
 export interface GameServer {
   metadata: ObjectMeta;
   spec: GameServerSpec;
   status?: GameServerStatus;
   access?: GameServerAccess;
+  players?: OnlinePlayers;
+  queryEnabled?: boolean;
 }
 
 export interface GameServerList {
