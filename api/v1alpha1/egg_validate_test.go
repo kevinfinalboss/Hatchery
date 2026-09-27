@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestEggSpecValidate(t *testing.T) {
@@ -84,5 +86,36 @@ func TestEggSpecValidateBackup(t *testing.T) {
 	zero := int32(0)
 	if d := (&EggBackup{DelaySeconds: &zero}).Delay(); d != 0 {
 		t.Errorf("explicit zero delay = %v", d)
+	}
+}
+
+func TestEggSpecValidateQuery(t *testing.T) {
+	ports := []EggPort{
+		{Name: "game", ContainerPort: 25565}, // empty protocol = TCP
+		{Name: "steam", ContainerPort: 16262, Protocol: corev1.ProtocolUDP},
+	}
+	cases := []struct {
+		name  string
+		query *EggQuery
+		ok    bool
+	}{
+		{"none", nil, true},
+		{"minecraft on tcp (empty protocol)", &EggQuery{Protocol: EggQueryMinecraft, Port: "game"}, true},
+		{"a2s on udp", &EggQuery{Protocol: EggQueryA2S, Port: "steam"}, true},
+		{"unknown port", &EggQuery{Protocol: EggQueryMinecraft, Port: "rcon"}, false},
+		{"minecraft on udp", &EggQuery{Protocol: EggQueryMinecraft, Port: "steam"}, false},
+		{"a2s on tcp", &EggQuery{Protocol: EggQueryA2S, Port: "game"}, false},
+		{"unknown protocol", &EggQuery{Protocol: "gamespy", Port: "game"}, false},
+	}
+	for _, c := range cases {
+		s := EggSpec{Ports: ports, Query: c.query}
+		msgs := s.Validate()
+		if (len(msgs) == 0) != c.ok {
+			t.Errorf("%s: Validate() = %v, want ok=%v", c.name, msgs, c.ok)
+		}
+		_, found := s.QueryPort()
+		if found != (c.ok && c.query != nil) {
+			t.Errorf("%s: QueryPort found = %v", c.name, found)
+		}
 	}
 }

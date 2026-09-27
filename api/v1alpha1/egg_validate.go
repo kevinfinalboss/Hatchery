@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 func (s *EggSpec) Validate() []string {
@@ -18,6 +20,7 @@ func (s *EggSpec) Validate() []string {
 	}
 	msgs = append(msgs, s.validateMods()...)
 	msgs = append(msgs, s.validateBackup()...)
+	msgs = append(msgs, s.validateQuery()...)
 	return msgs
 }
 
@@ -76,4 +79,51 @@ func (s *EggSpec) validateBackup() []string {
 		}
 	}
 	return msgs
+}
+
+// queryProtocolTransport is the port protocol each query protocol talks over.
+var queryProtocolTransport = map[EggQueryProtocol]corev1.Protocol{
+	EggQueryMinecraft: corev1.ProtocolTCP,
+	EggQueryA2S:       corev1.ProtocolUDP,
+}
+
+// queryPort finds the port spec.query names and the transport the protocol needs.
+func (s *EggSpec) queryPort() (port EggPort, found bool, want corev1.Protocol, known bool) {
+	want, known = queryProtocolTransport[s.Query.Protocol]
+	for _, p := range s.Ports {
+		if p.Name == s.Query.Port {
+			if p.Protocol == "" {
+				p.Protocol = corev1.ProtocolTCP
+			}
+			return p, true, want, known
+		}
+	}
+	return EggPort{}, false, want, known
+}
+
+// QueryPort returns the port spec.query points at, when the query is usable: the named port
+// exists and speaks the transport the protocol needs.
+func (s *EggSpec) QueryPort() (EggPort, bool) {
+	if s.Query == nil {
+		return EggPort{}, false
+	}
+	p, found, want, known := s.queryPort()
+	return p, found && known && p.Protocol == want
+}
+
+func (s *EggSpec) validateQuery() []string {
+	q := s.Query
+	if q == nil {
+		return nil
+	}
+	p, found, want, known := s.queryPort()
+	switch {
+	case !known:
+		return []string{fmt.Sprintf("query.protocol: must be %q or %q", EggQueryMinecraft, EggQueryA2S)}
+	case !found:
+		return []string{fmt.Sprintf("query.port: %q is not declared in ports", q.Port)}
+	case p.Protocol != want:
+		return []string{fmt.Sprintf("query.port: %q is %s, but %s needs %s", q.Port, p.Protocol, q.Protocol, want)}
+	}
+	return nil
 }
