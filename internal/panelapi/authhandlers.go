@@ -50,6 +50,7 @@ type userResponse struct {
 	Discord           string `json:"discord"`
 	MinecraftUsername string `json:"minecraftUsername"`
 	SteamID           string `json:"steamId"`
+	NotifyEmail       bool   `json:"notifyEmail"`
 }
 
 type loginResponse struct {
@@ -61,7 +62,7 @@ type loginResponse struct {
 func toUserResponse(u *paneldb.User) userResponse {
 	return userResponse{ID: u.ID, Username: u.Username, Email: u.Email, IsAdmin: u.IsAdmin,
 		DisplayName: u.DisplayName, Locale: u.Locale, TimeZone: u.TimeZone, Discord: u.Discord,
-		MinecraftUsername: u.MinecraftUsername, SteamID: u.SteamID}
+		MinecraftUsername: u.MinecraftUsername, SteamID: u.SteamID, NotifyEmail: u.NotifyEmail}
 }
 
 func (s *Server) limiterKey(ctx context.Context, login string) string {
