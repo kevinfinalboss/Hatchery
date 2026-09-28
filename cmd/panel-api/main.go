@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
+	"github.com/kevinfinalboss/Hatchery/internal/discord"
 	"github.com/kevinfinalboss/Hatchery/internal/mailer"
 	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelapi"
@@ -55,6 +56,7 @@ func main() {
 	var uiDir string
 	var publicURL, bootstrapAdminEmail string
 	var smtpHost, smtpFrom, smtpTLS, smtpUsername string
+	var discordAppID, discordPublicKey string
 	var smtpPort int
 	var modsUserAgent string
 	var auditRetentionDays int
@@ -100,6 +102,10 @@ func main() {
 	flag.StringVar(&modsUserAgent, "mods-user-agent", os.Getenv("PANEL_MODS_USER_AGENT"),
 		"User-Agent sent to Modrinth/CurseForge (Modrinth requires one that identifies the application). "+
 			"Defaults to $PANEL_MODS_USER_AGENT, else hatchery/dev (+<public-url>). The CurseForge API key is read from $PANEL_CURSEFORGE_API_KEY.")
+	flag.StringVar(&discordAppID, "discord-application-id", os.Getenv("PANEL_DISCORD_APPLICATION_ID"),
+		"Discord application ID for the bot; empty turns the bot off. Defaults to $PANEL_DISCORD_APPLICATION_ID.")
+	flag.StringVar(&discordPublicKey, "discord-public-key", os.Getenv("PANEL_DISCORD_PUBLIC_KEY"),
+		"Discord application public key (hex). Bot token and client secret come from $PANEL_DISCORD_BOT_TOKEN and $PANEL_DISCORD_CLIENT_SECRET.")
 	flag.StringVar(&smtpUsername, "smtp-username", os.Getenv("PANEL_SMTP_USERNAME"), "SMTP user (password in $PANEL_SMTP_PASSWORD). Defaults to $PANEL_SMTP_USERNAME.")
 	opts := zap.Options{Development: false}
 	flag.IntVar(&auditRetentionDays, "audit-retention-days", 365,
@@ -236,6 +242,32 @@ func main() {
 	playersStore := panelcache.NewRedisPlayersStore(rdb)
 	srv.Players = playersStore
 	go panelapi.NewPlayersSampler(c, playersStore).Run(ctx)
+
+	srv.PodNamespace = os.Getenv("POD_NAMESPACE")
+	srv.PingCache = func(ctx context.Context) error { return rdb.Ping(ctx).Err() }
+	if discordAppID != "" {
+		key, err := discord.ParsePublicKey(discordPublicKey)
+		token, secret := os.Getenv("PANEL_DISCORD_BOT_TOKEN"), os.Getenv("PANEL_DISCORD_CLIENT_SECRET")
+		switch {
+		case err != nil:
+			log.Error(err, "invalid --discord-public-key: the Discord bot stays off")
+		case token == "" || secret == "":
+			log.Info("--discord-application-id is set but the bot token or client secret is missing: the Discord bot stays off")
+		default:
+			srv.Bot = &panelapi.DiscordBot{
+				Client:    &discord.Client{AppID: discordAppID, BotToken: token, ClientSecret: secret},
+				PublicKey: key,
+			}
+			if publicURL == "" {
+				log.Info("the Discord bot needs --public-url: it stays off")
+			} else {
+				log.Info("Discord bot enabled", "applicationId", discordAppID)
+				go srv.RegisterDiscordCommands(ctx)
+				hostname, _ := os.Hostname()
+				go srv.RunDiscordPresence(ctx, hostname)
+			}
+		}
+	}
 
 	srv.Notified = panelcache.NewRedisNotifiedStore(rdb)
 	srv.Discord = panelapi.NewDiscordSender()
