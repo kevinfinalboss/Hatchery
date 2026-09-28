@@ -318,6 +318,38 @@ var _ = Describe("GatewayExposureReconciler", func() {
 		Expect(got.Status.PublicExposure.Ports).To(ConsistOf(HaveField("Name", "game")))
 	})
 
+	It("exposes a server's extra ports and frees them once removed", func() {
+		newEgg("gwe-extra-egg", game)
+		gs := newExposed("gwe-extra", "gwe-extra-egg", true)
+		gs.Spec.ExtraPorts = []gameserversv1alpha1.GameServerExtraPort{{Name: "voice", ContainerPort: 24454, Protocol: corev1.ProtocolUDP}}
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
+		key := types.NamespacedName{Name: "gwe-extra", Namespace: ns}
+		reconciler := &GatewayExposureReconciler{
+			Client: k8sClient, Scheme: k8sClient.Scheme(), PortRangeMin: 32200, PortRangeMax: 32210,
+			PublicHost: "game.example.com", GatewayName: "hatchery-public-extra", GatewayNamespace: ns, GatewayClassName: "cilium",
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		var route gatewayv1.UDPRoute
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "gwe-extra-voice", Namespace: ns}, &route)).To(Succeed())
+		Expect(*route.Spec.Rules[0].BackendRefs[0].Port).To(BeEquivalentTo(24454))
+		var got gameserversv1alpha1.GameServer
+		Expect(k8sClient.Get(ctx, key, &got)).To(Succeed())
+		Expect(got.Status.PublicExposure.Ports).To(ConsistOf(HaveField("Name", "game"), HaveField("Name", "voice")))
+		var gw gatewayv1.Gateway
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "hatchery-public-extra", Namespace: ns}, &gw)).To(Succeed())
+		Expect(gw.Spec.Listeners).To(ContainElement(HaveField("Name", gatewayv1.SectionName("gwe-extra-voice"))))
+
+		got.Spec.ExtraPorts = nil
+		Expect(k8sClient.Update(ctx, &got)).To(Succeed())
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: "gwe-extra-voice", Namespace: ns}, &gatewayv1.UDPRoute{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(), "the extra port's UDPRoute should be gone, got %v", err)
+		Expect(k8sClient.Get(ctx, key, &got)).To(Succeed())
+		Expect(got.Status.PublicExposure.Ports).To(ConsistOf(HaveField("Name", "game")))
+	})
+
 	It("moves a PoolExhausted server to Disabled when exposure is turned off", func() {
 		newEgg("gwe-exh-egg", game)
 		newExposed("gwe-exh-1", "gwe-exh-egg", true)

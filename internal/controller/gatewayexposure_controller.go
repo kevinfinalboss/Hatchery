@@ -140,8 +140,9 @@ func (r *GatewayExposureReconciler) reconcileOne(ctx context.Context, gs *gamese
 	}
 
 	changed := false
-	eggPortNames := make(map[string]bool, len(egg.Spec.Ports))
-	for _, ep := range egg.Spec.Ports {
+	ports := gameserversv1alpha1.EffectivePorts(egg, gs)
+	eggPortNames := make(map[string]bool, len(ports))
+	for _, ep := range ports {
 		eggPortNames[ep.Name] = true
 	}
 	// Drop ports the Egg no longer declares (it changed since the last allocation) so the pool
@@ -161,7 +162,7 @@ func (r *GatewayExposureReconciler) reconcileOne(ctx context.Context, gs *gamese
 		assigned[p.Name] = true
 	}
 	var missing []gameserversv1alpha1.EggPort
-	for _, ep := range egg.Spec.Ports {
+	for _, ep := range ports {
 		if !assigned[ep.Name] {
 			missing = append(missing, ep)
 		}
@@ -195,8 +196,8 @@ func (r *GatewayExposureReconciler) reconcileOne(ctx context.Context, gs *gamese
 	if err := r.applyRoutes(ctx, gs, egg); err != nil {
 		return changed, err
 	}
-	keep := make(map[string]bool, len(egg.Spec.Ports))
-	for _, p := range egg.Spec.Ports {
+	keep := make(map[string]bool, len(ports))
+	for _, p := range ports {
 		keep[routeName(gs, p)] = true
 	}
 	if err := r.pruneRoutes(ctx, gs, keep); err != nil {
@@ -220,7 +221,7 @@ func routeName(gs *gameserversv1alpha1.GameServer, port gameserversv1alpha1.EggP
 // Service:containerPort — never the allocated public port, which only appears on the shared
 // Gateway's Listener (see rebuildGateway) that this Route's parentRef/sectionName attaches to.
 func (r *GatewayExposureReconciler) applyRoutes(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
-	for _, p := range egg.Spec.Ports {
+	for _, p := range gameserversv1alpha1.EffectivePorts(egg, gs) {
 		name := routeName(gs, p)
 		parentRefs := []gatewayv1.ParentReference{{
 			Name:        gatewayv1.ObjectName(r.GatewayName),
@@ -320,7 +321,7 @@ func (r *GatewayExposureReconciler) rebuildGateway(ctx context.Context) error {
 		for _, p := range gs.Status.PublicExposure.Ports {
 			allocated[p.Name] = p.Port
 		}
-		for _, ep := range egg.Spec.Ports {
+		for _, ep := range gameserversv1alpha1.EffectivePorts(&egg, gs) {
 			port, ok := allocated[ep.Name]
 			if !ok {
 				continue
