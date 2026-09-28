@@ -102,6 +102,22 @@ type GameServerPublicExposure struct {
 	Enabled bool `json:"enabled,omitempty"`
 }
 
+// GameServerExtraPort is a port the server listens on beyond the Egg's (a plugin's web map, voice
+// chat, Bedrock bridge...). The plugin must be configured to listen on it. Pods have their own
+// network, so the same number can be used by every server; only public ports must be unique.
+type GameServerExtraPort struct {
+	// Name identifies the port; it becomes a Service port name, so it follows IANA_SVC_NAME.
+	// +kubebuilder:validation:Pattern=`^[a-z]([a-z0-9-]{0,13}[a-z0-9])?$`
+	Name string `json:"name"`
+
+	// +kubebuilder:validation:Minimum=1024
+	// +kubebuilder:validation:Maximum=65535
+	ContainerPort int32 `json:"containerPort"`
+
+	// +kubebuilder:validation:Enum=TCP;UDP
+	Protocol corev1.Protocol `json:"protocol"`
+}
+
 // GameServerPublicExposurePort is one Egg-declared port's public allocation.
 type GameServerPublicExposurePort struct {
 	// Name matches one of the referenced Egg's spec.ports[].name.
@@ -204,6 +220,14 @@ type GameServerSpec struct {
 	// BackupTarget is where this server's backups go. Required before its first backup.
 	// +optional
 	BackupTarget *BackupTarget `json:"backupTarget,omitempty"`
+
+	// ExtraPorts are ports beyond the Egg's, opened in the Service, the NetworkPolicy and, when the
+	// server is publicly exposed, on the public Gateway. See GameServerExtraPort.
+	// +kubebuilder:validation:MaxItems=5
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	ExtraPorts []GameServerExtraPort `json:"extraPorts,omitempty"`
 
 	// PublicExposure requests this server be reachable from outside the cluster. Off by default.
 	// +optional
