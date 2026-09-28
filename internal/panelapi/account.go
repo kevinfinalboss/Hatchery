@@ -41,6 +41,8 @@ type profilePatch struct {
 	Discord           *string `json:"discord"`
 	MinecraftUsername *string `json:"minecraftUsername"`
 	SteamID           *string `json:"steamId"`
+	// NotifyEmail is not part of the profile: it is stored on its own (paneldb.SetNotifyEmail).
+	NotifyEmail *bool `json:"notifyEmail"`
 }
 
 func (p profilePatch) apply(cur paneldb.Profile) paneldb.Profile {
@@ -73,6 +75,13 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.UpdateProfile(r.Context(), user.ID, p); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if req.NotifyEmail != nil {
+		if err := s.DB.SetNotifyEmail(r.Context(), user.ID, *req.NotifyEmail); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		user.NotifyEmail = *req.NotifyEmail
 	}
 	s.auditEvent(r, "", "user.profile.update", "user", user.Username, "success", nil)
 	user.Profile = p
