@@ -190,7 +190,12 @@ func (r *GatewayExposureReconciler) reconcileOne(ctx context.Context, gs *gamese
 		sort.Slice(gs.Status.PublicExposure.Ports, func(i, j int) bool {
 			return gs.Status.PublicExposure.Ports[i].Name < gs.Status.PublicExposure.Ports[j].Name
 		})
+	}
+	// The host follows the operator's --public-host even for ports allocated earlier, so changing
+	// the flag updates the address every exposed server shows.
+	if gs.Status.PublicExposure.Host != r.PublicHost {
 		gs.Status.PublicExposure.Host = r.PublicHost
+		changed = true
 	}
 
 	if err := r.applyRoutes(ctx, gs, egg); err != nil {

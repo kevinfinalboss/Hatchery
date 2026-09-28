@@ -350,6 +350,25 @@ var _ = Describe("GatewayExposureReconciler", func() {
 		Expect(got.Status.PublicExposure.Ports).To(ConsistOf(HaveField("Name", "game")))
 	})
 
+	It("updates the public host of an already exposed server when the flag changes", func() {
+		newEgg("gwe-host-egg", game)
+		newExposed("gwe-host", "gwe-host-egg", true)
+		key := types.NamespacedName{Name: "gwe-host", Namespace: ns}
+		reconciler := &GatewayExposureReconciler{
+			Client: k8sClient, Scheme: k8sClient.Scheme(), PortRangeMin: 32300, PortRangeMax: 32310,
+			PublicHost: "old.example.com", GatewayName: "hatchery-public-host", GatewayNamespace: ns, GatewayClassName: "cilium",
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		reconciler.PublicHost = "177.153.67.102"
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		var got gameserversv1alpha1.GameServer
+		Expect(k8sClient.Get(ctx, key, &got)).To(Succeed())
+		Expect(got.Status.PublicExposure.Host).To(Equal("177.153.67.102"))
+		Expect(got.Status.PublicExposure.Ports).To(HaveLen(1))
+	})
+
 	It("moves a PoolExhausted server to Disabled when exposure is turned off", func() {
 		newEgg("gwe-exh-egg", game)
 		newExposed("gwe-exh-1", "gwe-exh-egg", true)
