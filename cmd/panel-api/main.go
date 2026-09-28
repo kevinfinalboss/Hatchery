@@ -237,6 +237,10 @@ func main() {
 	srv.Players = playersStore
 	go panelapi.NewPlayersSampler(c, playersStore).Run(ctx)
 
+	srv.Notified = panelcache.NewRedisNotifiedStore(rdb)
+	srv.Discord = panelapi.NewDiscordSender()
+	go srv.RunNotifier(ctx)
+
 	srv.AuditRetentionDays = auditRetentionDays
 	go (&panelapi.AuditPruner{Client: c, DB: srv.DB, DefaultDays: auditRetentionDays}).Run(ctx)
 
