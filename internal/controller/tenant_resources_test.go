@@ -1,6 +1,7 @@
 package controller
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"slices"
 	"testing"
 
@@ -127,7 +128,7 @@ func TestGameIngressPolicySpecOpensOnlyTheEggPorts(t *testing.T) {
 		{Name: "game", ContainerPort: 25565},
 		{Name: "query", ContainerPort: 19132, Protocol: corev1.ProtocolUDP},
 	}}}
-	spec := gameIngressPolicySpec("mc", egg)
+	spec := gameIngressPolicySpec("mc", egg.Spec.Ports)
 
 	if spec.PodSelector.MatchLabels[gameserversv1alpha1.LabelGameServer] != "mc" {
 		t.Errorf("policy must select only this GameServer's pods, got %v", spec.PodSelector.MatchLabels)
@@ -145,8 +146,40 @@ func TestGameIngressPolicySpecOpensOnlyTheEggPorts(t *testing.T) {
 func TestGameIngressPolicySpecWithNoPortsAllowsNothing(t *testing.T) {
 	// An ingress rule with an empty ports list means "all ports" in
 	// Kubernetes, so an Egg with no ports must produce no rule at all.
-	spec := gameIngressPolicySpec("mc", &gameserversv1alpha1.Egg{})
+	spec := gameIngressPolicySpec("mc", nil)
 	if len(spec.Ingress) != 0 {
 		t.Fatalf("an Egg with no ports must not open anything, got %+v", spec.Ingress)
+	}
+}
+
+func TestExtraPortsReachServicePolicyAndPod(t *testing.T) {
+	egg := &gameserversv1alpha1.Egg{Spec: gameserversv1alpha1.EggSpec{
+		Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/g:1"}},
+		StartCommand: "run",
+		Ports:        []gameserversv1alpha1.EggPort{{Name: "game", ContainerPort: 25565}},
+	}}
+	gs := &gameserversv1alpha1.GameServer{
+		ObjectMeta: metav1.ObjectMeta{Name: "mc", Namespace: "default"},
+		Spec: gameserversv1alpha1.GameServerSpec{
+			Storage:    gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
+			ExtraPorts: []gameserversv1alpha1.GameServerExtraPort{{Name: "voice", ContainerPort: 24454, Protocol: corev1.ProtocolUDP}},
+		},
+	}
+	ports := gameserversv1alpha1.EffectivePorts(egg, gs)
+
+	svc := servicePorts(ports)
+	if len(svc) != 2 || svc[1].Name != "voice" || svc[1].Port != 24454 || svc[1].Protocol != corev1.ProtocolUDP {
+		t.Errorf("service ports = %+v", svc)
+	}
+	np := gameIngressPolicySpec("mc", ports)
+	if got := np.Ingress[0].Ports; len(got) != 2 || got[1].Port.IntValue() != 24454 || *got[1].Protocol != corev1.ProtocolUDP {
+		t.Errorf("policy ports = %+v", got)
+	}
+	pod, err := buildPod(gs, egg, "example.com/sftp:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cp := pod.Spec.Containers[0].Ports; len(cp) != 2 || cp[1].ContainerPort != 24454 {
+		t.Errorf("container ports = %+v", cp)
 	}
 }
