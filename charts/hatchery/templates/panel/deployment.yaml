@@ -78,6 +78,10 @@ spec:
             {{- with .Values.panel.publicURL }}
             - --public-url={{ . }}
             {{- end }}
+            {{- with .Values.panel.discord.applicationId }}
+            - --discord-application-id={{ . }}
+            - --discord-public-key={{ $.Values.panel.discord.publicKey }}
+            {{- end }}
             {{- if .Values.panel.smtp.host }}
             - --smtp-host={{ .Values.panel.smtp.host }}
             - --smtp-port={{ .Values.panel.smtp.port }}
@@ -109,6 +113,14 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ . }}, key: username}}
             - name: PANEL_SMTP_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ . }}, key: password}}
+            {{- end }}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            {{- if .Values.panel.discord.applicationId }}
+            - name: PANEL_DISCORD_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ .Values.panel.discord.existingSecret }}, key: bot-token}}
+            - name: PANEL_DISCORD_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ .Values.panel.discord.existingSecret }}, key: client-secret}}
             {{- end }}
             {{- with .Values.panel.mods.curseforge.existingSecret }}
             - name: PANEL_CURSEFORGE_API_KEY
