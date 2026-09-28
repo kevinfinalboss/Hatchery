@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
@@ -216,6 +217,43 @@ var _ = Describe("GameServer Webhook: variables and displayName", func() {
 		By("changing it to something invalid on an existing server is rejected")
 		ok.Spec.StartCommand = "run {{GONE}}"
 		Expect(k8sClient.Update(ctx, ok)).NotTo(Succeed())
+	})
+
+	It("validates extra ports against the Egg, and only when they change", func() {
+		egg := &gameserversv1alpha1.Egg{
+			ObjectMeta: metav1.ObjectMeta{Name: "webhook-extraports-egg", Namespace: namespace},
+			Spec: gameserversv1alpha1.EggSpec{
+				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
+				StartCommand: "start",
+				Ports:        []gameserversv1alpha1.EggPort{{Name: "game", ContainerPort: 25565}},
+			},
+		}
+		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, egg)).To(Succeed()) })
+
+		clash := newWebhookGameServer("webhook-extra-clash", namespace, egg.Name, "")
+		clash.Spec.ExtraPorts = []gameserversv1alpha1.GameServerExtraPort{{Name: "web", ContainerPort: 25565, Protocol: corev1.ProtocolTCP}}
+		err := k8sClient.Create(ctx, clash)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("spec.extraPorts"))
+
+		gs := newWebhookGameServer("webhook-extra-ok", namespace, egg.Name, "")
+		gs.Spec.ExtraPorts = []gameserversv1alpha1.GameServerExtraPort{{Name: "dynmap", ContainerPort: 8123, Protocol: corev1.ProtocolTCP}}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, gs)).To(Succeed()) })
+
+		gs.Spec.ExtraPorts = append(gs.Spec.ExtraPorts, gameserversv1alpha1.GameServerExtraPort{Name: "sftp", ContainerPort: 2022, Protocol: corev1.ProtocolTCP})
+		err = k8sClient.Update(ctx, gs)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("SFTP"))
+
+		// The Egg now claims 8123 too: an update that leaves extraPorts alone must still go through.
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gs.Name, Namespace: namespace}, gs)).To(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: egg.Name, Namespace: namespace}, egg)).To(Succeed())
+		egg.Spec.Ports = append(egg.Spec.Ports, gameserversv1alpha1.EggPort{Name: "map", ContainerPort: 8123})
+		Expect(k8sClient.Update(ctx, egg)).To(Succeed())
+		gs.Annotations = map[string]string{"touched": "yes"}
+		Expect(k8sClient.Update(ctx, gs)).To(Succeed())
 	})
 
 	It("rejects an undeclared variable", func() {

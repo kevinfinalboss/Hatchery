@@ -78,6 +78,9 @@ func (v *GameServerValidator) ValidateCreate(ctx context.Context, obj *gameserve
 	if obj.Spec.Suspended && obj.Spec.State == gameserversv1alpha1.GameServerStateRunning {
 		return nil, fmt.Errorf("spec.state: a suspended GameServer cannot be Running")
 	}
+	if err := validateExtraPorts(egg, obj); err != nil {
+		return nil, err
+	}
 	return nil, validateVariables(egg, obj)
 }
 
@@ -109,7 +112,8 @@ func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 	varsChanged := !equality.Semantic.DeepEqual(oldObj.Spec.Variables, newObj.Spec.Variables)
 	imageChanged := oldObj.Spec.ImageName != newObj.Spec.ImageName
 	cmdChanged := oldObj.Spec.StartCommand != newObj.Spec.StartCommand
-	if varsChanged || imageChanged || cmdChanged {
+	portsChanged := !equality.Semantic.DeepEqual(oldObj.Spec.ExtraPorts, newObj.Spec.ExtraPorts)
+	if varsChanged || imageChanged || cmdChanged || portsChanged {
 		egg, err := v.lookupEgg(ctx, newObj)
 		if err != nil {
 			return nil, err
@@ -123,6 +127,11 @@ func (v *GameServerValidator) ValidateUpdate(ctx context.Context, oldObj, newObj
 			// A variable can be removed from the Egg-declared set the command refers to, so the
 			// command is re-checked whenever either changes.
 			if err := validateStartCommand(egg, newObj); err != nil {
+				return nil, err
+			}
+		}
+		if portsChanged {
+			if err := validateExtraPorts(egg, newObj); err != nil {
 				return nil, err
 			}
 		}
@@ -160,6 +169,13 @@ func validateStartCommand(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.
 func validateImage(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) error {
 	if _, ok := egg.ResolveImage(gs.Spec.ImageName); !ok {
 		return fmt.Errorf("spec.imageName: egg %q does not declare image %q", egg.Name, gs.Spec.ImageName)
+	}
+	return nil
+}
+
+func validateExtraPorts(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) error {
+	if msgs := gameserversv1alpha1.ValidateExtraPorts(egg, gs.Spec.ExtraPorts); len(msgs) > 0 {
+		return fmt.Errorf("spec.extraPorts: %s", strings.Join(msgs, "; "))
 	}
 	return nil
 }
