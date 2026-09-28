@@ -73,6 +73,15 @@ panel:
   audit:
     retentionDays: 365
   # Mod/plugin installer (Modrinth needs no key; CurseForge needs one from console.curseforge.com).
+  # Discord bot (slash commands over HTTP + presence). Needs publicURL. Create the application in
+  # the Discord Developer Portal; set its Interactions Endpoint URL to <publicURL>/api/v1/discord/interactions
+  # and add the redirect <publicURL>/api/v1/discord/oauth/callback.
+  discord:
+    # Empty = bot off.
+    applicationId: ""
+    publicKey: ""
+    # Secret in the release namespace with keys "bot-token" and "client-secret".
+    existingSecret: hatchery-discord
   mods:
     # User-Agent sent to the catalogs; empty = hatchery/dev (+<publicURL>). Modrinth requires one
     # that identifies the application.
