@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DiscordGuildCard } from "../components/DiscordConnect";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -113,6 +114,7 @@ export function OrgsPage() {
   const { t, plural } = useI18n();
   const [creating, setCreating] = useState(false);
   const { data: orgs, isLoading, error } = useQuery({ queryKey: ["orgs"], queryFn: api.listOrgs });
+  const { data: features } = useQuery({ queryKey: ["auth-features"], queryFn: api.features });
 
   return (
     <div className="flex flex-col gap-6">
@@ -127,6 +129,23 @@ export function OrgsPage() {
       </div>
 
       {creating && <CreateOrgForm onClose={() => setCreating(false)} />}
+
+      {features?.discord && (
+        <div className="flex flex-col gap-2">
+          <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("discord.platformTitle")}</div>
+          <DiscordGuildCard
+            queryKey={["platform-discord"]}
+            load={api.getPlatformDiscord}
+            authorize={api.platformDiscordURL}
+            disconnect={api.disconnectPlatformDiscord}
+            help={t("discord.platformHelp")}
+            commands={[
+              { name: "/orgs · /saude", permission: t("discord.permPlatformAdmin") },
+              { name: "/suspender · /reativar", permission: t("discord.permPlatformAdmin") },
+            ]}
+          />
+        </div>
+      )}
 
       {isLoading && <div className="font-sans text-sm text-text-secondary">{t("common.loading")}</div>}
       {error && <div className="font-sans text-sm text-status-failed">{errorMessage(error, t("orgs.loadFailed"))}</div>}
