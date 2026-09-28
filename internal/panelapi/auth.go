@@ -47,6 +47,10 @@ func headerToken(r *http.Request) string {
 
 func (s *Server) authenticate(next http.Handler, extractToken func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u := internalUser(r.Context()); u != nil {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, u)))
+			return
+		}
 		token := extractToken(r)
 		if token == "" {
 			w.Header().Set("WWW-Authenticate", "Bearer")
