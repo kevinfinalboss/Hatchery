@@ -57,3 +57,32 @@ func TestRenderEscapesHTML(t *testing.T) {
 		t.Fatal("org name was not escaped in HTML")
 	}
 }
+
+func TestRenderAlerts(t *testing.T) {
+	kinds := []Kind{KindAlertGaveUp, KindAlertBackupFailed, KindAlertResumeFailed, KindAlertScheduleFailed, KindAlertSuspended, KindAlertTest}
+	with := Data{OrgName: "Acme", ServerName: "Survival <1>", Detail: "OOMKilled · exit 137", Link: "https://panel.example.com/orgs/acme/servers/survival"}
+	for _, kind := range kinds {
+		for _, loc := range []string{"pt-BR", "en"} {
+			m, err := Render(kind, loc, with)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", kind, loc, err)
+			}
+			if m.Subject == "" || !strings.Contains(m.Text, "Acme") || !strings.Contains(m.HTML, "Acme") {
+				t.Errorf("%s/%s: org missing: %+v", kind, loc, m)
+			}
+			if kind != KindAlertTest {
+				if !strings.Contains(m.Subject+m.Text, "Survival <1>") || !strings.Contains(m.Text, "OOMKilled · exit 137") {
+					t.Errorf("%s/%s: server or detail missing: %q / %q", kind, loc, m.Subject, m.Text)
+				}
+				if !strings.Contains(m.HTML, "Survival &lt;1&gt;") || !strings.Contains(m.HTML, `href="https://panel.example.com/orgs/acme/servers/survival"`) {
+					t.Errorf("%s/%s: html not escaped or link missing: %s", kind, loc, m.HTML)
+				}
+			}
+			noLink := with
+			noLink.Link = ""
+			if m, _ := Render(kind, loc, noLink); strings.Contains(m.HTML, "<a ") {
+				t.Errorf("%s/%s: a button without a link", kind, loc)
+			}
+		}
+	}
+}

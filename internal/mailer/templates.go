@@ -31,6 +31,14 @@ const (
 	KindPasswordReset     Kind = "password_reset"
 	KindEmailChange       Kind = "email_change"
 	KindEmailChangeNotice Kind = "email_change_notice"
+
+	// Alerts sent to an organization's owners and admins (see internal/panelapi/notifier.go).
+	KindAlertGaveUp         Kind = "alert_gave_up"
+	KindAlertBackupFailed   Kind = "alert_backup_failed"
+	KindAlertResumeFailed   Kind = "alert_resume_failed"
+	KindAlertScheduleFailed Kind = "alert_schedule_failed"
+	KindAlertSuspended      Kind = "alert_suspended"
+	KindAlertTest           Kind = "alert_test"
 )
 
 // Data fills the templates; each kind uses a subset.
@@ -41,6 +49,9 @@ type Data struct {
 	InvitedBy string
 	Username  string
 	NewEmail  string
+	// ServerName and Detail describe an alert: the server's display name and what went wrong.
+	ServerName string
+	Detail     string
 }
 
 type tpl struct{ subject, text, html string }
@@ -99,6 +110,63 @@ var templates = map[string]map[Kind]tpl{
 			html:    `<p>Hi {{.Username}},</p><p>Someone asked to change your account's e-mail to <b>{{.NewEmail}}</b>. It only takes effect once confirmed from the new address.</p><p>If it wasn't you, change your password now.</p>`,
 		},
 	},
+}
+
+// alertTitles are the headlines of each alert, per locale.
+var alertTitles = map[string]map[Kind]string{
+	"pt-BR": {
+		KindAlertGaveUp:         "Servidor parado após falhas",
+		KindAlertBackupFailed:   "Backup falhou",
+		KindAlertResumeFailed:   "Salvamento do mundo não foi religado",
+		KindAlertScheduleFailed: "Agendamento falhou",
+		KindAlertSuspended:      "Servidor suspenso",
+	},
+	"en": {
+		KindAlertGaveUp:         "Server stopped after crashing",
+		KindAlertBackupFailed:   "Backup failed",
+		KindAlertResumeFailed:   "World saving was not turned back on",
+		KindAlertScheduleFailed: "Schedule failed",
+		KindAlertSuspended:      "Server suspended",
+	},
+}
+
+// alertTemplates builds the alert e-mails of one locale from alertTitles: they all share one layout.
+func alertTemplates(title map[Kind]string, org, open, testSubject, testBody string) map[Kind]tpl {
+	out := map[Kind]tpl{}
+	for kind, t := range title {
+		out[kind] = tpl{
+			subject: "[Hatchery] " + t + ": {{.ServerName}}",
+			text:    t + "\n\n{{.ServerName}} (" + org + " {{.OrgName}})\n{{.Detail}}\n{{if .Link}}\n" + open + ": {{.Link}}\n{{end}}",
+			html: `<p style="font-size:16px;font-weight:bold">` + t + `</p><p><b>{{.ServerName}}</b> (` + org + ` {{.OrgName}})</p>` +
+				`<p style="color:#3f3f46">{{.Detail}}</p>{{if .Link}}` + button + open + `</a></p>{{end}}`,
+		}
+	}
+	out[KindAlertTest] = tpl{
+		subject: "[Hatchery] " + testSubject + " — {{.OrgName}}",
+		text:    testBody + "\n\n" + org + " {{.OrgName}}\n",
+		html:    `<p>` + testBody + `</p><p>` + org + ` <b>{{.OrgName}}</b></p>`,
+	}
+	return out
+}
+
+func init() {
+	for kind, t := range alertTemplates(alertTitles["pt-BR"], "organização", "Abrir no painel",
+		"Teste de notificações", "Este é um teste das notificações do Hatchery: se você recebeu, o e-mail está funcionando.") {
+		templates["pt-BR"][kind] = t
+	}
+	for kind, t := range alertTemplates(alertTitles["en"], "organization", "Open in the panel",
+		"Notification test", "This is a test of Hatchery's notifications: if you got it, e-mail works.") {
+		templates["en"][kind] = t
+	}
+}
+
+// AlertTitle is the localized headline of an alert kind (pt-BR when the locale is unknown).
+func AlertTitle(kind Kind, locale string) string {
+	set, ok := alertTitles[locale]
+	if !ok {
+		set = alertTitles[defaultLocale]
+	}
+	return set[kind]
 }
 
 // Render builds the subject and bodies of kind in locale (pt-BR when the
