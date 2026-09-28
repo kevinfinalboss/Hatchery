@@ -19,8 +19,10 @@ package panelapi
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // handleLogs streams the server container's logs straight from the
@@ -51,6 +53,14 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		Container:  container,
 		Follow:     r.URL.Query().Get("follow") == "true",
 		Timestamps: true,
+	}
+	if since := r.URL.Query().Get("sinceTime"); since != "" {
+		t, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "sinceTime must be RFC3339")
+			return
+		}
+		opts.SinceTime = &metav1.Time{Time: t}
 	}
 	if tail := r.URL.Query().Get("tailLines"); tail != "" {
 		if n, err := strconv.ParseInt(tail, 10, 64); err == nil && n >= 0 {
