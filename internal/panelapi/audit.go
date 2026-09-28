@@ -84,7 +84,7 @@ func (s *Server) auditEventAs(r *http.Request, actor *paneldb.User, orgSlug, act
 		TargetName:    truncate(targetName, maxLoggedUsername),
 		Outcome:       outcome,
 		IP:            clientIP(r, s.TrustedProxies),
-		Metadata:      sanitizeMeta(meta),
+		Metadata:      sanitizeMeta(withVia(r, meta)),
 	}
 	if actor != nil {
 		id := actor.ID
@@ -92,6 +92,20 @@ func (s *Server) auditEventAs(r *http.Request, actor *paneldb.User, orgSlug, act
 		e.ActorUsername = actor.Username
 	}
 	s.writeAudit(r.Context(), e)
+}
+
+// withVia records where an in-process request came from (the Discord bot) in the audit metadata.
+func withVia(r *http.Request, meta map[string]string) map[string]string {
+	via := internalVia(r.Context())
+	if via == "" {
+		return meta
+	}
+	out := make(map[string]string, len(meta)+1)
+	for k, v := range meta {
+		out[k] = v
+	}
+	out["via"] = via
+	return out
 }
 
 // statusRecorder captures the status a handler wrote, and stays transparent to
