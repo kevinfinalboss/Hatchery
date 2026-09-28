@@ -76,12 +76,12 @@ func sessionFor(t *testing.T, srv *Server, username string) string {
 func TestFeatures(t *testing.T) {
 	srv := newTestServer(t)
 	rec := doRequest(t, srv, http.MethodGet, "/api/v1/auth/features", "", nil)
-	if rec.Code != http.StatusOK || rec.Body.String() != "{\"passwordReset\":false}\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"discord\":false,\"passwordReset\":false}\n" {
 		t.Fatalf("without mail: %d %s", rec.Code, rec.Body)
 	}
 	srv, _ = newTestServerWithMail(t)
 	rec = doRequest(t, srv, http.MethodGet, "/api/v1/auth/features", "", nil)
-	if rec.Body.String() != "{\"passwordReset\":true}\n" {
+	if rec.Body.String() != "{\"discord\":false,\"passwordReset\":true}\n" {
 		t.Fatalf("with mail: %s", rec.Body)
 	}
 }

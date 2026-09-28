@@ -30,7 +30,7 @@ import (
 )
 
 func (s *Server) handleFeatures(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"passwordReset": s.mailEnabled()})
+	writeJSON(w, http.StatusOK, map[string]bool{"passwordReset": s.mailEnabled(), "discord": s.discordEnabled()})
 }
 
 // profilePatch: nil fields are left unchanged, "" clears.
