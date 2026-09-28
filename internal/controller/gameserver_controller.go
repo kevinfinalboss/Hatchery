@@ -272,13 +272,13 @@ func (r *GameServerReconciler) reconcileSecret(ctx context.Context, gs *gameserv
 // tenant namespace's default-deny (see tenantNetworkPolicies). An Egg with no
 // ports gets no rule at all: an ingress rule with an empty port list would
 // mean "every port".
-func gameIngressPolicySpec(gsName string, egg *gameserversv1alpha1.Egg) networkingv1.NetworkPolicySpec {
+func gameIngressPolicySpec(gsName string, eggPorts []gameserversv1alpha1.EggPort) networkingv1.NetworkPolicySpec {
 	spec := networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{MatchLabels: gameServerLabels(gsName)},
 		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 	}
 	var ports []networkingv1.NetworkPolicyPort
-	for _, p := range egg.Spec.Ports {
+	for _, p := range eggPorts {
 		proto := p.Protocol
 		if proto == "" {
 			proto = corev1.ProtocolTCP
@@ -306,7 +306,7 @@ func (r *GameServerReconciler) reconcileNetworkPolicy(ctx context.Context, gs *g
 	}
 	np := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: gs.Name + "-game", Namespace: gs.Namespace}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, np, func() error {
-		np.Spec = gameIngressPolicySpec(gs.Name, egg)
+		np.Spec = gameIngressPolicySpec(gs.Name, gameserversv1alpha1.EffectivePorts(egg, gs))
 		return controllerutil.SetControllerReference(gs, np, r.Scheme)
 	})
 	return err
@@ -322,7 +322,7 @@ func (r *GameServerReconciler) reconcileNetworkPolicy(ctx context.Context, gs *g
 // ingress-style proxy) is a decision for a later milestone, not part of this
 // scaffolding.
 func (r *GameServerReconciler) reconcileService(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
-	ports := append(servicePorts(egg), sftpagent.ServicePort())
+	ports := append(servicePorts(gameserversv1alpha1.EffectivePorts(egg, gs)), sftpagent.ServicePort())
 
 	desired := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -478,9 +478,9 @@ func gameServerLabels(name string) map[string]string {
 	return gameserversv1alpha1.GameServerLabels(name)
 }
 
-func servicePorts(egg *gameserversv1alpha1.Egg) []corev1.ServicePort {
-	ports := make([]corev1.ServicePort, 0, len(egg.Spec.Ports))
-	for _, p := range egg.Spec.Ports {
+func servicePorts(eggPorts []gameserversv1alpha1.EggPort) []corev1.ServicePort {
+	ports := make([]corev1.ServicePort, 0, len(eggPorts))
+	for _, p := range eggPorts {
 		protocol := p.Protocol
 		if protocol == "" {
 			protocol = corev1.ProtocolTCP
@@ -510,8 +510,9 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 		env = append(env, corev1.EnvVar{Name: name, Value: value})
 	}
 
-	containerPorts := make([]corev1.ContainerPort, 0, len(egg.Spec.Ports))
-	for _, p := range egg.Spec.Ports {
+	effectivePorts := gameserversv1alpha1.EffectivePorts(egg, gs)
+	containerPorts := make([]corev1.ContainerPort, 0, len(effectivePorts))
+	for _, p := range effectivePorts {
 		protocol := p.Protocol
 		if protocol == "" {
 			protocol = corev1.ProtocolTCP
