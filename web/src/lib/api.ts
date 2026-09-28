@@ -5,6 +5,10 @@ import type {
   BackupList,
   BackupRestore,
   BackupSettings,
+  DiscordConnection,
+  NotificationEvent,
+  NotificationSettings,
+  NotificationTestResult,
   ConsoleTicketResponse,
   BackupConnectionRequest,
   CrashLog,
@@ -110,7 +114,8 @@ export const api = {
   me: () => request<User>("/auth/me"),
 
   features: () => request<AuthFeatures>("/auth/features"),
-  updateMe: (patch: Partial<Profile>) => request<User>("/me", { method: "PATCH", body: JSON.stringify(patch) }),
+  updateMe: (patch: Partial<Profile> & { notifyEmail?: boolean }) =>
+    request<User>("/me", { method: "PATCH", body: JSON.stringify(patch) }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>("/me/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
   requestEmailChange: (newEmail: string, currentPassword: string) =>
@@ -269,7 +274,19 @@ export const api = {
   listUsers: () => request<User[]>("/users"),
   deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
 
+  discordLinkURL: () => request<{ url: string }>("/me/discord/authorize"),
+  unlinkDiscord: () => request<void>("/me/discord", { method: "DELETE" }),
+  getOrgDiscord: (org: string) => request<DiscordConnection>(`/orgs/${org}/discord`),
+  orgDiscordURL: (org: string) => request<{ url: string }>(`/orgs/${org}/discord/authorize`, { method: "POST" }),
+  disconnectOrgDiscord: (org: string) => request<void>(`/orgs/${org}/discord`, { method: "DELETE" }),
+  getPlatformDiscord: () => request<DiscordConnection>("/platform/discord"),
+  platformDiscordURL: () => request<{ url: string }>("/platform/discord/authorize", { method: "POST" }),
+  disconnectPlatformDiscord: () => request<void>("/platform/discord", { method: "DELETE" }),
   getBackupSettings: (org: string) => request<BackupSettings>(`/orgs/${org}/backup-settings`),
+  getNotifications: (org: string) => request<NotificationSettings>(`/orgs/${org}/notifications`),
+  putNotifications: (org: string, body: { discordWebhookUrl?: string; muted: NotificationEvent[] }) =>
+    request<NotificationSettings>(`/orgs/${org}/notifications`, { method: "PUT", body: JSON.stringify(body) }),
+  testNotifications: (org: string) => request<NotificationTestResult>(`/orgs/${org}/notifications/test`, { method: "POST" }),
   putBackupConnection: (org: string, name: string, body: BackupConnectionRequest) =>
     request<BackupSettings>(`/orgs/${org}/backup-connections/${name}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteBackupConnection: (org: string, name: string) =>
