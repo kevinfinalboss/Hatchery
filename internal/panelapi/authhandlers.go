@@ -40,18 +40,25 @@ type loginRequest struct {
 }
 
 type userResponse struct {
-	ID                int64  `json:"id"`
-	Username          string `json:"username"`
-	Email             string `json:"email"`
-	IsAdmin           bool   `json:"isAdmin"`
-	DisplayName       string `json:"displayName"`
-	Locale            string `json:"locale"`
-	TimeZone          string `json:"timeZone"`
-	Discord           string `json:"discord"`
-	MinecraftUsername string `json:"minecraftUsername"`
-	SteamID           string `json:"steamId"`
-	NotifyEmail       bool   `json:"notifyEmail"`
-	DiscordUsername   string `json:"discordUsername"`
+	ID                int64           `json:"id"`
+	Username          string          `json:"username"`
+	Email             string          `json:"email"`
+	IsAdmin           bool            `json:"isAdmin"`
+	DisplayName       string          `json:"displayName"`
+	Locale            string          `json:"locale"`
+	TimeZone          string          `json:"timeZone"`
+	Discord           string          `json:"discord"`
+	MinecraftUsername string          `json:"minecraftUsername"`
+	SteamID           string          `json:"steamId"`
+	NotifyEmail       bool            `json:"notifyEmail"`
+	DiscordUsername   string          `json:"discordUsername"`
+	TwoFactor         twoFactorStatus `json:"twoFactor"`
+}
+
+// twoFactorStatus: RecoveryCodesLeft is only filled where the user looks at their own account.
+type twoFactorStatus struct {
+	Enabled           bool `json:"enabled"`
+	RecoveryCodesLeft *int `json:"recoveryCodesLeft,omitempty"`
 }
 
 type loginResponse struct {
@@ -64,7 +71,7 @@ func toUserResponse(u *paneldb.User) userResponse {
 	return userResponse{ID: u.ID, Username: u.Username, Email: u.Email, IsAdmin: u.IsAdmin,
 		DisplayName: u.DisplayName, Locale: u.Locale, TimeZone: u.TimeZone, Discord: u.Discord,
 		MinecraftUsername: u.MinecraftUsername, SteamID: u.SteamID, NotifyEmail: u.NotifyEmail,
-		DiscordUsername: u.DiscordUsername}
+		DiscordUsername: u.DiscordUsername, TwoFactor: twoFactorStatus{Enabled: u.TwoFactorEnabled}}
 }
 
 func (s *Server) limiterKey(ctx context.Context, login string) string {
@@ -122,6 +129,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid username, e-mail or password")
 		return
 	}
+	if user.TwoFactorEnabled {
+		// No session yet, and the limiter is NOT reset: only the right code resets it, or a
+		// correct password between wrong codes would clear the count and allow unlimited guesses.
+		s.startTwoFactorLogin(w, r, user)
+		return
+	}
 	if rerr := s.LoginLimiter.RecordSuccess(r.Context(), key, ip); rerr != nil {
 		authLog.Error(rerr, "could not reset failed-login counter")
 	}
@@ -148,5 +161,5 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, toUserResponse(userFromContext(r.Context())))
+	writeJSON(w, http.StatusOK, s.ownUserResponse(r.Context(), userFromContext(r.Context())))
 }

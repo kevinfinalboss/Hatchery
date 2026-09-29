@@ -74,10 +74,28 @@ func (s *Server) authenticate(next http.Handler, extractToken func(*http.Request
 // provision infrastructure or manage other users rather than operate inside
 // one organization.
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
+	return s.requireAdminWith(next, true)
+}
+
+// requireAdminWith: enforce2FA=false skips the platform's two-factor requirement (only for the
+// page that tells a blocked admin what to do).
+func (s *Server) requireAdminWith(next http.Handler, enforce2FA bool) http.Handler {
 	return s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !userFromContext(r.Context()).IsAdmin {
+		u := userFromContext(r.Context())
+		if !u.IsAdmin {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
+		}
+		if enforce2FA {
+			needs, err := s.adminNeeds2FA(r.Context(), u)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if needs {
+				writeErrorCode(w, http.StatusForbidden, "two_factor_required", twoFactorRequiredMsg)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	}))
