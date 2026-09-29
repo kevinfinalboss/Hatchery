@@ -36,6 +36,11 @@ const RestartAnnotation = "gameservers.hatchery.io/restart-at"
 // was built from, so the controller can tell when the running Pod is out of date.
 const SpecHashAnnotation = "gameservers.hatchery.io/spec-hash"
 
+// FilesChangedAnnotation is set by the Panel when it changes files the game only reads at start
+// (installing, updating or removing a mod) while the server runs. It is part of the spec hash, so
+// the server shows "restart to apply" (RestartRequired) until it restarts.
+const FilesChangedAnnotation = "gameservers.hatchery.io/files-changed-at"
+
 // ConditionRestartRequired is True while the running Pod was built from an older spec.
 const ConditionRestartRequired = "RestartRequired"
 

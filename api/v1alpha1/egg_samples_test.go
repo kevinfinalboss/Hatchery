@@ -84,7 +84,7 @@ func TestModpackEggSample(t *testing.T) {
 
 func TestSampleEggsPauseSavingForBackups(t *testing.T) {
 	minecraft := []string{"paper", "purpur", "fabric", "quilt", "neoforge", "spigot"}
-	for _, file := range append(minecraft, "terraria") {
+	for _, file := range append(minecraft, "terraria", "zomboid") {
 		raw, err := os.ReadFile("../../config/samples/gameservers_v1alpha1_egg_" + file + ".yaml")
 		if err != nil {
 			t.Fatal(err)
@@ -104,6 +104,13 @@ func TestSampleEggsPauseSavingForBackups(t *testing.T) {
 		if file == "terraria" {
 			if b.SavedRegex != "Backing up world file" || b.Before[0] != "save" {
 				t.Errorf("terraria: backup = %+v", b)
+			}
+			continue
+		}
+		// Zomboid has no save-off: "save" writes the world and "Saving took N ms" is its last line.
+		if file == "zomboid" {
+			if b.SavedRegex != "Saving took" || strings.Join(b.Before, "|") != "save" || len(b.After) != 0 {
+				t.Errorf("zomboid: backup = %+v", b)
 			}
 			continue
 		}
