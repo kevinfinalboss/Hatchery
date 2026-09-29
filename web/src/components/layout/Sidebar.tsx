@@ -61,6 +61,7 @@ export function Sidebar({ onOpenPalette, onNavigate }: { onOpenPalette: () => vo
           >
             {orgs.map((o) => (
               <option key={o.slug} value={o.slug}>
+                {o.twoFactorRequired ? "🔒 " : ""}
                 {o.name}
               </option>
             ))}

@@ -3,11 +3,17 @@ import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 import { useT } from "../../lib/i18n";
 import { Wordmark } from "../ui/Wordmark";
+import { useLocation } from "react-router-dom";
+import { useOrg } from "../../lib/org";
+import { TwoFactorGate } from "../orgs/OrgSecuritySection";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const t = useT();
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
+  const { current } = useOrg();
+  const { pathname } = useLocation();
+  const gated = !!current?.twoFactorRequired && pathname !== "/account";
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -47,7 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="min-h-0 min-w-0 grow overflow-y-auto px-4 py-6 md:px-9 md:py-8">{children}</main>
+      <main className="min-h-0 min-w-0 grow overflow-y-auto px-4 py-6 md:px-9 md:py-8">
+        {gated && current ? <TwoFactorGate orgName={current.name} /> : children}
+      </main>
 
       <CommandPalette open={palette} onClose={() => setPalette(false)} />
     </div>
