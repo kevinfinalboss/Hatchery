@@ -166,6 +166,39 @@ export interface User extends Profile {
   isAdmin: boolean;
   notifyEmail: boolean;
   discordUsername?: string;
+  twoFactor: TwoFactorStatus;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  recoveryCodesLeft?: number;
+}
+
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  ticket: string;
+  expiresInSeconds: number;
+}
+
+export interface TwoFactorSetup {
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface RecoveryCodes {
+  recoveryCodes: string[];
+}
+
+export interface OrgSecurity {
+  require2fa: boolean;
+  blocked: boolean;
+  /** Only for admins and owners. */
+  membersWithout2fa?: number;
+}
+
+export interface PlatformSecurity {
+  requireAdminTwoFactor: boolean;
+  blocked: boolean;
 }
 
 export type NotificationEvent =
@@ -190,6 +223,7 @@ export interface LoginResponse {
   token: string;
   expiresAt: string;
   user: User;
+  recoveryCodesLeft?: number;
 }
 
 export interface SFTPSessionResponse {
@@ -239,6 +273,7 @@ export interface OrgSummary {
   role: OrgRole;
   inviteUrl?: string;
   inviteError?: string;
+  twoFactorRequired?: boolean;
 }
 
 export interface BackupLimits {
@@ -328,6 +363,7 @@ export interface Member {
   minecraftUsername: string;
   steamId: string;
   email?: string;
+  twoFactorEnabled?: boolean;
 }
 
 export type EggScope = "Catalog" | "Namespace";
@@ -472,6 +508,7 @@ export interface InvitationPreview {
 export interface AuthFeatures {
   passwordReset: boolean;
   discord?: boolean;
+  twoFactor?: boolean;
 }
 
 export interface DiscordConnection {

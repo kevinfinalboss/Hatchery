@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getAuthToken, setAuthToken } from "./api";
 import { useI18n } from "./i18n";
-import type { LoginResponse, User } from "./types";
+import type { LoginResponse, TwoFactorChallenge, User } from "./types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<TwoFactorChallenge | null>;
+  loginTwoFactor: (ticket: string, code: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
   startSession: (resp: LoginResponse) => void;
@@ -46,8 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(resp.user);
   }
 
-  async function login(username: string, password: string) {
-    startSession(await api.login(username, password));
+  async function login(username: string, password: string): Promise<TwoFactorChallenge | null> {
+    const resp = await api.login(username, password);
+    if ("twoFactorRequired" in resp) return resp;
+    startSession(resp);
+    return null;
+  }
+
+  async function loginTwoFactor(ticket: string, code: string) {
+    const resp = await api.loginTwoFactor(ticket, code);
+    startSession(resp);
+    return resp;
   }
 
   async function logout() {
@@ -61,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser, startSession }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, login, loginTwoFactor, logout, setUser, startSession }}>{children}</AuthContext.Provider>
   );
 }
 
