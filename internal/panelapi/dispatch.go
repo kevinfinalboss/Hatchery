@@ -10,8 +10,10 @@ import (
 	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
+	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
@@ -70,8 +72,8 @@ type consoleCommandRequest struct {
 
 const maxConsoleCommand = 512
 
-// handleConsoleCommand types one line into the game's console (the stdin of PID 1), the same way a
-// schedule's Command task does. The command is passed as an argument, never interpolated.
+// handleConsoleCommand types one line into the game's console (the Egg's console input, by default
+// the stdin of PID 1), the same way a schedule's Command task does. The command is passed as an argument, never interpolated.
 func (s *Server) handleConsoleCommand(w http.ResponseWriter, r *http.Request) {
 	var req consoleCommandRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
@@ -89,15 +91,38 @@ func (s *Server) handleConsoleCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "the server is not running")
 		return
 	}
+	console, err := s.consoleInput(r.Context(), ns, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reading the server's Egg: "+err.Error())
+		return
+	}
 	exec := s.execFn
 	if exec == nil {
 		exec = s.execInPod
 	}
-	if _, err := exec(r.Context(), ns, name, gameContainerName, []string{"sh", "-c", `printf '%s\n' "$1" > /proc/1/fd/0`, "sh", cmd}); err != nil {
+	if _, err := exec(r.Context(), ns, name, gameContainerName, gameserversv1alpha1.ConsoleLineCommand(console, cmd)); err != nil {
 		writeError(w, http.StatusBadGateway, "could not reach the game console: "+err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// consoleInput is where the server's console lines go: its Egg's console input, or the default when
+// the Egg is gone.
+func (s *Server) consoleInput(ctx context.Context, ns, name string) (string, error) {
+	var gs gameserversv1alpha1.GameServer
+	if err := s.Client.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &gs); err != nil {
+		return "", err
+	}
+	var egg gameserversv1alpha1.Egg
+	switch err := s.Client.Get(ctx, types.NamespacedName{Namespace: gs.EggNamespace(), Name: gs.Spec.EggRef.Name}, &egg); {
+	case err == nil:
+		return egg.Spec.ConsoleInputPath(), nil
+	case apierrors.IsNotFound(err):
+		return gameserversv1alpha1.DefaultConsoleInput, nil
+	default:
+		return "", err
+	}
 }
 
 func gameContainerRunning(pod *corev1.Pod) bool {

@@ -93,8 +93,20 @@ func TestConsoleCommandRoute(t *testing.T) {
 	if c := send(admin, "say hi"); c != http.StatusAccepted {
 		t.Fatalf("command = %d", c)
 	}
-	if len(ran) != 1 || !strings.HasSuffix(ran[0], "/server:sh -c printf '%s\\n' \"$1\" > /proc/1/fd/0 sh say hi") {
+	if len(ran) != 1 || ran[0] != "hatchery-"+testOrgSlug+"/mc/server:"+strings.Join(v1.ConsoleLineCommand("/proc/1/fd/0", "say hi"), " ") {
 		t.Fatalf("exec = %v", ran)
+	}
+	// An Egg that declares its console input gets the line written there.
+	egg := &v1.Egg{
+		ObjectMeta: metav1.ObjectMeta{Name: "egg", Namespace: testOrgNS()},
+		Spec: v1.EggSpec{Images: []v1.EggImage{{Name: "default", Image: "img:1"}}, StartCommand: "run",
+			ConsoleInput: "/tmp/minecraft-console-in"},
+	}
+	if err := srv.Client.Create(context.Background(), egg); err != nil {
+		t.Fatal(err)
+	}
+	if c := send(admin, "say hi"); c != http.StatusAccepted || !strings.HasSuffix(ran[1], "sh /tmp/minecraft-console-in say hi") {
+		t.Fatalf("command with pipe = %d, exec = %v", c, ran)
 	}
 	if c := send(admin, "say a\nstop"); c != http.StatusUnprocessableEntity {
 		t.Fatalf("multi-line = %d, want 422", c)
