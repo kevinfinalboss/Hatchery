@@ -225,6 +225,17 @@ function MemberRow({
             <span className="font-display text-[15px] font-semibold text-text-primary">{member.displayName || member.username}</span>
             {member.displayName && <span className="ml-2 font-mono text-xs text-text-tertiary">{member.username}</span>}
             {isSelf && <span className="ml-2 font-sans text-xs text-text-tertiary">{t("members.you")}</span>}
+            {member.twoFactorEnabled !== undefined && (
+              <span
+                title={member.twoFactorEnabled ? t("twoFactor.badgeOn") : t("twoFactor.badgeOff")}
+                className={
+                  "ml-2 border px-1 font-mono text-[10px] " +
+                  (member.twoFactorEnabled ? "border-primary text-primary-text" : "border-border text-text-tertiary line-through")
+                }
+              >
+                2FA
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-3 font-sans text-xs text-text-tertiary">
             {member.email && <span>{member.email}</span>}

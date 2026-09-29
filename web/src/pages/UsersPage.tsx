@@ -38,6 +38,15 @@ export function UsersPage() {
     onError: (err) => setRowError(errorMessage(err, t("users.adminFailed"))),
   });
 
+  const disable2FA = useMutation({
+    mutationFn: (id: number) => api.adminDisableTwoFactor(id),
+    onSuccess: () => {
+      setRowError(null);
+      invalidate();
+    },
+    onError: (err) => setRowError(errorMessage(err, t("twoFactor.failed"))),
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -61,7 +70,10 @@ export function UsersPage() {
                       <span className="font-display text-[15px] font-semibold text-text-primary">{user.displayName || user.username}</span>
                       {user.displayName && <span className="ml-2 font-mono text-xs text-text-tertiary">{user.username}</span>}
                     </div>
-                    <div className="font-sans text-xs text-text-tertiary">{user.email}</div>
+                    <div className="font-sans text-xs text-text-tertiary">
+                      {user.email}
+                      {user.twoFactor?.enabled && <span className="ml-2 font-mono text-primary-text">2FA</span>}
+                    </div>
                   </div>
                 </div>
                 <RowActions>
@@ -74,6 +86,17 @@ export function UsersPage() {
                     />
                     {t("users.platformAdmin")}
                   </label>
+                  {user.twoFactor?.enabled && user.id !== self?.id && (
+                    <Button
+                      variant="ghost"
+                      disabled={disable2FA.isPending}
+                      onClick={() => {
+                        if (confirm(t("twoFactor.adminDisableConfirm", { name: user.username }))) disable2FA.mutate(user.id);
+                      }}
+                    >
+                      {t("twoFactor.adminDisable")}
+                    </Button>
+                  )}
                   {user.username !== INITIAL_ADMIN && user.id !== self?.id && (
                     <Button
                       variant="ghost"

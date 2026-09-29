@@ -6,6 +6,7 @@ import { atLeast, useOrg } from "../lib/org";
 import { BackupConnections } from "../components/orgs/BackupConnections";
 import { NotificationSettingsCard } from "../components/orgs/NotificationSettings";
 import { DiscordGuildCard } from "../components/DiscordConnect";
+import { OrgSecurityCard } from "../components/orgs/OrgSecuritySection";
 
 export function OrgSettingsPage() {
   const t = useT();
@@ -24,6 +25,13 @@ export function OrgSettingsPage() {
         <div className="font-display text-2xl font-bold text-text-primary">{t("orgSettings.title")}</div>
         {current && <div className="mt-0.5 font-sans text-sm text-text-secondary">{current.name}</div>}
       </div>
+
+      {features?.twoFactor && atLeast(current?.role, "admin") && (
+        <>
+          <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("twoFactor.orgSection")}</div>
+          <OrgSecurityCard key={org} org={org} />
+        </>
+      )}
 
       <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("orgSettings.backups")}</div>
       {error && <div className="font-sans text-sm text-status-failed">{errorMessage(error, t("backups.loadFailed"))}</div>}

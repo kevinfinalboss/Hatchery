@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DiscordGuildCard } from "../components/DiscordConnect";
+import { PlatformSecurityCard } from "../components/orgs/OrgSecuritySection";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -129,6 +130,13 @@ export function OrgsPage() {
       </div>
 
       {creating && <CreateOrgForm onClose={() => setCreating(false)} />}
+
+      {features?.twoFactor && (
+        <div className="flex flex-col gap-2">
+          <div className="font-sans text-xs uppercase tracking-wide text-text-tertiary">{t("twoFactor.orgSection")}</div>
+          <PlatformSecurityCard />
+        </div>
+      )}
 
       {features?.discord && (
         <div className="flex flex-col gap-2">
