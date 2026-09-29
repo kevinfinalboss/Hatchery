@@ -194,3 +194,18 @@ func TestRedisPlayersStore(t *testing.T) {
 		t.Fatalf("empty names: %+v, %v", got, err)
 	}
 }
+
+func TestRedisNotifiedStore(t *testing.T) {
+	rdb, prefix := testRedis(t)
+	s := newRedisNotifiedStore(rdb, prefix)
+	ctx := context.Background()
+	if ok, err := s.Claim(ctx, "acme/x"); !ok || err != nil {
+		t.Fatalf("first claim = %v, %v", ok, err)
+	}
+	if ok, err := s.Claim(ctx, "acme/x"); ok || err != nil {
+		t.Fatalf("second claim = %v, %v", ok, err)
+	}
+	if ttl := rdb.TTL(ctx, prefix+"notified:acme/x").Val(); ttl <= 0 || ttl > NotifiedTTL {
+		t.Fatalf("ttl = %v", ttl)
+	}
+}
