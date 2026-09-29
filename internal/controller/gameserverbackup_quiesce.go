@@ -24,48 +24,50 @@ func (r *GameServerBackupReconciler) now() time.Time {
 	return time.Now()
 }
 
-// gameTarget returns the backed-up server's Egg backup hooks (nil when the Egg has none or is gone)
+// gameTarget returns the backed-up server's Egg backup hooks (nil when the Egg has none or is gone),
+// the path its console lines are written to
 // and its Pod when the game container is running (nil otherwise).
-func (r *GameServerBackupReconciler) gameTarget(ctx context.Context, bkp *v1alpha1.GameServerBackup) (*v1alpha1.EggBackup, *corev1.Pod, error) {
+func (r *GameServerBackupReconciler) gameTarget(ctx context.Context, bkp *v1alpha1.GameServerBackup) (*v1alpha1.EggBackup, string, *corev1.Pod, error) {
 	var gs v1alpha1.GameServer
 	if err := r.Get(ctx, types.NamespacedName{Namespace: bkp.Namespace, Name: bkp.Spec.GameServerRef.Name}, &gs); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, nil, nil
+			return nil, "", nil, nil
 		}
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	var hooks *v1alpha1.EggBackup
+	console := v1alpha1.DefaultConsoleInput
 	var egg v1alpha1.Egg
 	switch err := r.Get(ctx, types.NamespacedName{Namespace: gs.EggNamespace(), Name: gs.Spec.EggRef.Name}, &egg); {
 	case err == nil:
-		hooks = egg.Spec.Backup
+		hooks, console = egg.Spec.Backup, egg.Spec.ConsoleInputPath()
 	case !apierrors.IsNotFound(err):
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	if gs.Status.PodName == "" {
-		return hooks, nil, nil
+		return hooks, console, nil, nil
 	}
 	var pod corev1.Pod
 	if err := r.Get(ctx, types.NamespacedName{Namespace: gs.Namespace, Name: gs.Status.PodName}, &pod); err != nil {
 		if apierrors.IsNotFound(err) {
-			return hooks, nil, nil
+			return hooks, console, nil, nil
 		}
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 	if !pod.DeletionTimestamp.IsZero() {
-		return hooks, nil, nil
+		return hooks, console, nil, nil
 	}
 	for _, cs := range pod.Status.ContainerStatuses {
 		if cs.Name == serverContainerName && cs.State.Running != nil {
-			return hooks, &pod, nil
+			return hooks, console, &pod, nil
 		}
 	}
-	return hooks, nil, nil
+	return hooks, console, nil, nil
 }
 
-func (r *GameServerBackupReconciler) sendCommands(ctx context.Context, pod *corev1.Pod, cmds []string) error {
+func (r *GameServerBackupReconciler) sendCommands(ctx context.Context, pod *corev1.Pod, console string, cmds []string) error {
 	for _, c := range cmds {
-		if err := r.Exec(ctx, pod.Namespace, pod.Name, serverContainerName, stdinCommand(c)); err != nil {
+		if err := r.Exec(ctx, pod.Namespace, pod.Name, serverContainerName, v1alpha1.ConsoleLineCommand(console, c)); err != nil {
 			return fmt.Errorf("sending %q: %w", c, err)
 		}
 	}
@@ -84,7 +86,7 @@ func (r *GameServerBackupReconciler) quiesce(ctx context.Context, bkp *v1alpha1.
 	if r.Exec == nil || apimeta.FindStatusCondition(bkp.Status.Conditions, v1alpha1.BackupConditionQuiesced) != nil {
 		return true, ctrl.Result{}, nil
 	}
-	hooks, pod, err := r.gameTarget(ctx, bkp)
+	hooks, console, pod, err := r.gameTarget(ctx, bkp)
 	if err != nil {
 		return false, ctrl.Result{}, err
 	}
@@ -100,7 +102,7 @@ func (r *GameServerBackupReconciler) quiesce(ctx context.Context, bkp *v1alpha1.
 		if err := r.Status().Update(ctx, bkp); err != nil {
 			return false, ctrl.Result{}, err
 		}
-		if err := r.sendCommands(ctx, pod, hooks.Before); err != nil {
+		if err := r.sendCommands(ctx, pod, console, hooks.Before); err != nil {
 			logf.FromContext(ctx).Info("could not pause world saving; backing up anyway", "backup", bkp.Name, "error", err.Error())
 			r.setCondition(bkp, v1alpha1.BackupConditionQuiesced, metav1.ConditionFalse, v1alpha1.QuiesceReasonSendFailed, err.Error())
 			return true, ctrl.Result{}, r.Status().Update(ctx, bkp)
@@ -137,7 +139,7 @@ func (r *GameServerBackupReconciler) resume(ctx context.Context, bkp *v1alpha1.G
 	if r.Exec == nil || q == nil || q.BeforeSentAt == nil || q.ResumedAt != nil {
 		return false, ctrl.Result{}, nil
 	}
-	hooks, pod, err := r.gameTarget(ctx, bkp)
+	hooks, console, pod, err := r.gameTarget(ctx, bkp)
 	if err != nil {
 		return true, ctrl.Result{}, err
 	}
@@ -157,7 +159,7 @@ func (r *GameServerBackupReconciler) resume(ctx context.Context, bkp *v1alpha1.G
 		q.ResumedAt = &now
 		r.setCondition(bkp, v1alpha1.BackupConditionResumed, metav1.ConditionTrue, reason, "")
 	case resumeSend:
-		if err := r.sendCommands(ctx, pod, hooks.After); err != nil {
+		if err := r.sendCommands(ctx, pod, console, hooks.After); err != nil {
 			q.ResumeAttempts++
 			if q.ResumeAttempts < resumeMaxAttempts {
 				if uerr := r.Status().Update(ctx, bkp); uerr != nil {

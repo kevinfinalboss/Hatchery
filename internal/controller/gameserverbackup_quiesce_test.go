@@ -40,12 +40,13 @@ var _ = Describe("GameServerBackup world-save pause", func() {
 	// Pod whose "server" container is running, and a backup of it. It returns the reconciler (with a
 	// recording exec and a controllable clock) and the backup key.
 	type env struct {
-		r     *GameServerBackupReconciler
-		key   types.NamespacedName
-		execs *[]string
-		clock *time.Time
-		logs  *sinceLogs
-		pod   *corev1.Pod
+		r        *GameServerBackupReconciler
+		key      types.NamespacedName
+		execs    *[]string
+		consoles *[]string
+		clock    *time.Time
+		logs     *sinceLogs
+		pod      *corev1.Pod
 	}
 	setup := func(name string, hooks *gameserversv1alpha1.EggBackup, running bool) env {
 		egg := &gameserversv1alpha1.Egg{
@@ -107,7 +108,7 @@ var _ = Describe("GameServerBackup world-save pause", func() {
 		}
 		Expect(k8sClient.Create(ctx, bkp)).To(Succeed())
 
-		execs := &[]string{}
+		execs, consoles := &[]string{}, &[]string{}
 		// Whole seconds: status times come back from the apiserver truncated to seconds, and the
 		// exact RequeueAfter assertions below compare against them.
 		clock := time.Now().Truncate(time.Second)
@@ -118,10 +119,11 @@ var _ = Describe("GameServerBackup world-save pause", func() {
 			Exec: func(_ context.Context, _, _, container string, cmd []string) error {
 				Expect(container).To(Equal("server"))
 				*execs = append(*execs, cmd[len(cmd)-1])
+				*consoles = append(*consoles, cmd[len(cmd)-2])
 				return nil
 			},
 		}
-		e := env{r: r, key: types.NamespacedName{Name: name, Namespace: ns}, execs: execs, clock: &clock, logs: logs, pod: pod}
+		e := env{r: r, key: types.NamespacedName{Name: name, Namespace: ns}, execs: execs, consoles: consoles, clock: &clock, logs: logs, pod: pod}
 		DeferCleanup(func() {
 			var cur gameserversv1alpha1.GameServerBackup
 			if err := k8sClient.Get(ctx, e.key, &cur); err == nil {
@@ -160,11 +162,24 @@ var _ = Describe("GameServerBackup world-save pause", func() {
 		return &gameserversv1alpha1.EggBackup{Before: []string{"save-off", "save-all flush"}, After: []string{"save-on"}, SavedRegex: "Saved the game"}
 	}
 
+	It("writes the commands to the console input the Egg declares", func() {
+		e := setup("quiesce-pipe", hooks(), true)
+		var egg gameserversv1alpha1.Egg
+		Expect(k8sClient.Get(ctx, e.key, &egg)).To(Succeed())
+		egg.Spec.ConsoleInput = "/tmp/minecraft-console-in"
+		Expect(k8sClient.Update(ctx, &egg)).To(Succeed())
+		reconcileOnce(e) // finalizer
+		reconcileOnce(e)
+		Expect(*e.execs).To(Equal([]string{"save-off", "save-all flush"}))
+		Expect(*e.consoles).To(Equal([]string{"/tmp/minecraft-console-in", "/tmp/minecraft-console-in"}))
+	})
+
 	It("pauses saving, waits for the regex, backs up, then resumes", func() {
 		e := setup("quiesce-regex", hooks(), true)
 		reconcileOnce(e) // finalizer
 		res := reconcileOnce(e)
 		Expect(*e.execs).To(Equal([]string{"save-off", "save-all flush"}))
+		Expect(*e.consoles).To(Equal([]string{gameserversv1alpha1.DefaultConsoleInput, gameserversv1alpha1.DefaultConsoleInput}))
 		b := getBackup(e)
 		Expect(b.Status.Quiesce).NotTo(BeNil())
 		Expect(b.Status.Quiesce.PodUID).To(Equal(string(e.pod.UID)))
