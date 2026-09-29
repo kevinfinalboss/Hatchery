@@ -227,7 +227,15 @@ func (r *GameServerScheduleReconciler) runTask(ctx context.Context, s *v1alpha1.
 		if r.Exec == nil {
 			return errors.New("running commands is not configured in the operator")
 		}
-		return r.Exec(ctx, gs.Namespace, gs.Status.PodName, serverContainerName, stdinCommand(task.Command))
+		console := v1alpha1.DefaultConsoleInput
+		var egg v1alpha1.Egg
+		switch err := r.Get(ctx, types.NamespacedName{Namespace: gs.EggNamespace(), Name: gs.Spec.EggRef.Name}, &egg); {
+		case err == nil:
+			console = egg.Spec.ConsoleInputPath()
+		case !apierrors.IsNotFound(err):
+			return err
+		}
+		return r.Exec(ctx, gs.Namespace, gs.Status.PodName, serverContainerName, v1alpha1.ConsoleLineCommand(console, task.Command))
 	case v1alpha1.ScheduleActionRestart:
 		if !running {
 			return nil // nothing to restart; not a failure

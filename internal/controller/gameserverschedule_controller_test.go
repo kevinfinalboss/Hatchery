@@ -113,7 +113,7 @@ var _ = Describe("GameServerSchedule", func() {
 		return gameserversv1alpha1.ScheduleTask{Action: a}
 	}
 	consoleCmd := func(c string) []string {
-		return []string{"sh", "-c", "printf '%s\\n' \"$1\" > /proc/1/fd/0", "sh", c}
+		return gameserversv1alpha1.ConsoleLineCommand(gameserversv1alpha1.DefaultConsoleInput, c)
 	}
 	reconcileSched := func(r *GameServerScheduleReconciler, name string) reconcile.Result {
 		res, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: name}})
@@ -158,6 +158,20 @@ var _ = Describe("GameServerSchedule", func() {
 			Expect(execs).To(BeEmpty())
 			Expect(apimeta.IsStatusConditionTrue(s.Status.Conditions, "Ready")).To(BeTrue())
 			Expect(metav1.IsControlledBy(s, getServer("default", "sch-early"))).To(BeTrue())
+		})
+
+		It("writes Command tasks to the console input the Egg declares", func() {
+			runningServer(ctx, "sch-pipe")
+			var egg gameserversv1alpha1.Egg
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "sch-pipe-egg"}, &egg)).To(Succeed())
+			egg.Spec.ConsoleInput = "/tmp/minecraft-console-in"
+			Expect(k8sClient.Update(ctx, &egg)).To(Succeed())
+			Expect(k8sClient.Create(ctx, newSchedule("sch-pipe", "sch-pipe", "0 4 * * *", cmd("say hi", 0)))).To(Succeed())
+			clk := &fakeClock{}
+			var execs [][]string
+			fireAt04(clk, reconcilerAt(clk, &execs), "sch-pipe")
+
+			Expect(execs).To(Equal([][]string{gameserversv1alpha1.ConsoleLineCommand("/tmp/minecraft-console-in", "say hi")}))
 		})
 
 		It("fires on time and runs the tasks", func() {
