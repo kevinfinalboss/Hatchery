@@ -12,6 +12,7 @@ import { useT } from "../lib/i18n";
 import { atLeast, useOrg } from "../lib/org";
 import type { Profile, ProfileLocale, User } from "../lib/types";
 import { NewPasswordFields } from "./ResetPasswordPage";
+import { TwoFactorSection } from "../components/account/TwoFactorSection";
 
 const selectClasses =
   "rounded-lg border border-border-strong bg-surface px-3 py-2 font-sans text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary";
@@ -319,6 +320,7 @@ export function AccountPage() {
           <EmailSection user={user} mailEnabled={!!features?.passwordReset} />
         </div>
       </Card>
+      {features?.twoFactor && <TwoFactorSection user={user} />}
     </div>
   );
 }
