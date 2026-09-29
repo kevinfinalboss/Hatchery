@@ -730,7 +730,7 @@ printf '%%s' "$%[2]s" > %[1]s
 var signalName = regexp.MustCompile(`^[A-Z0-9]{1,10}$`)
 
 // stopLifecycle builds the preStop hook that stops the game gracefully before the kubelet's own
-// SIGTERM: it writes the Egg's stopCommand to the game's stdin (PID 1), or, without a command,
+// SIGTERM: it writes the Egg's stopCommand to the game's console input, or, without a command,
 // sends a non-default stopSignal, then waits for the process to exit. lifecycle.stopSignal is not
 // used because it needs a feature gate that is off on many clusters. nil means "nothing to do".
 func stopLifecycle(egg *gameserversv1alpha1.Egg) *corev1.Lifecycle {
@@ -738,7 +738,8 @@ func stopLifecycle(egg *gameserversv1alpha1.Egg) *corev1.Lifecycle {
 	var script string
 	switch sig := strings.TrimPrefix(strings.ToUpper(egg.Spec.StopSignal), "SIG"); {
 	case egg.Spec.StopCommand != "":
-		script = `printf '%s\n' "$` + stopCommandEnv + `" > /proc/1/fd/0; ` + wait
+		// ConsoleInputPath holds no shell metacharacters (validated), so it can be embedded here.
+		script = gameserversv1alpha1.ConsoleWriteScript(egg.Spec.ConsoleInputPath(), "$"+stopCommandEnv) + "; " + wait
 	case sig != "" && sig != "TERM" && signalName.MatchString(sig):
 		script = "kill -" + sig + " 1; " + wait
 	default:

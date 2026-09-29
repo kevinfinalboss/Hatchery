@@ -402,6 +402,18 @@ var _ = Describe("GameServer Controller", func() {
 			return "", false
 		}
 
+		It("writes the stopCommand to the console input the Egg declares", func() {
+			egg := newEgg()
+			egg.Spec.StopCommand = "stop"
+			egg.Spec.ConsoleInput = "/tmp/minecraft-console-in"
+			pod, err := buildPod(newServer(), egg, testSFTPAgentImage)
+			Expect(err).NotTo(HaveOccurred())
+
+			hook := serverOf(pod).Lifecycle.PreStop.Exec.Command
+			Expect(hook[len(hook)-1]).To(ContainSubstring(`dd of="/tmp/minecraft-console-in" conv=nocreat`))
+			Expect(hook[len(hook)-1]).NotTo(ContainSubstring("/proc/1/fd/0"))
+		})
+
 		It("stops through the stopCommand and gives the Egg's grace period", func() {
 			egg := newEgg()
 			egg.Spec.StopCommand = "stop"
