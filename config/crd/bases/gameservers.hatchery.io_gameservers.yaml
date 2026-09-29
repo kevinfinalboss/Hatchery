@@ -107,10 +107,8 @@ spec:
                   ExtraPorts are ports beyond the Egg's, opened in the Service, the NetworkPolicy and, when the
                   server is publicly exposed, on the public Gateway. See GameServerExtraPort.
                 items:
-                  description: |-
-                    GameServerExtraPort is a port the server listens on beyond the Egg's (a plugin's web map, voice
-                    chat, Bedrock bridge...). The plugin must be configured to listen on it. Pods have their own
-                    network, so the same number can be used by every server; only public ports must be unique.
+                  description: GameServerExtraPort is a port beyond the Egg's (web
+                    map, voice chat...); the plugin must listen on it.
                   properties:
                     containerPort:
                       format: int32
@@ -289,16 +287,7 @@ spec:
             description: status defines the observed state of GameServer
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the GameServer resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: conditions are the GameServer's current state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

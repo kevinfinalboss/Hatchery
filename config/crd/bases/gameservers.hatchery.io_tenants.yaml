@@ -67,9 +67,8 @@ spec:
                     type: integer
                   backups:
                     description: |-
-                      Backups limits what the organization may keep on the platform's own backup storage. Without
-                      it the platform destination is unavailable to the organization. It does not apply to a
-                      destination the organization brings itself.
+                      Backups limits what the org keeps on the platform's backup storage; without it that storage is
+                      unavailable to the org.
                     properties:
                       maxPerOrg:
                         description: MaxPerOrg is how many backups the whole organization
@@ -104,10 +103,8 @@ spec:
                     x-kubernetes-int-or-string: true
                   extraImageRegistries:
                     description: |-
-                      ExtraImageRegistries are registries this organization may pull Egg images from on top of the
-                      platform's default list (operator/panel --allowed-image-registries). Entries are matched by
-                      whole path segments ("docker.io/itzg" allows docker.io/itzg/*). Only the platform admin
-                      edits it. Ignored while the platform list is empty (the check is off).
+                      ExtraImageRegistries are registries allowed for this org's Eggs on top of the platform's list,
+                      matched by whole path segments. Edited by the platform admin only.
                     items:
                       maxLength: 253
                       type: string

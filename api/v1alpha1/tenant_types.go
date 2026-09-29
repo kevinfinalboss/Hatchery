@@ -27,23 +27,17 @@ const (
 	// of GameServers and backups — see TenantReconciler.reconcileDelete.
 	TenantFinalizer = "gameservers.hatchery.io/tenant-finalizer"
 
-	// TenantNamespacePrefix is prepended to a Tenant's name to get its
-	// namespace. A fixed prefix means a Tenant can never claim kube-system or
-	// any other pre-existing namespace by choosing its name.
+	// TenantNamespacePrefix + Tenant name = the tenant's namespace (never an existing one).
 	TenantNamespacePrefix = "hatchery-"
 
-	// LabelTenant is set on a tenant's Namespace to the Tenant's name. The
-	// GameServerController uses it to tell tenant namespaces from ordinary
-	// ones.
+	// LabelTenant marks a tenant's Namespace with the Tenant's name.
 	LabelTenant = "gameservers.hatchery.io/tenant"
 
 	// CatalogNamespace holds the global Egg catalog shared by every tenant. It
 	// is why the Tenant name "catalog" is reserved (see the CEL rule on Tenant).
 	CatalogNamespace = "hatchery-catalog"
 
-	// OperatorNamespace is where the operator itself is deployed (the
-	// kubebuilder default). The Tenant name "system" is reserved for the same
-	// reason as "catalog": it would map onto a namespace that already exists.
+	// OperatorNamespace is the operator's namespace; the Tenant name "system" is reserved for it.
 	OperatorNamespace = "hatchery-system"
 )
 
@@ -68,16 +62,13 @@ type TenantQuota struct {
 	// +kubebuilder:validation:Minimum=0
 	MaxGameServers int32 `json:"maxGameServers"`
 
-	// Backups limits what the organization may keep on the platform's own backup storage. Without
-	// it the platform destination is unavailable to the organization. It does not apply to a
-	// destination the organization brings itself.
+	// Backups limits what the org keeps on the platform's backup storage; without it that storage is
+	// unavailable to the org.
 	// +optional
 	Backups *TenantBackupQuota `json:"backups,omitempty"`
 
-	// ExtraImageRegistries are registries this organization may pull Egg images from on top of the
-	// platform's default list (operator/panel --allowed-image-registries). Entries are matched by
-	// whole path segments ("docker.io/itzg" allows docker.io/itzg/*). Only the platform admin
-	// edits it. Ignored while the platform list is empty (the check is off).
+	// ExtraImageRegistries are registries allowed for this org's Eggs on top of the platform's list,
+	// matched by whole path segments. Edited by the platform admin only.
 	// +kubebuilder:validation:MaxItems=20
 	// +kubebuilder:validation:items:MaxLength=253
 	// +optional

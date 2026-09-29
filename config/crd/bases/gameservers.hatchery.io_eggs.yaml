@@ -104,10 +104,8 @@ spec:
                 type: object
               consoleInput:
                 description: |-
-                  ConsoleInput is the file console lines are written to (schedule commands, backup save
-                  commands, the stop command, the panel's command route). Empty means the stdin of PID 1
-                  (/proc/1/fd/0). Images whose PID 1 does not take console input that way declare their own,
-                  e.g. the named pipe itzg/minecraft-server creates with CREATE_CONSOLE_IN_PIPE=true.
+                  ConsoleInput is the file console lines are written to. Empty means the stdin of PID 1
+                  (/proc/1/fd/0).
                 maxLength: 256
                 type: string
               images:
@@ -275,21 +273,16 @@ spec:
                 type: object
               runAsUser:
                 description: |-
-                  RunAsUser runs the game (and the configure step) as this uid and gid instead of the
-                  image's user. Set it for images that would otherwise run as root (e.g. the yolks
-                  images): files the game creates then belong to the same uid as the sftp-agent (1000),
-                  so the file manager can write them. Install stays as root, and a "fix-owner" step
-                  chowns the data volume once per install revision. Leave unset for images whose
-                  entrypoint must start as root and drops privileges itself (itzg/*).
+                  RunAsUser runs the game and the configure step as this uid/gid. Install stays root, and a
+                  fix-owner step chowns the data volume once per install revision. Leave unset for images that drop
+                  privileges themselves (itzg/*).
                 format: int64
                 maximum: 65535
                 minimum: 1
                 type: integer
               startCommand:
-                description: |-
-                  StartCommand starts the server process. It may reference variables declared
-                  below using {{VARIABLE_NAME}} placeholders, resolved by the GameServer
-                  controller before the container starts.
+                description: StartCommand starts the server; {{VARIABLE}} placeholders
+                  are replaced by the variables.
                 type: string
               startupDetection:
                 description: StartupDetection lets the Panel tell "starting" from
@@ -333,10 +326,8 @@ spec:
                 description: Variables declares the environment variables this Egg
                   understands.
                 items:
-                  description: |-
-                    EggVariable declares one environment variable that a server built from this Egg
-                    understands. GameServers may override the value; unset required variables without
-                    a Default are rejected by the GameServer validating webhook.
+                  description: EggVariable is an environment variable of the server;
+                    GameServers may override its value.
                   properties:
                     default:
                       description: Default is used when a GameServer does not override
@@ -377,16 +368,7 @@ spec:
             description: status defines the observed state of Egg
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the Egg resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: conditions are the Egg's current state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

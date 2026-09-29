@@ -14,15 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package sftpagent has two halves that share one contract:
-//
-//   - Server (server.go), the SSH/SFTP server the sftp-agent binary
-//     (cmd/sftp-agent) runs.
-//   - Spec (this file), the Kubernetes container/volume shape both the
-//     GameServer controller (sidecar, on a Running server) and the Panel API
-//     (on-demand maintenance Pod, for a Stopped one) need to agree on so a
-//     client can talk to either one the same way. See AGENTS.md's SFTP
-//     section for why there are two places this container can run.
+// Package sftpagent has the SFTP server (server.go) and the container/volume contract shared by the
+// sidecar and the Panel's maintenance Pod (this file).
 package sftpagent
 
 import (
@@ -34,11 +27,7 @@ import (
 )
 
 const (
-	// DefaultDataVolumeName/DefaultDataMountPath are the canonical volume
-	// name and mount path for a GameServer's data directory, shared by the
-	// GameServer controller (the "server" container and its sidecar) and the
-	// Panel API (the standalone maintenance Pod) so neither has to hardcode
-	// its own copy that could drift from the other's.
+	// Data volume name and mount path shared by the controller and the Panel.
 	DefaultDataVolumeName = "data"
 	DefaultDataMountPath  = "/data"
 
@@ -62,26 +51,17 @@ const (
 	HMACKeyFileEnv = "HATCHERY_SFTP_HMAC_KEY_FILE"
 )
 
-// SecretData builds the Secret data map for the per-GameServer HMAC key, so
-// callers that create the Secret (the GameServer controller) don't need to
-// know the exact key name Container's volume mount expects to find it under.
+// SecretData builds the data of the per-GameServer HMAC Secret.
 func SecretData(hmacKey []byte) map[string][]byte {
 	return map[string][]byte{secretFileName: hmacKey}
 }
 
-// SecretName is the per-GameServer HMAC secret's name, derived deterministically
-// from the GameServer's name so both the controller (which creates it) and the
-// Panel API (which reads it to mint tokens) agree on where to find it without
-// needing it recorded anywhere else.
+// SecretName is the per-GameServer HMAC Secret's name.
 func SecretName(gameServerName string) string {
 	return gameServerName + "-sftp"
 }
 
-// Container builds the sftp-agent container spec. dataVolumeName/dataMountPath
-// identify the volume holding the GameServer's files — the caller owns
-// actually declaring that volume (it's the same data PVC the "server"
-// container uses when this is a sidecar, or the whole point of the Pod when
-// it's a standalone maintenance Pod).
+// Container builds the sftp-agent container; the caller declares the data volume.
 func Container(image, secretName, serverUUID, dataVolumeName, dataMountPath string) corev1.Container {
 	return corev1.Container{
 		Name:  ContainerName,
@@ -127,14 +107,7 @@ func SecretVolume(secretName string) corev1.Volume {
 	}
 }
 
-// SharedFSGroup is the Pod-level fsGroup both the GameServer controller
-// (sidecar Pod) and the Panel API (maintenance Pod) set so the sftp-agent
-// container — which runs as this same gid, see Dockerfile.sftp-agent — can
-// read and write files the "server" container created and vice versa,
-// regardless of which uid that container itself runs as. It matches the
-// uid/gid most game-server base images (e.g. itzg/*) already use; an Egg
-// whose image uses a different one is a known gap, not yet configurable —
-// see AGENTS.md.
+// SharedFSGroup is the Pod fsGroup that lets the sftp-agent (this gid) and the game share files.
 const SharedFSGroup int64 = 1000
 
 // FSGroupPtr returns a pointer to SharedFSGroup, ready to assign directly to

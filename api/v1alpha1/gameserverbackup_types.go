@@ -22,19 +22,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// GameServerRef names a GameServer in the same namespace. Shared by
-// GameServerBackup (what it captures) and GameServerRestore (what it
-// restores onto).
+// GameServerRef names a GameServer in the same namespace.
 type GameServerRef struct {
 	Name string `json:"name"`
 }
 
-// GameServerBackupFinalizer is set on every GameServerBackup so the
-// controller can prune the remote snapshot before the object is actually
-// removed — Kubernetes garbage collection has no idea an S3 bucket exists.
-// BackupExpiresAtAnnotation (RFC 3339) makes the operator delete the backup once that time has
-// passed; the finalizer then removes the snapshot from the storage. Set by the Panel on backups
-// kept on the platform's storage, from the organization's retention.
+// BackupExpiresAtAnnotation (RFC 3339): the operator deletes the backup after that time. Set by the
+// Panel on backups kept on the platform's storage.
 const BackupExpiresAtAnnotation = "gameservers.hatchery.io/expires-at"
 
 // BackupGameServerLabel and BackupDestinationLabel let the Panel list an organization's backups by
@@ -44,11 +38,10 @@ const (
 	BackupDestinationLabel = "gameservers.hatchery.io/backup-destination"
 )
 
-const GameServerBackupFinalizer = "gameservers.hatchery.io/backup-finalizer"
+// GameServerBackupFinalizer removes the remote snapshots before the backup object goes away.
+const GameServerBackupFinalizer ="gameservers.hatchery.io/backup-finalizer"
 
-// S3Destination points a backup at an S3-compatible bucket. restic (the tool
-// backup/restore Jobs actually run — see internal/backup) treats any of
-// these the same way regardless of provider, so this isn't AWS-specific.
+// S3Destination is an S3-compatible bucket.
 type S3Destination struct {
 	// Endpoint is the S3-compatible host, e.g. "s3.amazonaws.com" or a
 	// MinIO/R2 endpoint. Defaults to "s3.amazonaws.com" when empty.
@@ -58,24 +51,16 @@ type S3Destination struct {
 	// Bucket is the destination bucket name.
 	Bucket string `json:"bucket"`
 
-	// Prefix namespaces this backup's data within the bucket, e.g.
-	// "gameservers/my-server". Sharing a bucket across many GameServers
-	// without distinct prefixes will mix their restic repositories together.
+	// Prefix separates this server's restic repository inside the bucket, e.g. "gameservers/my-server".
 	// +optional
 	Prefix string `json:"prefix,omitempty"`
 
-	// SecretRef names a Secret in the same namespace with three keys:
-	// "access-key", "secret-key" (S3 credentials) and "restic-password" (the
-	// repository encryption password — must stay the same across every
-	// backup/restore that shares a repository, since it's what makes prior
-	// snapshots decryptable).
+	// SecretRef names a Secret with "access-key", "secret-key" and "restic-password" (the
+	// password must never change for a repository).
 	SecretRef corev1.LocalObjectReference `json:"secretRef"`
 }
 
-// BackupDestination describes where a GameServerBackup's data is stored.
-// Only S3 is supported today; the field is still a pointer/struct (not a
-// flat S3Destination) so a second destination type doesn't require breaking
-// this API later.
+// BackupDestination is where a backup is stored (only S3 today).
 type BackupDestination struct {
 	S3 *S3Destination `json:"s3"`
 }
@@ -158,15 +143,7 @@ type GameServerBackupStatus struct {
 	// +optional
 	Quiesce *BackupQuiesceStatus `json:"quiesce,omitempty"`
 
-	// conditions represent the current state of the GameServerBackup resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// conditions are the GameServerBackup's current state.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

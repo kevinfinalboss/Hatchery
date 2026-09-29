@@ -22,23 +22,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// GameServerFinalizer is set on every GameServer so the controller can clean up
-// owned cluster-scoped-ish resources (PVC retention, allocation release) before
-// the object is actually removed from etcd.
+// GameServerFinalizer lets the controller clean up before a GameServer is removed.
 const GameServerFinalizer = "gameservers.hatchery.io/finalizer"
 
-// RestartAnnotation asks the controller to restart a running GameServer. Whoever
-// wants a restart (the Panel API, or a human via kubectl) sets it to any value
-// that differs from the previous one — a timestamp by convention.
+// RestartAnnotation restarts a running GameServer once per new value (a timestamp by convention).
 const RestartAnnotation = "gameservers.hatchery.io/restart-at"
 
 // SpecHashAnnotation stamps a Pod with a hash of the GameServer spec (variables and resources) it
 // was built from, so the controller can tell when the running Pod is out of date.
 const SpecHashAnnotation = "gameservers.hatchery.io/spec-hash"
 
-// FilesChangedAnnotation is set by the Panel when it changes files the game only reads at start
-// (installing, updating or removing a mod) while the server runs. It is part of the spec hash, so
-// the server shows "restart to apply" (RestartRequired) until it restarts.
+// FilesChangedAnnotation marks files the game reads at start as changed (mods); it is part of the
+// spec hash, so RestartRequired shows until the next restart.
 const FilesChangedAnnotation = "gameservers.hatchery.io/files-changed-at"
 
 // ConditionRestartRequired is True while the running Pod was built from an older spec.
@@ -48,14 +43,12 @@ const ConditionRestartRequired = "RestartRequired"
 // False with reason StartupTimeout when the regex never matched and the server was treated as up.
 const ConditionReady = "Ready"
 
-// ConditionPublicExposureReady is True once a Route was allocated for every port the Egg
-// declares. False with reason PoolExhausted when the configured range ran out, or NotConfigured
-// when the operator was not started with --public-port-range.
+// ConditionPublicExposureReady: every port has a public port. False with PoolExhausted or
+// NotConfigured (no --public-port-range).
 const ConditionPublicExposureReady = "PublicExposureReady"
 
-// ConditionCrashed is True after the controller gave up restarting a server whose game process kept
-// crashing (reason CrashLoop) or crashed with autoRestart off (reason AutoRestartDisabled). It goes
-// back to False (reason NotCrashed) as soon as the server is asked to run again.
+// ConditionCrashed: the controller stopped restarting the game (CrashLoop or AutoRestartDisabled).
+// False again once the server is asked to run.
 const ConditionCrashed = "Crashed"
 
 // GameServerState is the desired lifecycle state of a GameServer, set by whoever
@@ -97,9 +90,7 @@ type GameServerVariable struct {
 	Value string `json:"value"`
 }
 
-// GameServerPublicExposure requests that this server be reachable from outside the cluster
-// (e.g. through a homelab's VPS relay), one public port per port the Egg declares. See
-// GatewayExposureReconciler and docs/superpowers/specs/2026-09-22-public-game-exposure-design.md.
+// GameServerPublicExposure makes the server reachable from outside the cluster, one public port per port.
 type GameServerPublicExposure struct {
 	// Enabled requests public exposure. Has no effect unless the operator was started with
 	// --public-port-range: see the PublicExposureReady condition for why.
@@ -107,9 +98,7 @@ type GameServerPublicExposure struct {
 	Enabled bool `json:"enabled,omitempty"`
 }
 
-// GameServerExtraPort is a port the server listens on beyond the Egg's (a plugin's web map, voice
-// chat, Bedrock bridge...). The plugin must be configured to listen on it. Pods have their own
-// network, so the same number can be used by every server; only public ports must be unique.
+// GameServerExtraPort is a port beyond the Egg's (web map, voice chat...); the plugin must listen on it.
 type GameServerExtraPort struct {
 	// Name identifies the port; it becomes a Service port name, so it follows IANA_SVC_NAME.
 	// +kubebuilder:validation:Pattern=`^[a-z]([a-z0-9-]{0,13}[a-z0-9])?$`
@@ -257,9 +246,7 @@ type GameServerSpec struct {
 	Storage GameServerStorage `json:"storage"`
 }
 
-// GameServerPhase is a coarse-grained summary of where a GameServer is in its
-// lifecycle, intended for humans and simple UI status badges. Controllers and
-// webhooks that need fine-grained state should use Conditions instead.
+// GameServerPhase summarizes the lifecycle for people and UI badges; use Conditions for details.
 type GameServerPhase string
 
 const (
@@ -304,15 +291,7 @@ type GameServerStatus struct {
 	// +optional
 	LastCrash *GameServerCrash `json:"lastCrash,omitempty"`
 
-	// conditions represent the current state of the GameServer resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// conditions are the GameServer's current state.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

@@ -55,10 +55,7 @@ spec:
                   creation — changing it would orphan whatever was already backed up.
                 properties:
                   s3:
-                    description: |-
-                      S3Destination points a backup at an S3-compatible bucket. restic (the tool
-                      backup/restore Jobs actually run — see internal/backup) treats any of
-                      these the same way regardless of provider, so this isn't AWS-specific.
+                    description: S3Destination is an S3-compatible bucket.
                     properties:
                       bucket:
                         description: Bucket is the destination bucket name.
@@ -69,18 +66,13 @@ spec:
                           MinIO/R2 endpoint. Defaults to "s3.amazonaws.com" when empty.
                         type: string
                       prefix:
-                        description: |-
-                          Prefix namespaces this backup's data within the bucket, e.g.
-                          "gameservers/my-server". Sharing a bucket across many GameServers
-                          without distinct prefixes will mix their restic repositories together.
+                        description: Prefix separates this server's restic repository
+                          inside the bucket, e.g. "gameservers/my-server".
                         type: string
                       secretRef:
                         description: |-
-                          SecretRef names a Secret in the same namespace with three keys:
-                          "access-key", "secret-key" (S3 credentials) and "restic-password" (the
-                          repository encryption password — must stay the same across every
-                          backup/restore that shares a repository, since it's what makes prior
-                          snapshots decryptable).
+                          SecretRef names a Secret with "access-key", "secret-key" and "restic-password" (the
+                          password must never change for a repository).
                         properties:
                           name:
                             default: ""
@@ -129,16 +121,7 @@ spec:
                 format: date-time
                 type: string
               conditions:
-                description: |-
-                  conditions represent the current state of the GameServerBackup resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: conditions are the GameServerBackup's current state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

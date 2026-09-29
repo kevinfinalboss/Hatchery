@@ -48,10 +48,7 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/sftpagent"
 )
 
-// dataVolumeName/dataMountPath name the volume the "server" container and the
-// sftp-agent sidecar share for the server's data directory. Defined once in
-// internal/sftpagent so the Panel API's standalone maintenance Pod (see
-// internal/panelapi) can reuse the exact same names without risking drift.
+// Data volume shared by the game container and the sftp-agent (names shared with the maintenance Pod).
 const (
 	dataVolumeName = sftpagent.DefaultDataVolumeName
 	dataMountPath  = sftpagent.DefaultDataMountPath
@@ -86,13 +83,8 @@ type GameServerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;update
 
-// Reconcile moves the cluster state for a single GameServer towards its desired
-// state: an Egg-derived Pod, a Service exposing the Egg's ports, and a PVC
-// backing the server's data directory. Pod/Service/PVC cleanup on delete is
-// handled by Kubernetes garbage collection through owner references; the
-// GameServerFinalizer exists for cleanup Kubernetes can't do on its own (today:
-// dropping this object's Prometheus series; later: releasing an external
-// allocation, telling the Panel API).
+// Reconcile drives a GameServer towards its Pod, Service and PVC. Owner references clean those up;
+// the finalizer handles what Kubernetes cannot (the Prometheus series).
 func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reterr error) {
 	log := logf.FromContext(ctx)
 
@@ -123,11 +115,7 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	// The sftp-agent secret is independent of the Egg (and of whether the
-	// server is Running or Stopped): the Panel API needs it to mint sessions
-	// for the on-demand maintenance Pod even while the server itself isn't
-	// running, so it's reconciled unconditionally rather than alongside the
-	// Pod.
+	// The sftp-agent secret is needed even while the server is stopped (maintenance Pod).
 	if err := r.reconcileSecret(ctx, &gs); err != nil {
 		return ctrl.Result{}, fmt.Errorf("reconciling sftp secret: %w", err)
 	}
@@ -175,9 +163,7 @@ func (r *GameServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return res, err
 }
 
-// reconcileDelete runs the finalizer's cleanup and then releases it. Pod,
-// Service and PVC are already gone or going away via owner references by the
-// time this runs; this is only for state Kubernetes GC doesn't know about.
+// reconcileDelete runs the finalizer's cleanup and releases it.
 func (r *GameServerReconciler) reconcileDelete(ctx context.Context, gs *gameserversv1alpha1.GameServer) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(gs, gameserversv1alpha1.GameServerFinalizer) {
 		return ctrl.Result{}, nil
@@ -229,11 +215,7 @@ func (r *GameServerReconciler) reconcilePVC(ctx context.Context, gs *gameservers
 	return r.Create(ctx, pvc)
 }
 
-// reconcileSecret ensures the per-GameServer HMAC secret the sftp-agent uses
-// to verify session tokens exists. It's generated once and never rotated
-// automatically in the MVP — rotating it would invalidate every
-// already-issued token, which is fine for an expired one but not something
-// to do implicitly on every reconcile.
+// reconcileSecret creates the sftp-agent's HMAC secret once; it is never rotated automatically.
 func (r *GameServerReconciler) reconcileSecret(ctx context.Context, gs *gameserversv1alpha1.GameServer) error {
 	name := sftpagent.SecretName(gs.Name)
 	var existing corev1.Secret
@@ -267,11 +249,8 @@ func (r *GameServerReconciler) reconcileSecret(ctx context.Context, gs *gameserv
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
-// gameIngressPolicySpec allows player traffic to one GameServer's pods on
-// exactly the ports its Egg declares, from any source. It is additive to the
-// tenant namespace's default-deny (see tenantNetworkPolicies). An Egg with no
-// ports gets no rule at all: an ingress rule with an empty port list would
-// mean "every port".
+// gameIngressPolicySpec opens the server's ports to any source. No ports means no rule (an empty
+// port list would mean every port).
 func gameIngressPolicySpec(gsName string, eggPorts []gameserversv1alpha1.EggPort) networkingv1.NetworkPolicySpec {
 	spec := networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{MatchLabels: gameServerLabels(gsName)},
@@ -292,10 +271,8 @@ func gameIngressPolicySpec(gsName string, eggPorts []gameserversv1alpha1.EggPort
 	return spec
 }
 
-// reconcileNetworkPolicy opens the Egg's ports to players, but only in tenant
-// namespaces. In any other namespace nothing is default-denied, and adding an
-// ingress policy there would *isolate* the pods for ingress and cut off the
-// sftp-agent port — the opposite of what this is for.
+// reconcileNetworkPolicy only acts in tenant namespaces: elsewhere the policy would isolate the pod
+// and cut off SFTP.
 func (r *GameServerReconciler) reconcileNetworkPolicy(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
 	var ns corev1.Namespace
 	if err := r.Get(ctx, types.NamespacedName{Name: gs.Namespace}, &ns); err != nil {
@@ -312,15 +289,8 @@ func (r *GameServerReconciler) reconcileNetworkPolicy(ctx context.Context, gs *g
 	return err
 }
 
-// reconcileService ensures a ClusterIP Service exposes the Egg's declared
-// ports plus the sftp-agent's port — the latter always present so the same
-// Service reaches SFTP whether it's currently backed by the sidecar (server
-// Running) or the standalone maintenance Pod the Panel API creates on demand
-// when it's Stopped (see internal/sftpagent and the Panel API's SFTP session
-// handler); both use the same GameServer labels as their selector. How game
-// ports specifically get exposed to players (NodePort, LoadBalancer, a shared
-// ingress-style proxy) is a decision for a later milestone, not part of this
-// scaffolding.
+// reconcileService exposes the game ports and the SFTP port, served by the sidecar or by the
+// maintenance Pod (same labels).
 func (r *GameServerReconciler) reconcileService(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
 	ports := append(servicePorts(gameserversv1alpha1.EffectivePorts(egg, gs)), sftpagent.ServicePort())
 
@@ -383,9 +353,8 @@ func (r *GameServerReconciler) reconcilePod(ctx context.Context, gs *gameservers
 	return desired, nil
 }
 
-// restartRequested reports whether the GameServer asks for a restart the running Pod
-// hasn't been through yet: it carries a RestartAnnotation the Pod's stamp doesn't match.
-// A Pod created before restarts existed has no stamp, so the first request restarts it too.
+// restartRequested: the GameServer's RestartAnnotation differs from the Pod's stamp (a Pod without
+// a stamp counts as not restarted).
 func restartRequested(gs *gameserversv1alpha1.GameServer, pod *corev1.Pod) bool {
 	want := gs.Annotations[gameserversv1alpha1.RestartAnnotation]
 	return want != "" && want != pod.Annotations[gameserversv1alpha1.RestartAnnotation]
@@ -472,9 +441,7 @@ func (r *GameServerReconciler) setPhase(ctx context.Context, gs *gameserversv1al
 	return ctrl.Result{}, nil
 }
 
-// gameServerLabels is a thin local alias for gameserversv1alpha1.GameServerLabels
-// — kept so the rest of this file doesn't need the longer package-qualified
-// name at every call site.
+// gameServerLabels is a short alias for gameserversv1alpha1.GameServerLabels.
 func gameServerLabels(name string) map[string]string {
 	return gameserversv1alpha1.GameServerLabels(name)
 }
@@ -496,10 +463,8 @@ func servicePorts(eggPorts []gameserversv1alpha1.EggPort) []corev1.ServicePort {
 	return ports
 }
 
-// buildPod renders the desired Pod for a GameServer from its Egg: resolves
-// variables, substitutes them into the Egg's start command, wires up the
-// install initContainer when the Egg declares one, and adds the sftp-agent
-// sidecar (see internal/sftpagent) sharing the same data volume.
+// buildPod renders the GameServer's Pod from its Egg: init containers, game container and the
+// sftp-agent sidecar on the same data volume.
 func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, sftpAgentImage string) (*corev1.Pod, error) {
 	vars, err := resolveVariables(egg, gs)
 	if err != nil {
@@ -605,20 +570,12 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 			AutomountServiceAccountToken:  &automountToken,
 			TerminationGracePeriodSeconds: &graceSeconds,
 			InitContainers:                initContainers,
-			// fsGroup lets the sftp-agent sidecar and the "server" container
-			// share files on the data volume regardless of which uid the
-			// Egg's image runs the server as — see sftpagent.SharedFSGroup.
+			// Shared group so the sidecar can use files the game writes (sftpagent.SharedFSGroup).
 			SecurityContext: sftpagent.PodSecurityContext(),
 			Containers: []corev1.Container{{
 				Name:  "server",
 				Image: serverImage,
-				// "exec" makes a POSIX shell replace itself with the target
-				// process instead of forking it, so the server binary — not
-				// /bin/sh — ends up as the container's PID 1. That matters for
-				// two things the Panel API depends on: `kubectl attach`-style
-				// console access writes to PID 1's stdin, and StopSignal is
-				// delivered to PID 1. Without "exec" both would silently hit
-				// the shell instead of the game server.
+				// "exec" makes the game PID 1: console input and stop signals go to PID 1.
 				Command:      []string{"/bin/sh", "-c", "exec " + renderStartCommand(egg.EffectiveStartCommand(gs.Spec.StartCommand), vars)},
 				WorkingDir:   dataMountPath,
 				Env:          serverEnv,
@@ -626,10 +583,7 @@ func buildPod(gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg, 
 				Ports:        containerPorts,
 				Resources:    gs.Spec.Resources,
 				VolumeMounts: mounts,
-				// Stdin/TTY are enabled so the Panel API can attach to this
-				// container's console (pods/attach) and forward player/admin
-				// commands to the server process, mirroring how Wings' console
-				// works against a locally-run process.
+				// Stdin lets the Panel attach to the console (pods/attach).
 				Stdin:           true,
 				StdinOnce:       false,
 				TTY:             false,
@@ -654,9 +608,7 @@ func gameContainerSecurityContextFor(egg *gameserversv1alpha1.Egg) *corev1.Secur
 	return sc
 }
 
-// fixOwnerScript chowns the data volume to HATCHERY_OWNER once per install revision: the
-// marker makes later starts free, while a reinstall (new revision, files written by the root
-// install) or an Egg switching to runAsUser runs it again.
+// fixOwnerScript chowns the data volume to HATCHERY_OWNER once per install revision (marker file).
 const fixOwnerScript = `want="${HATCHERY_OWNER}:${HATCHERY_INSTALL_REVISION}"
 if [ "$(cat /data/.hatchery-owner 2>/dev/null)" != "$want" ]; then
   echo "hatchery: chown -R ${HATCHERY_OWNER} /data"
@@ -712,10 +664,8 @@ const (
 	installMarker = dataMountPath + "/.hatchery-installed"
 )
 
-// onceInstallCommand wraps the Egg's install command so it only runs when the marker on the data
-// volume differs from the server's installRevision. The marker is written only when the script
-// succeeds, so a failed install is retried on the next start. The Egg's own entrypoint and script
-// are passed through untouched, as "$@".
+// onceInstallCommand runs the Egg's install only when the marker differs from installRevision; the
+// marker is written only on success. The Egg's command is passed as "$@".
 func onceInstallCommand(install *gameserversv1alpha1.EggInstall) []string {
 	wrapper := fmt.Sprintf(`if [ "$(cat %[1]s 2>/dev/null)" = "$%[2]s" ]; then
   echo "install already done (revision $%[2]s), skipping"
@@ -729,10 +679,8 @@ printf '%%s' "$%[2]s" > %[1]s
 
 var signalName = regexp.MustCompile(`^[A-Z0-9]{1,10}$`)
 
-// stopLifecycle builds the preStop hook that stops the game gracefully before the kubelet's own
-// SIGTERM: it writes the Egg's stopCommand to the game's console input, or, without a command,
-// sends a non-default stopSignal, then waits for the process to exit. lifecycle.stopSignal is not
-// used because it needs a feature gate that is off on many clusters. nil means "nothing to do".
+// stopLifecycle builds the preStop hook: the Egg's stopCommand on the console, or a non-default
+// stopSignal, then wait for PID 1 to exit. nil when there is nothing to do.
 func stopLifecycle(egg *gameserversv1alpha1.Egg) *corev1.Lifecycle {
 	const wait = `while kill -0 1 2>/dev/null; do sleep 1; done`
 	var script string
@@ -757,11 +705,8 @@ func installCommand(install *gameserversv1alpha1.EggInstall) []string {
 	return []string{"/bin/sh", "-c", install.Script}
 }
 
-// resolveVariables merges an Egg's declared variables (defaults) with a
-// GameServer's overrides, and fails closed if a required variable ends up
-// without a value. A validating webhook will move this check to admission
-// time in a later milestone; the controller still enforces it so a GameServer
-// created before the webhook existed cannot silently run with missing config.
+// resolveVariables merges Egg defaults with the GameServer's overrides and fails when a required
+// variable is empty.
 func resolveVariables(egg *gameserversv1alpha1.Egg, gs *gameserversv1alpha1.GameServer) (map[string]string, error) {
 	resolved := make(map[string]string, len(egg.Spec.Variables))
 	for _, v := range egg.Spec.Variables {

@@ -25,9 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// EggVariable declares one environment variable that a server built from this Egg
-// understands. GameServers may override the value; unset required variables without
-// a Default are rejected by the GameServer validating webhook.
+// EggVariable is an environment variable of the server; GameServers may override its value.
 type EggVariable struct {
 	// Name is the environment variable name injected into the server container.
 	Name string `json:"name"`
@@ -76,9 +74,7 @@ type EggPort struct {
 	Default bool `json:"default,omitempty"`
 }
 
-// EggInstall describes the one-off step that prepares server files before the
-// first start. The GameServer controller runs this as an initContainer against
-// the same data volume the server container mounts.
+// EggInstall prepares the server files; it runs as an init container on the data volume.
 type EggInstall struct {
 	// Image used to run the install script container. Defaults to the Egg's main
 	// Image when empty.
@@ -126,9 +122,8 @@ type EggStartupDetection struct {
 	TimeoutSeconds *int32 `json:"timeoutSeconds,omitempty"`
 }
 
-// EggBackup pauses the game's world saving around a backup of a running server, so the snapshot
-// isn't taken in the middle of a write. The operator writes Before to the game's console, waits for
-// SavedRegex (or DelaySeconds without one), runs the backup, then writes After.
+// EggBackup pauses world saving around a backup of a running server: Before, wait for SavedRegex
+// (or DelaySeconds), backup, After.
 type EggBackup struct {
 	// Before are console commands sent before the copy, e.g. ["save-off", "save-all flush"].
 	// +kubebuilder:validation:MaxItems=5
@@ -250,9 +245,7 @@ type EggSpec struct {
 	// +listMapKey=name
 	Images []EggImage `json:"images"`
 
-	// StartCommand starts the server process. It may reference variables declared
-	// below using {{VARIABLE_NAME}} placeholders, resolved by the GameServer
-	// controller before the container starts.
+	// StartCommand starts the server; {{VARIABLE}} placeholders are replaced by the variables.
 	StartCommand string `json:"startCommand"`
 
 	// StopCommand, when set, is written to the server process's stdin to request a
@@ -260,10 +253,8 @@ type EggSpec struct {
 	// +optional
 	StopCommand string `json:"stopCommand,omitempty"`
 
-	// ConsoleInput is the file console lines are written to (schedule commands, backup save
-	// commands, the stop command, the panel's command route). Empty means the stdin of PID 1
-	// (/proc/1/fd/0). Images whose PID 1 does not take console input that way declare their own,
-	// e.g. the named pipe itzg/minecraft-server creates with CREATE_CONSOLE_IN_PIPE=true.
+	// ConsoleInput is the file console lines are written to. Empty means the stdin of PID 1
+	// (/proc/1/fd/0).
 	// +kubebuilder:validation:MaxLength=256
 	// +optional
 	ConsoleInput string `json:"consoleInput,omitempty"`
@@ -314,12 +305,9 @@ type EggSpec struct {
 	// +optional
 	Backup *EggBackup `json:"backup,omitempty"`
 
-	// RunAsUser runs the game (and the configure step) as this uid and gid instead of the
-	// image's user. Set it for images that would otherwise run as root (e.g. the yolks
-	// images): files the game creates then belong to the same uid as the sftp-agent (1000),
-	// so the file manager can write them. Install stays as root, and a "fix-owner" step
-	// chowns the data volume once per install revision. Leave unset for images whose
-	// entrypoint must start as root and drops privileges itself (itzg/*).
+	// RunAsUser runs the game and the configure step as this uid/gid. Install stays root, and a
+	// fix-owner step chowns the data volume once per install revision. Leave unset for images that drop
+	// privileges themselves (itzg/*).
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
@@ -338,15 +326,7 @@ type EggStatus struct {
 	// For Kubernetes API conventions, see:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
 
-	// conditions represent the current state of the Egg resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// conditions are the Egg's current state.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

@@ -36,23 +36,14 @@ import (
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 )
 
-// GatewayExposureReconciler gives opted-in GameServers a public host:port through a single,
-// shared Gateway API Gateway. It never touches anything outside the cluster: making that Gateway's
-// LoadBalancer IP actually reachable (WireGuard tunnel + a VPS forwarding a static port range) is
-// the homelab operator's job, not this reconciler's — see
-// docs/superpowers/specs/2026-09-22-public-game-exposure-design.md.
-//
-// Only registered in cmd/main.go when --public-port-range is set: touching Gateway/TCPRoute/
-// UDPRoute on a cluster that never installed the Gateway API CRDs would break every GameServer's
-// reconciliation, not just this feature's.
+// GatewayExposureReconciler gives exposed GameServers a public port on one shared Gateway, with a
+// TCPRoute/UDPRoute per port. Registered only with --public-port-range.
 type GatewayExposureReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	// APIReader reads straight from the API server, bypassing the manager's cache. Port allocation
-	// needs it: the cache can lag a just-written status by a few milliseconds, and two GameServers
-	// reconciled back to back would otherwise both see the same port as free. Nil falls back to
-	// Client (tests that don't exercise that race).
+	// APIReader bypasses the cache for port allocation: a lagging cache would hand the same port to
+	// two servers. Nil falls back to Client.
 	APIReader client.Reader
 
 	PortRangeMin, PortRangeMax int32
@@ -85,10 +76,7 @@ func (r *GatewayExposureReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var gs gameserversv1alpha1.GameServer
 	if err := r.Get(ctx, req.NamespacedName, &gs); err != nil {
 		if apierrors.IsNotFound(err) {
-			// The GameServer is fully gone (its owned Routes went with it via GC). rebuildGateway
-			// must still run: it is the only thing that ever drops this server's Listener from the
-			// shared Gateway, and nothing else will trigger that once there is no GameServer left
-			// to reconcile.
+			// The GameServer is gone: only rebuildGateway drops its Listener.
 			if err := r.rebuildGateway(ctx); err != nil {
 				return ctrl.Result{}, fmt.Errorf("rebuilding shared Gateway after delete: %w", err)
 			}
@@ -218,11 +206,8 @@ func routeName(gs *gameserversv1alpha1.GameServer, port gameserversv1alpha1.EggP
 	return gs.Name + "-" + port.Name
 }
 
-// applyRoutes creates or updates one TCPRoute/UDPRoute per port the Egg declares, owned by the
-// GameServer (deleting the GameServer garbage-collects these too; toggling exposure off without
-// deleting it is handled explicitly by deleteRoutes). The Route's backend is always the internal
-// Service:containerPort — never the allocated public port, which only appears on the shared
-// Gateway's Listener (see rebuildGateway) that this Route's parentRef/sectionName attaches to.
+// applyRoutes creates or updates one Route per port, owned by the GameServer. The backend is the
+// internal Service port; the public port only exists on the Gateway Listener.
 func (r *GatewayExposureReconciler) applyRoutes(ctx context.Context, gs *gameserversv1alpha1.GameServer, egg *gameserversv1alpha1.Egg) error {
 	for _, p := range gameserversv1alpha1.EffectivePorts(egg, gs) {
 		name := routeName(gs, p)
@@ -266,10 +251,8 @@ func (r *GatewayExposureReconciler) applyRoutes(ctx context.Context, gs *gameser
 	return nil
 }
 
-// pruneRoutes deletes every TCPRoute/UDPRoute this GameServer controls whose name is not in keep
-// (nil keep = delete them all). Listing by owner instead of walking the Egg's current ports is what
-// catches a Route for a port the Egg no longer declares: that Route would otherwise stay around,
-// detached from any Listener, until the GameServer itself was deleted.
+// pruneRoutes deletes the GameServer's Routes whose name is not in keep (nil = all), including
+// Routes of ports the Egg no longer declares.
 func (r *GatewayExposureReconciler) pruneRoutes(ctx context.Context, gs *gameserversv1alpha1.GameServer, keep map[string]bool) error {
 	var tcp gatewayv1.TCPRouteList
 	if err := r.List(ctx, &tcp, client.InNamespace(gs.Namespace)); err != nil {
@@ -297,12 +280,8 @@ func (r *GatewayExposureReconciler) pruneRoutes(ctx context.Context, gs *gameser
 	return nil
 }
 
-// rebuildGateway recomputes the shared Gateway's Listeners from every currently-exposed
-// GameServer, cluster-wide, and writes the full list back. Recomputing from scratch (instead of
-// patching in just this one GameServer's listeners) means a GameServer that got deleted, or whose
-// exposure got disabled, drops out automatically the next time anything reconciles — no separate
-// cleanup path to keep in sync. MaxConcurrentReconciles defaults to 1 for this controller (see
-// SetupWithManager), so this read-then-write is not racing itself.
+// rebuildGateway recomputes the shared Gateway's Listeners from every exposed GameServer. It is not
+// concurrent with itself (one worker).
 func (r *GatewayExposureReconciler) rebuildGateway(ctx context.Context) error {
 	var list gameserversv1alpha1.GameServerList
 	if err := r.reader().List(ctx, &list); err != nil {
@@ -356,10 +335,7 @@ func (r *GatewayExposureReconciler) rebuildGateway(ctx context.Context) error {
 	}
 
 	if len(listeners) == 0 {
-		// The Gateway API CRD requires spec.listeners to have at least one entry (kubebuilder
-		// MinItems=1) — an empty list is not a valid "no one is exposed yet" state, it is a
-		// rejected write. Delete the Gateway instead so "nobody opted in" and "opted-in server
-		// just got deleted/disabled" both converge to no Gateway at all.
+		// A Gateway needs at least one Listener: with no exposed server, delete it.
 		err := r.Delete(ctx, &gatewayv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: r.GatewayName, Namespace: r.GatewayNamespace}})
 		return client.IgnoreNotFound(err)
 	}
@@ -392,10 +368,8 @@ func setExposureDisabled(gs *gameserversv1alpha1.GameServer) bool {
 	})
 }
 
-// PublicExposureUnavailableReconciler stands in for GatewayExposureReconciler when the operator runs
-// without --public-port-range. It never touches Gateway API objects (their CRDs may not even be
-// installed); it only tells a GameServer that asked for exposure that it will not get it, so the
-// Panel can say so instead of showing "allocating" forever.
+// PublicExposureUnavailableReconciler replaces GatewayExposureReconciler without --public-port-range:
+// it only marks servers that ask for exposure as NotConfigured.
 type PublicExposureUnavailableReconciler struct {
 	client.Client
 }

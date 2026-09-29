@@ -14,13 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package backup builds the restic Jobs GameServerBackupController and
-// GameServerRestoreController run. restic (not a bespoke tar-to-S3 script)
-// gives us deduplication, encryption and incremental snapshots for free;
-// every backup for a given GameServerBackup lives in the same restic
-// repository, addressed by a tag derived from the CR's name rather than a
-// captured snapshot ID — that sidesteps needing the controller to scrape a
-// Job's logs just to learn what restic named the snapshot it created.
+// Package backup builds the restic Jobs for backups, restores and cleanup. A backup's snapshots are
+// found by a tag derived from its name, not by snapshot ID.
 package backup
 
 import (
@@ -34,9 +29,7 @@ import (
 // Image is the restic build every backup/restore/cleanup Job runs.
 const Image = "restic/restic:0.18.1"
 
-// Tag deterministically names the restic tag a GameServerBackup's snapshots
-// carry, so a GameServerRestore never needs to know a snapshot ID — just the
-// GameServerBackup's name.
+// Tag is the restic tag of a GameServerBackup's snapshots.
 func Tag(backupName string) string {
 	return "gsbackup-" + backupName
 }
@@ -69,16 +62,10 @@ func resticEnv(dest *gameserversv1alpha1.S3Destination, tag string) []corev1.Env
 	}
 }
 
-// jobBackoffLimit is kept low: a restic failure (bad credentials, an
-// unreachable bucket) is almost never transient in the way a generic
-// workload's crash might be, so retrying a handful of times is about
-// catching flaky networking, not masking a real config error behind delay.
+// restic failures are rarely transient: retry only a few times.
 var jobBackoffLimit int32 = 2
 
-// job builds the common Job shape; the caller (GameServerBackupController or
-// GameServerRestoreController) is responsible for calling
-// controllerutil.SetControllerReference on the result — this package doesn't
-// take a Scheme just to do that itself.
+// job builds the common Job; the caller sets the controller reference.
 func job(name, namespace, script, pvcName string, readOnlyData bool, env []corev1.EnvVar) *batchv1.Job {
 	// restic only talks to the S3 endpoint, never to the Kubernetes API.
 	automountToken := false
@@ -114,19 +101,8 @@ func job(name, namespace, script, pvcName string, readOnlyData bool, env []corev
 	}
 }
 
-// BackupJob builds the Job that runs `restic backup` against a GameServer's
-// data volume, initializing the repository first if this is the first backup
-// ever taken into it.
-//
-// The init step is a plain "try it, ignore failure" rather than the more
-// obvious "check if it exists first, init if not": restic's S3 backend, on
-// any operation against a bucket that doesn't exist yet, doesn't fail fast —
-// it retries with a growing backoff for minutes before giving up. `restic
-// init` itself doesn't have that problem (it creates the bucket, or fails
-// immediately with "already initialized"), so running it unconditionally
-// first — succeed on a fresh repo, fail fast and harmlessly on an existing
-// one — sidesteps the slow path entirely instead of triggering it via a
-// snapshots/exists check.
+// BackupJob runs `restic backup` on the data volume. `restic init` always runs first and its
+// failure is ignored: other commands against a missing bucket retry for minutes instead of failing.
 // affinity pins the Job to the node holding the volume (volumes.NodeAffinity); nil lets it run anywhere.
 func BackupJob(bkp *gameserversv1alpha1.GameServerBackup, pvcName string, affinity *corev1.Affinity) *batchv1.Job {
 	const script = `set -e
@@ -144,14 +120,8 @@ func CleanupJobName(backupName string) string {
 	return backupName + "-cleanup"
 }
 
-// CleanupJob builds the Job that prunes a completed backup's snapshots from
-// the remote repository. It tolerates a repository that was never
-// successfully initialized (nothing to prune) rather than failing the
-// finalizer forever over it. The `restic init` here exists only to dodge the
-// slow-retry-on-missing-bucket path described in BackupJob's doc comment —
-// this only runs after a backup reached Completed, so the bucket
-// (functionally, though maybe not literally the same repository state)
-// already exists in every real case.
+// CleanupJob forgets and prunes a backup's snapshots, tolerating a repository that was never
+// initialized.
 func CleanupJob(bkp *gameserversv1alpha1.GameServerBackup) *batchv1.Job {
 	const script = `restic init >/dev/null 2>&1 || true
 ids=$(restic snapshots --tag "$TAG" --json 2>/dev/null | grep -o '"short_id":"[^"]*"' | cut -d'"' -f4)
@@ -168,19 +138,10 @@ fi
 	return j
 }
 
-// RestoreJob builds the Job that runs `restic restore` for the given
-// GameServerRestore, pulling the latest snapshot tagged for backupName onto
-// the target GameServer's data volume. The admission webhook only allows a
-// GameServerRestore whose backup already reached Completed, so the
-// repository is guaranteed to exist by the time this runs; `restic init`
-// still isn't needed here the way it is in BackupJob/CleanupJob.
+// RestoreJob restores the latest snapshot of backupName onto the data volume.
 func RestoreJob(restore *gameserversv1alpha1.GameServerRestore, dest *gameserversv1alpha1.S3Destination, backupName, pvcName string, affinity *corev1.Affinity) *batchv1.Job {
-	// BackupJob runs `restic backup /data`, which restic records using that
-	// same absolute path inside the snapshot. `restore --target` then
-	// prepends its argument to those stored paths — so target "/data" would
-	// recreate the tree at "/data/data/...", not overwrite "/data" itself.
-	// Target "/" reconstructs the original absolute paths, landing the
-	// restored files exactly back at "/data/...".
+	// Snapshots store the absolute path /data, so the target is / (a target of /data would restore
+	// into /data/data).
 	const script = `set -e
 restic restore latest --tag "$TAG" --target /
 `

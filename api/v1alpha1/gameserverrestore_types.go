@@ -21,18 +21,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// GameServerRestoreFinalizer is set on every GameServerRestore so the
-// controller can guarantee RestoringAnnotation gets cleared off the target
-// GameServer even if the GameServerRestore is deleted mid-flight.
+// GameServerRestoreFinalizer guarantees RestoringAnnotation is cleared even if the restore is deleted midway.
 const GameServerRestoreFinalizer = "gameservers.hatchery.io/restore-finalizer"
 
-// RestoringAnnotation is set to "true" on a GameServer by whichever
-// GameServerRestore currently targets it, for the duration of the restore.
-// It's what the GameServerRestore validating webhook checks to refuse a
-// second concurrent restore against the same GameServer, and it's a lock in
-// the literal sense: the GameServerRestoreController is the only writer, and
-// it always clears it — on completion, on failure, or via the finalizer if
-// the GameServerRestore is deleted early.
+// RestoringAnnotation locks a GameServer during a restore: it cannot start, and a second restore is
+// refused. Only the restore controller writes it.
 const RestoringAnnotation = "gameservers.hatchery.io/restoring"
 
 // GameServerBackupRef names a GameServerBackup in the same namespace.
@@ -42,10 +35,7 @@ type GameServerBackupRef struct {
 
 // GameServerRestoreSpec defines the desired state of GameServerRestore
 type GameServerRestoreSpec struct {
-	// GameServerRef is the GameServer the backup is restored onto. It must be
-	// Stopped at admission time (enforced by the validating webhook, not CEL,
-	// since checking another resource's state isn't something a CRD schema
-	// can express). Immutable after creation.
+	// GameServerRef is the target; it must be Stopped (checked by the webhook). Immutable.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="gameServerRef is immutable"
 	GameServerRef GameServerRef `json:"gameServerRef"`
 
@@ -82,15 +72,7 @@ type GameServerRestoreStatus struct {
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 
-	// conditions represent the current state of the GameServerRestore resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// conditions are the GameServerRestore's current state.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
