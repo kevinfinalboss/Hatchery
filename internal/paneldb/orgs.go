@@ -58,10 +58,11 @@ func ValidSlug(s string) bool { return slugRE.MatchString(s) && s != "system" &&
 
 // Org is an organization. Its slug doubles as the Tenant name.
 type Org struct {
-	ID        int64     `json:"id"`
-	Slug      string    `json:"slug"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         int64     `json:"id"`
+	Slug       string    `json:"slug"`
+	Name       string    `json:"name"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Require2FA bool      `json:"require2fa"`
 }
 
 // OrgWithRole is an Org together with the asking user's role in it.
@@ -81,6 +82,7 @@ type Member struct {
 	Discord           string `json:"discord"`
 	MinecraftUsername string `json:"minecraftUsername"`
 	SteamID           string `json:"steamId"`
+	TwoFactorEnabled  bool   `json:"twoFactorEnabled"`
 }
 
 // CreateOrg inserts the org and, when ownerUserID is not 0, makes that user its
@@ -118,8 +120,8 @@ func (s *Store) CreateOrg(ctx context.Context, slug, name string, ownerUserID in
 func (s *Store) GetOrgBySlug(ctx context.Context, slug string) (*Org, error) {
 	o := &Org{}
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, created_at FROM organizations WHERE slug = $1`, slug).
-		Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt)
+		`SELECT id, slug, name, created_at, require_2fa FROM organizations WHERE slug = $1`, slug).
+		Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt, &o.Require2FA)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -129,7 +131,7 @@ func (s *Store) GetOrgBySlug(ctx context.Context, slug string) (*Org, error) {
 // ListOrgsForUser returns every org userID belongs to, with their role.
 func (s *Store) ListOrgsForUser(ctx context.Context, userID int64) ([]OrgWithRole, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT o.id, o.slug, o.name, o.created_at, m.role
+		SELECT o.id, o.slug, o.name, o.created_at, o.require_2fa, m.role
 		FROM organizations o JOIN memberships m ON m.org_id = o.id
 		WHERE m.user_id = $1 ORDER BY o.slug`, userID)
 	if err != nil {
@@ -139,7 +141,7 @@ func (s *Store) ListOrgsForUser(ctx context.Context, userID int64) ([]OrgWithRol
 	var out []OrgWithRole
 	for rows.Next() {
 		var o OrgWithRole
-		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt, &o.Role); err != nil {
+		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt, &o.Require2FA, &o.Role); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
@@ -149,7 +151,7 @@ func (s *Store) ListOrgsForUser(ctx context.Context, userID int64) ([]OrgWithRol
 
 // ListAllOrgs returns every org (for platform admins).
 func (s *Store) ListAllOrgs(ctx context.Context) ([]Org, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, slug, name, created_at FROM organizations ORDER BY slug`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, slug, name, created_at, require_2fa FROM organizations ORDER BY slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +159,7 @@ func (s *Store) ListAllOrgs(ctx context.Context) ([]Org, error) {
 	var out []Org
 	for rows.Next() {
 		var o Org
-		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &o.CreatedAt, &o.Require2FA); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
@@ -193,7 +195,8 @@ func (s *Store) GetMembership(ctx context.Context, orgID, userID int64) (Role, e
 // ListMembers returns an org's members ordered by username.
 func (s *Store) ListMembers(ctx context.Context, orgID int64) ([]Member, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.id, u.username, m.role, u.display_name, u.email, u.discord, u.minecraft_username, u.steam_id
+		SELECT u.id, u.username, m.role, u.display_name, u.email, u.discord, u.minecraft_username, u.steam_id,
+		       u.totp_enabled_at IS NOT NULL
 		FROM memberships m JOIN users u ON u.id = m.user_id
 		WHERE m.org_id = $1 ORDER BY u.username`, orgID)
 	if err != nil {
@@ -203,7 +206,7 @@ func (s *Store) ListMembers(ctx context.Context, orgID int64) ([]Member, error) 
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Username, &m.Role, &m.DisplayName, &m.Email, &m.Discord, &m.MinecraftUsername, &m.SteamID); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.Role, &m.DisplayName, &m.Email, &m.Discord, &m.MinecraftUsername, &m.SteamID, &m.TwoFactorEnabled); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

@@ -52,6 +52,8 @@ type User struct {
 	NotifyEmail     bool
 	DiscordUserID   string
 	DiscordUsername string
+	// TwoFactorEnabled: TOTP is on (the secret itself is only read through GetTOTP).
+	TwoFactorEnabled bool
 	Profile
 }
 
@@ -63,7 +65,8 @@ func NormalizeEmail(s string) string { return strings.ToLower(strings.TrimSpace(
 // with a table alias.
 func userColumns(alias string) string {
 	cols := []string{"id", "username", "email", "is_admin", "created_at",
-		"display_name", "locale", "time_zone", "discord", "minecraft_username", "steam_id", "notify_email", "discord_user_id", "discord_username"}
+		"display_name", "locale", "time_zone", "discord", "minecraft_username", "steam_id", "notify_email", "discord_user_id", "discord_username",
+		"totp_enabled_at IS NOT NULL"}
 	if alias != "" {
 		for i, c := range cols {
 			cols[i] = alias + "." + c
@@ -78,7 +81,7 @@ func scanUserInto(row rowScanner, u *User) error {
 	var discordID sql.NullString
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt,
 		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID, &u.NotifyEmail,
-		&discordID, &u.DiscordUsername)
+		&discordID, &u.DiscordUsername, &u.TwoFactorEnabled)
 	u.DiscordUserID = discordID.String
 	return err
 }
@@ -189,7 +192,7 @@ func (s *Store) VerifyPassword(ctx context.Context, login, password string) (*Us
 	row := s.db.QueryRowContext(ctx, `SELECT `+userColumns("")+`, password_hash FROM users WHERE `+where, arg)
 	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt,
 		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID, &u.NotifyEmail,
-		&discordID, &u.DiscordUsername, &hash); err != nil {
+		&discordID, &u.DiscordUsername, &u.TwoFactorEnabled, &hash); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash(), []byte(password))
 			return nil, ErrNotFound
