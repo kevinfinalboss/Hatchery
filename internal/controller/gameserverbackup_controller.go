@@ -58,6 +58,7 @@ type GameServerBackupReconciler struct {
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameserverbackups/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=gameserverbackups/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gameservers.hatchery.io,resources=eggs;gameservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
@@ -142,7 +143,7 @@ func (r *GameServerBackupReconciler) startJob(ctx context.Context, bkp *gameserv
 		return ctrl.Result{}, err
 	}
 
-	job := backup.BackupJob(bkp, pvcName)
+	job := backup.BackupJob(bkp, pvcName, volumeAffinity(ctx, r.Client, bkp.Namespace, pvcName))
 	if err := controllerutil.SetControllerReference(bkp, job, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}

@@ -110,7 +110,7 @@ func (r *GameServerRestoreReconciler) startJob(ctx context.Context, restore *gam
 		return ctrl.Result{}, fmt.Errorf("locking target gameserver: %w", err)
 	}
 
-	job := backup.RestoreJob(restore, bkp.Spec.Destination.S3, bkp.Name, pvcName)
+	job := backup.RestoreJob(restore, bkp.Spec.Destination.S3, bkp.Name, pvcName, volumeAffinity(ctx, r.Client, restore.Namespace, pvcName))
 	if err := controllerutil.SetControllerReference(restore, job, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
