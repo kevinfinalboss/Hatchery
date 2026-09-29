@@ -137,7 +137,7 @@ catalogEggs:
     - minecraft-spigot
     - minecraft-modpack
     - terraria-vanilla
-    - project-zomboid   # install validated; the server boot itself was not
+    - project-zomboid
 
 postgres:
   # Run Postgres in the release. false: set externalDatabase.

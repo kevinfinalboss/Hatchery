@@ -102,6 +102,14 @@ spec:
                 required:
                 - script
                 type: object
+              consoleInput:
+                description: |-
+                  ConsoleInput is the file console lines are written to (schedule commands, backup save
+                  commands, the stop command, the panel's command route). Empty means the stdin of PID 1
+                  (/proc/1/fd/0). Images whose PID 1 does not take console input that way declare their own,
+                  e.g. the named pipe itzg/minecraft-server creates with CREATE_CONSOLE_IN_PIPE=true.
+                maxLength: 256
+                type: string
               images:
                 description: |-
                   Images are the container images the game server process can run with. The first is the

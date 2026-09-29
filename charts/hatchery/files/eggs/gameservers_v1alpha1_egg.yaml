@@ -11,6 +11,11 @@ spec:
     - name: default
       image: itzg/minecraft-server:latest
   startCommand: "/image/scripts/start"
+  consoleInput: /tmp/minecraft-console-in
+  backup:
+    before: ["save-off", "save-all flush"]
+    savedRegex: "Saved the game"
+    after: ["save-on"]
   stopTimeoutSeconds: 90
   startupDetection:
     regex: "\\)! For help, type "
@@ -33,6 +38,11 @@ spec:
       description: "Server flavor: VANILLA, PAPER, FABRIC, etc."
       default: "VANILLA"
       userEditable: true
+    - name: CREATE_CONSOLE_IN_PIPE
+      description: "Creates the console input pipe the panel writes commands to. Fixed."
+      default: "true"
+      required: true
+      userEditable: false
   ports:
     - name: game
       containerPort: 25565

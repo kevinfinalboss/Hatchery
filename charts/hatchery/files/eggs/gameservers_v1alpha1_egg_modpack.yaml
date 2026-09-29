@@ -18,6 +18,11 @@ spec:
     - name: "Java 8"
       image: itzg/minecraft-server:java8
   startCommand: "bash -c 'if [ \"$HATCHERY_PACK_SOURCE\" = curseforge ]; then export TYPE=AUTO_CURSEFORGE CF_SLUG=\"$HATCHERY_PACK\" CF_FILE_ID=\"$HATCHERY_PACK_VERSION\"; else export TYPE=MODRINTH MODRINTH_MODPACK=\"$HATCHERY_PACK\" MODRINTH_VERSION=\"$HATCHERY_PACK_VERSION\"; fi; exec /image/scripts/start'"
+  consoleInput: /tmp/minecraft-console-in
+  backup:
+    before: ["save-off", "save-all flush"]
+    savedRegex: "Saved the game"
+    after: ["save-on"]
   stopTimeoutSeconds: 120
   stopSignal: SIGTERM
   startupDetection:
@@ -63,6 +68,11 @@ spec:
     - name: JVM_XX_OPTS
       description: "Opções extras da JVM."
       default: "-XX:MaxRAMPercentage=75"
+      userEditable: false
+    - name: CREATE_CONSOLE_IN_PIPE
+      description: "Cria o pipe de entrada do console, por onde o painel manda comandos. Fixo."
+      default: "true"
+      required: true
       userEditable: false
   ports:
     - name: game
