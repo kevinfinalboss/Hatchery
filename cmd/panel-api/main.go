@@ -39,6 +39,7 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/panelapi"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
+	"github.com/kevinfinalboss/Hatchery/internal/twofactor"
 
 	_ "time/tzdata"
 )
@@ -192,6 +193,17 @@ func main() {
 
 	srv.Tickets = panelcache.NewRedisTicketStore(rdb)
 	srv.LoginLimiter = panelcache.NewRedisLoginLimiter(rdb, panelcache.DefaultLoginLimits)
+	srv.LoginChallenges = panelcache.NewRedisLoginChallengeStore(rdb)
+	srv.PendingSecrets = panelcache.NewRedisPendingSecretStore(rdb)
+	if key := os.Getenv("PANEL_ENCRYPTION_KEY"); key != "" {
+		c, err := twofactor.NewCipher(key)
+		if err != nil {
+			log.Error(err, "invalid PANEL_ENCRYPTION_KEY")
+			os.Exit(1)
+		}
+		srv.TwoFactor = c
+	}
+	log.Info("two-factor authentication", "enabled", srv.TwoFactor != nil)
 	srv.TrustedProxies = proxyNets
 	srv.UIDir = uiDir
 
