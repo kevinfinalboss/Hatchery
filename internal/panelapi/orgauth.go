@@ -28,7 +28,27 @@ func orgAccessFromContext(ctx context.Context) *orgAccess {
 	return a
 }
 
+// twoFactorRequiredMsg is the refusal resolveOrgAccess returns when the org (or, for a platform
+// admin, the platform) requires two-factor authentication and the user has not turned it on;
+// writeOrgAccessError adds the machine-readable code to it.
+const twoFactorRequiredMsg = "two-factor authentication is required here; turn it on under My account"
+
+// writeOrgAccessError writes a resolveOrgAccess refusal.
+func writeOrgAccessError(w http.ResponseWriter, status int, msg string) {
+	if msg == twoFactorRequiredMsg {
+		writeErrorCode(w, status, "two_factor_required", msg)
+		return
+	}
+	writeError(w, status, msg)
+}
+
 func (s *Server) resolveOrgAccess(ctx context.Context, user *paneldb.User, slug string, min paneldb.Role) (*orgAccess, int, string) {
+	return s.resolveOrgAccessWith(ctx, user, slug, min, true)
+}
+
+// resolveOrgAccessWith resolves the caller's access; enforce2FA=false skips the two-factor
+// requirement (only for the page that tells a blocked user what to do).
+func (s *Server) resolveOrgAccessWith(ctx context.Context, user *paneldb.User, slug string, min paneldb.Role, enforce2FA bool) (*orgAccess, int, string) {
 	org, err := s.DB.GetOrgBySlug(ctx, slug)
 	if err != nil {
 		if errors.Is(err, paneldb.ErrNotFound) {
@@ -47,6 +67,16 @@ func (s *Server) resolveOrgAccess(ctx context.Context, user *paneldb.User, slug 
 			return nil, http.StatusInternalServerError, err.Error()
 		}
 	}
+	if enforce2FA {
+		// After the membership check: a non-member still gets 404, never learns the org exists.
+		blocked, err := s.twoFactorBlocked(ctx, user, org)
+		if err != nil {
+			return nil, http.StatusInternalServerError, err.Error()
+		}
+		if blocked {
+			return nil, http.StatusForbidden, twoFactorRequiredMsg
+		}
+	}
 	if !role.AtLeast(min) {
 		return nil, http.StatusForbidden, "insufficient role in this organization"
 	}
@@ -63,7 +93,7 @@ func (s *Server) requireOrgRole(min paneldb.Role, next http.Handler) http.Handle
 	return s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		acc, status, msg := s.resolveOrgAccess(r.Context(), userFromContext(r.Context()), r.PathValue("org"), min)
 		if acc == nil {
-			writeError(w, status, msg)
+			writeOrgAccessError(w, status, msg)
 			return
 		}
 		r.SetPathValue("namespace", gameserversv1alpha1.TenantNamespace(acc.Org.Slug))

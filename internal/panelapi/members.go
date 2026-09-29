@@ -30,6 +30,13 @@ func canTouchRole(caller paneldb.Role, role paneldb.Role) bool {
 	return role != paneldb.RoleOwner || caller == paneldb.RoleOwner
 }
 
+// memberView hides the member's 2FA status from callers below admin (the outer field wins over
+// the embedded one in JSON).
+type memberView struct {
+	paneldb.Member
+	TwoFactorEnabled *bool `json:"twoFactorEnabled,omitempty"`
+}
+
 func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	acc := orgAccessFromContext(r.Context())
 	members, err := s.DB.ListMembers(r.Context(), acc.Org.ID)
@@ -40,13 +47,19 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	if members == nil {
 		members = []paneldb.Member{}
 	}
-	// E-mails are for those who manage the org (they need them to handle invitations).
-	if !acc.Role.AtLeast(paneldb.RoleAdmin) {
-		for i := range members {
-			members[i].Email = ""
+	// E-mails and who lacks 2FA are for those who manage the org (invitations, the 2FA
+	// requirement); knowing which accounts lack 2FA would only help someone picking a target.
+	admin := acc.Role.AtLeast(paneldb.RoleAdmin)
+	out := make([]memberView, len(members))
+	for i, m := range members {
+		out[i] = memberView{Member: m}
+		if admin {
+			out[i].TwoFactorEnabled = &m.TwoFactorEnabled
+		} else {
+			out[i].Email = ""
 		}
 	}
-	writeJSON(w, http.StatusOK, members)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {

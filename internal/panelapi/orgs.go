@@ -14,9 +14,10 @@ import (
 )
 
 type orgSummary struct {
-	Slug string       `json:"slug"`
-	Name string       `json:"name"`
-	Role paneldb.Role `json:"role"`
+	Slug              string       `json:"slug"`
+	Name              string       `json:"name"`
+	Role              paneldb.Role `json:"role"`
+	TwoFactorRequired bool         `json:"twoFactorRequired"`
 
 	InviteURL   string `json:"inviteUrl,omitempty"`
 	InviteError string `json:"inviteError,omitempty"`
@@ -43,8 +44,14 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		adminBlocked, err := s.adminNeeds2FA(r.Context(), user)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		for _, o := range orgs {
-			out = append(out, orgSummary{Slug: o.Slug, Name: o.Name, Role: paneldb.RoleOwner})
+			out = append(out, orgSummary{Slug: o.Slug, Name: o.Name, Role: paneldb.RoleOwner,
+				TwoFactorRequired: adminBlocked || (o.Require2FA && !user.TwoFactorEnabled)})
 		}
 	} else {
 		orgs, err := s.DB.ListOrgsForUser(r.Context(), user.ID)
@@ -53,7 +60,8 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, o := range orgs {
-			out = append(out, orgSummary{Slug: o.Slug, Name: o.Name, Role: o.Role})
+			out = append(out, orgSummary{Slug: o.Slug, Name: o.Name, Role: o.Role,
+				TwoFactorRequired: o.Require2FA && !user.TwoFactorEnabled})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
