@@ -122,6 +122,8 @@ spec:
             - name: PANEL_DISCORD_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: {{ .Values.panel.discord.existingSecret }}, key: client-secret}}
             {{- end }}
+            - name: PANEL_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.panel.encryption.existingSecret | default (printf "%s-encryption" (include "hatchery.panelName" .)) }}, key: key}}
             {{- with .Values.panel.mods.curseforge.existingSecret }}
             - name: PANEL_CURSEFORGE_API_KEY
               valueFrom: {secretKeyRef: {name: {{ . }}, key: api-key}}
