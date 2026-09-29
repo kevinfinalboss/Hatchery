@@ -30,6 +30,7 @@ import (
 
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/sftpagent"
+	"github.com/kevinfinalboss/Hatchery/internal/volumes"
 	"github.com/kevinfinalboss/Hatchery/pkg/authtoken"
 )
 
@@ -193,33 +194,8 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 	return nil
 }
 
-// pvcNodeAffinity copies the GameServer's PVC's bound PersistentVolume's node
-// affinity (if any) onto a new Affinity, so the maintenance Pod lands on
-// whichever node actually holds the volume — required for node-local/RWO
-// storage (e.g. local-path, EBS), a no-op for anything that isn't
-// node-pinned. Provisioners that set this (kind's local-path-provisioner,
-// the AWS EBS CSI driver, and friends) do so on the PV itself, so this is
-// just "read it back and copy it", not a scheduling decision this code makes
-// on its own.
+// pvcNodeAffinity pins the maintenance Pod to the node holding the server's volume (see
+// volumes.NodeAffinity).
 func (s *Server) pvcNodeAffinity(ctx context.Context, gs *gameserversv1alpha1.GameServer) (*corev1.Affinity, error) {
-	var pvc corev1.PersistentVolumeClaim
-	if err := s.Client.Get(ctx, client.ObjectKey{Namespace: gs.Namespace, Name: gs.Name}, &pvc); err != nil {
-		return nil, fmt.Errorf("looking up pvc: %w", err)
-	}
-	if pvc.Spec.VolumeName == "" {
-		return nil, nil // not bound yet; let the scheduler place it freely
-	}
-
-	var pv corev1.PersistentVolume
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: pvc.Spec.VolumeName}, &pv); err != nil {
-		return nil, fmt.Errorf("looking up persistentvolume %q: %w", pvc.Spec.VolumeName, err)
-	}
-	if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
-		return nil, nil
-	}
-	return &corev1.Affinity{
-		NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: pv.Spec.NodeAffinity.Required.DeepCopy(),
-		},
-	}, nil
+	return volumes.NodeAffinity(ctx, s.Client, gs.Namespace, gs.Name)
 }
