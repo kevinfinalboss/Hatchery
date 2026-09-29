@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { useDiscordResult } from "../components/DiscordConnect";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar } from "../components/ui/Avatar";
 import { Button } from "../components/ui/Button";
@@ -8,6 +9,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { errorMessage } from "../lib/errors";
 import { useT } from "../lib/i18n";
+import { atLeast, useOrg } from "../lib/org";
 import type { Profile, ProfileLocale, User } from "../lib/types";
 import { NewPasswordFields } from "./ResetPasswordPage";
 
@@ -207,11 +209,97 @@ function EmailSection({ user, mailEnabled }: { user: User; mailEnabled: boolean 
   );
 }
 
+function AlertsSection({ user }: { user: User }) {
+  const t = useT();
+  const { setUser } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function toggle(on: boolean) {
+    setError(null);
+    setSaving(true);
+    try {
+      setUser(await api.updateMe({ notifyEmail: on }));
+    } catch (err) {
+      setError(errorMessage(err, t("account.alertsFailed")));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <div className="font-display text-base font-semibold text-text-primary">{t("account.alerts")}</div>
+      <label className="flex items-center gap-2 font-prose text-sm text-text-primary">
+        <input type="checkbox" checked={user.notifyEmail} disabled={saving} onChange={(e) => void toggle(e.target.checked)} />
+        {t("account.alertsEmail")}
+      </label>
+      <Status ok={null} error={error} />
+    </Card>
+  );
+}
+
+function DiscordSection({ user }: { user: User }) {
+  const t = useT();
+  const { setUser } = useAuth();
+  const result = useDiscordResult();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function link() {
+    setError(null);
+    setBusy(true);
+    try {
+      window.location.assign((await api.discordLinkURL()).url);
+    } catch (err) {
+      setError(errorMessage(err, t("discord.failed")));
+      setBusy(false);
+    }
+  }
+  async function unlink() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.unlinkDiscord();
+      setUser({ ...user, discordUsername: "" });
+    } catch (err) {
+      setError(errorMessage(err, t("discord.failed")));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <div className="font-display text-base font-semibold text-text-primary">Discord</div>
+      <div className="font-prose text-sm text-text-secondary">{t("discord.accountHelp")}</div>
+      {result && <div className="font-sans text-sm text-text-primary">{result}</div>}
+      {user.discordUsername ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-sans text-sm text-text-primary">{t("discord.linkedAs", { name: user.discordUsername })}</span>
+          <Button variant="secondary" disabled={busy} onClick={() => void unlink()}>
+            {t("discord.unlink")}
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <Button disabled={busy} onClick={() => void link()}>
+            {t("discord.link")}
+          </Button>
+        </div>
+      )}
+      <Status ok={null} error={error} />
+    </Card>
+  );
+}
+
 export function AccountPage() {
   const t = useT();
   const { user } = useAuth();
   const { data: features } = useQuery({ queryKey: ["auth-features"], queryFn: api.features });
+  const { orgs } = useOrg();
   if (!user) return null;
+  const managesAnOrg = orgs.some((o) => atLeast(o.role, "admin"));
 
   return (
     <div className="flex flex-col gap-6">
@@ -222,6 +310,8 @@ export function AccountPage() {
         </div>
       </div>
       <ProfileSection key={user.id} user={user} />
+      {managesAnOrg && <AlertsSection user={user} />}
+      {features?.discord && <DiscordSection user={user} />}
       <Card className="flex flex-col gap-8 p-5">
         <div className="font-display text-base font-semibold text-text-primary">{t("account.security")}</div>
         <div className="grid gap-8 md:grid-cols-2">
