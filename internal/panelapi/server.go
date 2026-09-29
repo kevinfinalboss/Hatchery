@@ -32,6 +32,7 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
+	"github.com/kevinfinalboss/Hatchery/internal/twofactor"
 )
 
 type Server struct {
@@ -57,6 +58,10 @@ type Server struct {
 	// in-memory fakes in tests. Neither may be nil.
 	Tickets      panelcache.TicketStore
 	LoginLimiter panelcache.LoginLimiter
+
+	TwoFactor       *twofactor.Cipher
+	LoginChallenges panelcache.LoginChallengeStore
+	PendingSecrets  panelcache.PendingSecretStore
 
 	Metrics panelcache.MetricsStore
 	// Players holds the online-player snapshots written by the PlayersSampler (nil: none shown).
@@ -138,6 +143,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 	mux.Handle("POST /api/v1/auth/logout", s.requireAuth(http.HandlerFunc(s.handleLogout)))
 	mux.Handle("GET /api/v1/auth/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
+	mux.HandleFunc("POST /api/v1/auth/login/2fa", s.handleLogin2FA)
+	mux.Handle("POST /api/v1/me/2fa/setup", s.requireTwoFactorOn(s.requireAuth(http.HandlerFunc(s.handle2FASetup))))
+	mux.Handle("POST /api/v1/me/2fa/enable", s.requireTwoFactorOn(s.requireAuth(http.HandlerFunc(s.handle2FAEnable))))
+	mux.Handle("POST /api/v1/me/2fa/disable", s.requireTwoFactorOn(s.requireAuth(http.HandlerFunc(s.handle2FADisable))))
+	mux.Handle("POST /api/v1/me/2fa/recovery-codes", s.requireTwoFactorOn(s.requireAuth(http.HandlerFunc(s.handle2FARegenerateCodes))))
 	mux.Handle("PATCH /api/v1/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
 	mux.Handle("POST /api/v1/me/password", s.requireAuth(http.HandlerFunc(s.handleChangePassword)))
 	mux.HandleFunc("POST /api/v1/auth/password/forgot", s.handleForgotPassword)
@@ -148,6 +158,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v1/users", s.requireAdmin(http.HandlerFunc(s.handleListUsers)))
 	mux.Handle("PATCH /api/v1/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleSetUserAdmin)))
 	mux.Handle("DELETE /api/v1/users/{id}", s.requireAdmin(http.HandlerFunc(s.handleDeleteUser)))
+	mux.Handle("DELETE /api/v1/users/{id}/2fa", s.requireTwoFactorOn(s.requireAdmin(http.HandlerFunc(s.handleAdminDisable2FA))))
 
 	orgRoute := func(min paneldb.Role, action string, h http.HandlerFunc) http.Handler {
 		var inner http.Handler = h
@@ -182,6 +193,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PATCH "+org+"/quota", s.requireAdmin(orgRoute(paneldb.RoleOwner, "", s.handleUpdateQuota)))
 
 	mux.Handle("GET "+org+"/members", orgRoute(paneldb.RoleMember, "", s.handleListMembers))
+	mux.Handle("GET "+org+"/security", s.requireAuth(http.HandlerFunc(s.handleGetOrgSecurity)))
+	mux.Handle("PUT "+org+"/security", orgRoute(paneldb.RoleAdmin, "", s.handlePutOrgSecurity))
+	mux.Handle("GET /api/v1/platform/security", s.requireAdminWith(http.HandlerFunc(s.handleGetPlatformSecurity), false))
+	mux.Handle("PUT /api/v1/platform/security", s.requireAdmin(http.HandlerFunc(s.handlePutPlatformSecurity)))
 	mux.Handle("PATCH "+org+"/members/{userId}", orgRoute(paneldb.RoleAdmin, "", s.handleSetMemberRole))
 	mux.Handle("DELETE "+org+"/members/{userId}", orgRoute(paneldb.RoleMember, "", s.handleRemoveMember))
 	mux.Handle("GET "+org+"/members/{userId}/permissions", orgRoute(paneldb.RoleAdmin, "", s.handleGetMemberPermissions))
