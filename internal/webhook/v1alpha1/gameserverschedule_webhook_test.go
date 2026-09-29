@@ -41,28 +41,39 @@ var _ = Describe("GameServerSchedule Webhook", func() {
 		Expect(err.Error()).To(ContainSubstring("ghost"))
 	})
 
-	It("rejects an invalid cron with the validator's message", func() {
+	// target creates a GameServer (and its Egg) that only this spec uses, so no spec depends on
+	// another having run first (the suite runs in random order with -ginkgo.randomize-all).
+	target := func(name string) string {
 		egg := &gameserversv1alpha1.Egg{
-			ObjectMeta: metav1.ObjectMeta{Name: "sched-target-egg", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-egg", Namespace: "default"},
 			Spec: gameserversv1alpha1.EggSpec{
 				Images:       []gameserversv1alpha1.EggImage{{Name: "default", Image: "example.com/game:latest"}},
 				StartCommand: "start",
 			},
 		}
 		Expect(k8sClient.Create(ctx, egg)).To(Succeed())
-		Expect(k8sClient.Create(ctx, &gameserversv1alpha1.GameServer{
-			ObjectMeta: metav1.ObjectMeta{Name: "sched-target", Namespace: "default"},
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, egg) })
+		gs := &gameserversv1alpha1.GameServer{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 			Spec: gameserversv1alpha1.GameServerSpec{
 				EggRef:  gameserversv1alpha1.GameServerEggRef{Name: egg.Name},
 				Storage: gameserversv1alpha1.GameServerStorage{Size: "1Gi"},
 			},
-		})).To(Succeed())
-		err := k8sClient.Create(ctx, schedule("bad-cron", "sched-target", "* * * * *"))
+		}
+		Expect(k8sClient.Create(ctx, gs)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, gs) })
+		return name
+	}
+
+	It("rejects an invalid cron with the validator's message", func() {
+		err := k8sClient.Create(ctx, schedule("bad-cron", target("sched-target-cron"), "* * * * *"))
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("at most every"))
 	})
 
 	It("admits a valid schedule", func() {
-		Expect(k8sClient.Create(ctx, schedule("good", "sched-target", "0 4 * * *"))).To(Succeed())
+		sch := schedule("good", target("sched-target-good"), "0 4 * * *")
+		Expect(k8sClient.Create(ctx, sch)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, sch) })
 	})
 })
