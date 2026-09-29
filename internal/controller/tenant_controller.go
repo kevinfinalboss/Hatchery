@@ -45,11 +45,7 @@ type TenantReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	// PanelServiceAccount is the ServiceAccount the Panel API runs as. When
-	// set, every tenant namespace gets a RoleBinding granting it the
-	// hatchery-panel-tenant ClusterRole there (and only there) and an ingress
-	// rule letting its namespace reach the sftp-agent port. Zero value: no
-	// binding and no such rule.
+	// PanelServiceAccount (optional) gets a RoleBinding and SFTP ingress in every tenant namespace.
 	PanelServiceAccount types.NamespacedName
 
 	// EgressExceptCIDRs are extra CIDRs, on top of the private/link-local
@@ -103,10 +99,7 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, r.setStatus(ctx, &tenant, gameserversv1alpha1.TenantPhaseActive, metav1.ConditionTrue, "Provisioned", nil, "namespace and policies are in place")
 }
 
-// reconcileNamespace creates the tenant's namespace, or brings an existing
-// one we created back to the desired labels. A namespace with the right name
-// that this Tenant does not control is never adopted: without that check, a
-// Tenant could take over any pre-existing hatchery-* namespace.
+// reconcileNamespace creates or repairs the tenant's namespace; it never adopts one it does not control.
 func (r *TenantReconciler) reconcileNamespace(ctx context.Context, t *gameserversv1alpha1.Tenant) error {
 	name := gameserversv1alpha1.TenantNamespace(t.Name)
 
@@ -142,10 +135,7 @@ func (r *TenantReconciler) reconcileNamespace(ctx context.Context, t *gameserver
 	return r.Update(ctx, &ns)
 }
 
-// reconcileDelete blocks until the tenant's namespace holds no GameServers,
-// backups or restores, then deletes the namespace and lets the Tenant go.
-// Backups/restores block too: a GameServerBackup's own finalizer needs to
-// create a cleanup Job, which a Terminating namespace refuses.
+// reconcileDelete waits until the namespace has no GameServers, backups or restores, then deletes it.
 func (r *TenantReconciler) reconcileDelete(ctx context.Context, t *gameserversv1alpha1.Tenant) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(t, gameserversv1alpha1.TenantFinalizer) {
 		return ctrl.Result{}, nil
@@ -189,9 +179,7 @@ func (r *TenantReconciler) reconcileDelete(ctx context.Context, t *gameserversv1
 	return ctrl.Result{}, r.Update(ctx, t)
 }
 
-// setStatus records phase and the Ready condition. cause is returned as the
-// function's result so a failing reconcile step keeps surfacing as an error
-// (and gets retried with backoff) after its status has been written.
+// setStatus records phase and Ready, and returns cause so a failed step is still retried.
 func (r *TenantReconciler) setStatus(ctx context.Context, t *gameserversv1alpha1.Tenant,
 	phase gameserversv1alpha1.TenantPhase, ready metav1.ConditionStatus, reason string, cause error, message string) error {
 	t.Status.Phase = phase
@@ -209,9 +197,7 @@ func (r *TenantReconciler) setStatus(ctx context.Context, t *gameserversv1alpha1
 	return cause
 }
 
-// SetupWithManager sets up the controller with the Manager. Owning the child
-// objects is what makes drift (someone deleting or editing the quota, a
-// policy, ...) trigger a reconcile that puts them back.
+// SetupWithManager owns the child objects, so drift triggers a reconcile.
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gameserversv1alpha1.Tenant{}).
@@ -246,9 +232,7 @@ func (r *TenantReconciler) reconcileLimitRange(ctx context.Context, t *gameserve
 	return err
 }
 
-// pruneIfControlled deletes obj when it exists and is controlled by t. Used
-// for objects that are only wanted under some configuration (the Panel
-// ServiceAccount being set), so turning that off does not leave them behind.
+// pruneIfControlled deletes obj when it exists and is controlled by t.
 func (r *TenantReconciler) pruneIfControlled(ctx context.Context, t *gameserversv1alpha1.Tenant, obj client.Object) error {
 	if err := r.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
 		return client.IgnoreNotFound(err)
@@ -279,10 +263,7 @@ func (r *TenantReconciler) reconcileNetworkPolicies(ctx context.Context, t *game
 	return nil
 }
 
-// panelTenantClusterRole is the ClusterRole (config/rbac/panel_tenant_role.yaml)
-// bound into each tenant namespace. Binding a ClusterRole with a RoleBinding
-// scopes its permissions to that one namespace — the Panel gets no
-// cluster-wide access to pods or Secrets.
+// panelTenantClusterRole is bound per tenant namespace, so the Panel has no cluster-wide access.
 const panelTenantClusterRole = "hatchery-panel-tenant"
 
 const panelRoleBindingName = "hatchery-panel"

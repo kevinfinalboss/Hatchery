@@ -14,10 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package panelapi's file manager (files.go, filesftp.go) turns panel-api
-// into an SFTP client of the existing sftp-agent, the same way Pterodactyl's
-// Panel calls Wings' HTTP file API instead of tunneling SFTP to the browser
-// — see docs/superpowers/specs/2026-09-19-file-manager-design.md.
+// The file manager (files.go, filesftp.go) is an SFTP client of the server's sftp-agent.
 package panelapi
 
 import (
@@ -36,17 +33,10 @@ import (
 	"github.com/kevinfinalboss/Hatchery/pkg/authtoken"
 )
 
-// fileOperationTokenTTL is how long the token panel-api mints for itself to
-// authenticate one file-manager SFTP connection lives. It's minted, used to
-// dial, and discarded within the same HTTP request, so seconds is plenty —
-// contrast with sftpSessionTTL in sftpsession.go, which is handed to an
-// external client that needs time to actually connect.
+// fileOperationTokenTTL: the token lives only for one request's connection.
 const fileOperationTokenTTL = 30 * time.Second
 
-// sftpConn bundles an *sftp.Client with the *ssh.Client it rides on top of:
-// sftp.Client.Close doesn't close the underlying SSH connection, and every
-// file-manager request dials its own fresh one (see the "no connection
-// pool" global constraint), so both need to go away together.
+// sftpConn closes the SFTP client and its SSH connection together.
 type sftpConn struct {
 	*sftp.Client
 	ssh *ssh.Client
@@ -57,10 +47,7 @@ func (c *sftpConn) Close() error {
 	return c.ssh.Close()
 }
 
-// openFileSFTPClient resolves gs's current sftp-agent (sidecar or an
-// on-demand maintenance Pod — see resolveSFTPTarget), authenticates with a
-// freshly-minted, seconds-lived token, and returns a connected sftpConn
-// ready for one request's worth of file operations. Callers must Close it.
+// openFileSFTPClient connects to the server's sftp-agent for one request. Callers must Close it.
 func (s *Server) openFileSFTPClient(ctx context.Context, gs *gameserversv1alpha1.GameServer) (*sftpConn, error) {
 	if _, err := s.resolveSFTPTarget(ctx, gs); err != nil {
 		return nil, err
@@ -100,10 +87,7 @@ func (s *Server) openFileSFTPClient(ctx context.Context, gs *gameserversv1alpha1
 	return &sftpConn{Client: sftpClient, ssh: sshConn}, nil
 }
 
-// sftpAddr returns the host:port to dial for a GameServer's sftp-agent.
-// Defaults to the real in-cluster Service DNS name (sidecar and maintenance
-// Pod sit behind the same Service — see AGENTS.md's SFTP section); tests set
-// resolveSFTPAddr to point at an in-process test server instead.
+// sftpAddr is the sftp-agent's Service address; tests override resolveSFTPAddr.
 func (s *Server) sftpAddr(namespace, name string) string {
 	if s.resolveSFTPAddr != nil {
 		return s.resolveSFTPAddr(namespace, name)

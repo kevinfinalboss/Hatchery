@@ -28,9 +28,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Profile is the optional, self-edited part of an account. Validation of each
-// field lives in the Panel API (internal/panelapi/profile.go); the store only
-// persists.
+// Profile is the optional, self-edited part of an account (validated by the Panel).
 type Profile struct {
 	DisplayName       string
 	Locale            string
@@ -40,9 +38,7 @@ type Profile struct {
 	SteamID           string
 }
 
-// User is a Panel account. Callers never see a password or its hash —
-// passwords only ever cross the Store boundary as plaintext arguments,
-// hashed with bcrypt immediately.
+// User is a Panel account; the password hash never leaves the Store.
 type User struct {
 	ID              int64
 	Username        string
@@ -139,10 +135,7 @@ func createUser(ctx context.Context, q queryer, username, email, password string
 	return u, nil
 }
 
-// UpsertUser creates username if it doesn't exist, or resets its password,
-// e-mail and admin flag if it does. Used by the admin bootstrap (see
-// internal/panelapi/bootstrap.go) so re-running it after a partial failure is
-// idempotent instead of erroring on "already exists".
+// UpsertUser creates username or resets its password, e-mail and admin flag (admin bootstrap).
 func (s *Store) UpsertUser(ctx context.Context, username, email, password string, isAdmin bool) (*User, error) {
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -168,9 +161,7 @@ var (
 	dummyHash     []byte
 )
 
-// dummyPasswordHash is a valid bcrypt hash (same cost as real ones) compared
-// against when the account does not exist, so that case costs the same as a
-// wrong password.
+// dummyPasswordHash makes a missing account cost the same as a wrong password.
 func dummyPasswordHash() []byte {
 	dummyHashOnce.Do(func() {
 		dummyHash, _ = bcrypt.GenerateFromPassword([]byte("hatchery-timing-equalizer"), bcrypt.DefaultCost)
@@ -178,9 +169,8 @@ func dummyPasswordHash() []byte {
 	return dummyHash
 }
 
-// VerifyPassword looks the account up by login — an e-mail when it contains
-// "@" (usernames cannot), a username otherwise — and checks password.
-// ErrNotFound for both "no such account" and "wrong password", on purpose.
+// VerifyPassword finds the account by e-mail (contains "@") or username and checks the password.
+// ErrNotFound for both a missing account and a wrong password.
 func (s *Store) VerifyPassword(ctx context.Context, login, password string) (*User, error) {
 	where, arg := "username = $1", login
 	if strings.Contains(login, "@") {
@@ -293,9 +283,7 @@ func (s *Store) SetEmail(ctx context.Context, userID int64, email string) (*User
 	return u, nil
 }
 
-// SetAdmin changes userID's platform-admin flag, refusing with ErrLastAdmin to
-// demote the only admin. Every admin row is locked so two concurrent demotions
-// cannot both see "another admin exists".
+// SetAdmin changes the platform-admin flag; ErrLastAdmin when demoting the only admin.
 func (s *Store) SetAdmin(ctx context.Context, userID int64, isAdmin bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -348,9 +336,7 @@ func affectedOne(res sql.Result, err error) error {
 	return nil
 }
 
-// DeleteUser removes a user (and, via ON DELETE CASCADE, their sessions and
-// memberships). It refuses with ErrLastOwner if the user is the only owner of
-// any org, since that would leave the org with nobody able to manage it.
+// DeleteUser removes a user; ErrLastOwner when they are an org's only owner.
 func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

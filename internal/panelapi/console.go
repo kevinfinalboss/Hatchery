@@ -37,9 +37,7 @@ import (
 func (s *Server) checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// Non-browser clients (server-to-server, CLI tools) never send an
-		// Origin header at all; only a browser does, and only a browser
-		// needs this check.
+		// Non-browser clients send no Origin.
 		return true
 	}
 	if len(s.AllowedOrigins) == 0 {
@@ -48,9 +46,7 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 	return slices.Contains(s.AllowedOrigins, origin)
 }
 
-// consoleTicketTTL is how long a console ticket can wait to be used. It only
-// has to cover the round trip between the client asking for it and opening
-// the WebSocket, so it is short: a leaked ticket is worthless almost at once.
+// consoleTicketTTL: a ticket only has to survive until the WebSocket opens.
 const consoleTicketTTL = 30 * time.Second
 
 var consoleLog = logf.Log.WithName("panelapi-console")
@@ -116,14 +112,7 @@ func (s *Server) requireConsoleTicket(next http.Handler) http.Handler {
 	})
 }
 
-// handleConsole attaches to the GameServer's already-running "server"
-// container (pods/attach, not pods/exec — this talks to the process already
-// running as PID 1, the same one game clients are connected to) and bridges
-// its stdio to a WebSocket connection: every chunk the process writes becomes
-// one binary WebSocket message out, and every message the client sends
-// becomes bytes on the process's stdin. This only works because the
-// GameServer controller creates the container with Stdin: true — see the
-// comment in buildPod.
+// handleConsole attaches to the game container (pods/attach) and bridges its stdio to the WebSocket.
 func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGameServerAccess(w, r) {
 		return
@@ -167,12 +156,7 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// wsReadWriter adapts a *websocket.Conn to io.Reader/io.Writer so it can be
-// wired directly into remotecommand's Stdin/Stdout/Stderr. Write sends one
-// binary WebSocket message per call; Read drains the current inbound message
-// before blocking for the next one, so a client message larger than the
-// caller's buffer is delivered across several Read calls without losing
-// bytes.
+// wsReadWriter adapts a WebSocket to io.Reader/io.Writer (one message per Write).
 type wsReadWriter struct {
 	conn *websocket.Conn
 	rest []byte

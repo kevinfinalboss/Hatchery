@@ -47,16 +47,11 @@ type sftpSessionResponse struct {
 	Username  string    `json:"username"`
 	Password  string    `json:"password"`
 	ExpiresAt time.Time `json:"expiresAt"`
-	// Mode is "sidecar" when the GameServer is Running (the sftp-agent
-	// already sharing its Pod) or "maintenance" when it's Stopped (an
-	// on-demand Pod was created or reused for this session).
+	// Mode is "sidecar" (server running) or "maintenance" (on-demand Pod).
 	Mode string `json:"mode"`
 }
 
-// handleSFTPSession opens (or reuses) an SFTP access point for a GameServer
-// and mints a short-lived token for it. See AGENTS.md's SFTP section: this is
-// the one place the Running/Stopped duality (sidecar vs. on-demand
-// maintenance Pod) becomes a single API a client doesn't need to know about.
+// handleSFTPSession opens an SFTP access point for a GameServer and mints a short-lived token.
 func (s *Server) handleSFTPSession(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGameServerAccess(w, r) {
 		return
@@ -101,13 +96,8 @@ func (s *Server) handleSFTPSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveSFTPTarget reports how to reach gs's sftp-agent right now: "sidecar"
-// when the GameServer is Running (the agent already shares its Pod), or
-// "maintenance" when it's Stopped — creating the on-demand maintenance Pod
-// first if one isn't already up. Both modes sit behind the same Service, so
-// this only decides the side effect (whether a Pod needs creating), not the
-// address a caller dials — see openFileSFTPClient in filesftp.go, the other
-// caller of this function.
+// resolveSFTPTarget returns "sidecar" or "maintenance", creating the maintenance Pod when needed.
+// Both sit behind the same Service.
 func (s *Server) resolveSFTPTarget(ctx context.Context, gs *gameserversv1alpha1.GameServer) (mode string, err error) {
 	if gs.Spec.State != gameserversv1alpha1.GameServerStateStopped {
 		return "sidecar", nil
@@ -122,11 +112,8 @@ func maintenancePodName(gameServerName string) string {
 	return gameServerName + "-sftp-maintenance"
 }
 
-// ensureMaintenancePod creates the on-demand sftp-agent Pod for a Stopped
-// GameServer if one isn't already up. It carries the GameServer's own
-// selector labels so the GameServerController's Service reaches it exactly
-// like it would the sidecar, and an ActiveDeadlineSeconds so it tears itself
-// down without needing a separate reaper process.
+// ensureMaintenancePod creates the sftp-agent Pod of a stopped server, with the server's labels and
+// an ActiveDeadlineSeconds TTL.
 func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alpha1.GameServer) error {
 	name := maintenancePodName(gs.Name)
 	var existing corev1.Pod
@@ -136,12 +123,7 @@ func (s *Server) ensureMaintenancePod(ctx context.Context, gs *gameserversv1alph
 		if existing.Status.Phase != corev1.PodFailed && existing.Status.Phase != corev1.PodSucceeded {
 			return nil // already up and healthy; it'll tear itself down via ActiveDeadlineSeconds
 		}
-		// Terminal phase: the Pod is past its ActiveDeadlineSeconds TTL (or
-		// otherwise dead) and Kubernetes leaves the object behind with
-		// RestartPolicy: Never — no Service endpoints point at it any more.
-		// Delete it so the create below can stand a fresh one up; without
-		// this, every later SFTP dial for this GameServer would keep
-		// "succeeding" against a corpse.
+		// A finished Pod (past its TTL) is deleted so a fresh one can be created.
 		if delErr := s.Client.Delete(ctx, &existing); delErr != nil && !apierrors.IsNotFound(delErr) {
 			return fmt.Errorf("deleting stale maintenance pod: %w", delErr)
 		}

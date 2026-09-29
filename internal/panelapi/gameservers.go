@@ -37,9 +37,7 @@ import (
 	"github.com/kevinfinalboss/Hatchery/internal/paneldb"
 )
 
-// handleListGameServers lists the GameServers of the requested org, filtered to the ones the
-// caller's grants let them see (admin/owner see everything). The namespace is the org's derived
-// one (set by requireOrgRole), so there is no way to list another org's servers from here.
+// handleListGameServers lists the org's GameServers the caller may see.
 func (s *Server) handleListGameServers(w http.ResponseWriter, r *http.Request) {
 	var list gameserversv1alpha1.GameServerList
 	if err := s.Client.List(r.Context(), &list, client.InNamespace(r.PathValue("namespace"))); err != nil {
@@ -112,9 +110,7 @@ func (s *Server) handleGetGameServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// createGameServerRequest is a thin envelope around GameServerSpec. There is
-// deliberately no namespace field: the server is always created in the org's
-// own namespace. Any "namespace" a client sends is ignored by the JSON decoder.
+// createGameServerRequest wraps the spec; the namespace is always the org's.
 type createGameServerRequest struct {
 	Name string                             `json:"name"`
 	Spec gameserversv1alpha1.GameServerSpec `json:"spec"`
@@ -177,9 +173,7 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, gs)
 }
 
-// updateGameServerRequest carries only what the Panel lets an org admin change after creation. A
-// nil field is left as it is; Variables replaces the whole override list. Disk (spec.storage) is
-// deliberately absent: it is fixed at creation.
+// updateGameServerRequest: nil fields are unchanged; Variables replaces the list. Disk is fixed.
 type updateGameServerRequest struct {
 	DisplayName           *string                                    `json:"displayName"`
 	ImageName             *string                                    `json:"imageName"`
@@ -348,9 +342,7 @@ type setStateRequest struct {
 	State gameserversv1alpha1.GameServerState `json:"state"`
 }
 
-// handleSetGameServerState is the start/stop endpoint: it reads the current
-// GameServer, flips spec.state, and lets the GameServerController do the
-// actual work of creating or deleting the Pod.
+// handleSetGameServerState starts or stops a server by setting spec.state.
 func (s *Server) handleSetGameServerState(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGameServerAccess(w, r) {
 		return
@@ -470,9 +462,7 @@ func (s *Server) handleUnsuspendGameServer(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// mutateGameServer reads the server, applies mutate and writes it back, retrying when the controller
-// wrote in between (the edit is field-level, so re-applying it is safe).
-// It returns the written server, or nil when it answered with an error.
+// mutateGameServer applies mutate and writes, retrying on conflict; nil when it already answered.
 func (s *Server) mutateGameServer(w http.ResponseWriter, r *http.Request, okStatus int, mutate func(*gameserversv1alpha1.GameServer)) *gameserversv1alpha1.GameServer {
 	const attempts = 4
 	for attempt := 1; ; attempt++ {
@@ -495,10 +485,7 @@ func (s *Server) mutateGameServer(w http.ResponseWriter, r *http.Request, okStat
 	}
 }
 
-// handleReinstallGameServer makes the Egg's install script run again: it bumps spec.installRevision,
-// which the install container compares with the marker on the data volume. A running server is
-// restarted so the new revision takes effect now; a stopped one picks it up on its next start.
-// Files are not deleted; only the script runs again.
+// handleReinstallGameServer bumps spec.installRevision (a running server restarts). Files stay.
 func (s *Server) handleReinstallGameServer(w http.ResponseWriter, r *http.Request) {
 	const attempts = 4
 	for attempt := 1; ; attempt++ {

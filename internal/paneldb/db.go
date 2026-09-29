@@ -14,10 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package paneldb is the Panel API's own datastore: users, login sessions
-// and per-GameServer permission grants. It's deliberately not another CRD —
-// see AGENTS.md's note on why this kind of data (relational, high-churn,
-// unrelated to cluster state) belongs in a real database instead of etcd.
+// Package paneldb is the Panel's Postgres store: users, sessions, orgs, permissions and audit.
 package paneldb
 
 import (
@@ -49,17 +46,8 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
-// Migrate applies every migration under migrations/ not yet recorded in
-// schema_migrations, in filename order, each in its own transaction. Safe to
-// call on every startup — already-applied migrations are skipped.
-//
-// Statements within one migration file are split on ";" and executed one at
-// a time rather than as a single multi-statement Exec: pgx's default
-// extended query protocol doesn't support multiple statements per Exec call,
-// and reconfiguring the connection for simple-protocol mode just to allow
-// that felt like a bigger knob to turn than "don't put semicolons inside
-// string literals in migration files," which is an easy rule to follow for
-// schema files this small.
+// Migrate applies pending migrations in filename order, each in a transaction. Statements are split
+// on ";", so migrations (comments included) must not contain ";" elsewhere.
 func Migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version TEXT PRIMARY KEY,
@@ -123,12 +111,7 @@ func splitStatements(sqlText string) []string {
 	stmts := make([]string, 0, len(raw))
 	for _, s := range raw {
 		s = strings.TrimSpace(s)
-		// Note: a leading "--" is not "this chunk is just a comment, skip
-		// it" — a statement preceded by comment lines (as every statement in
-		// these migration files is) starts with "--" too, and Postgres
-		// already strips "--" line comments on its own when executing a
-		// statement. Only genuinely empty chunks (a trailing blank line
-		// after the last ";") get dropped here.
+		// Only empty chunks are skipped; Postgres strips "--" comments itself.
 		if s == "" {
 			continue
 		}
