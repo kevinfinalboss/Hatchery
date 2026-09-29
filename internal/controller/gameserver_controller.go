@@ -397,11 +397,12 @@ func specHash(gs *gameserversv1alpha1.GameServer) string {
 	vars := append([]gameserversv1alpha1.GameServerVariable(nil), gs.Spec.Variables...)
 	sort.Slice(vars, func(i, j int) bool { return vars[i].Name < vars[j].Name })
 	raw, _ := json.Marshal(struct {
-		Variables []gameserversv1alpha1.GameServerVariable `json:"v"`
-		Resources corev1.ResourceRequirements              `json:"r"`
-		ImageName string                                   `json:"i"`
-		StartCmd  string                                   `json:"c"`
-	}{vars, gs.Spec.Resources, gs.Spec.ImageName, gs.Spec.StartCommand})
+		Variables    []gameserversv1alpha1.GameServerVariable `json:"v"`
+		Resources    corev1.ResourceRequirements              `json:"r"`
+		ImageName    string                                   `json:"i"`
+		StartCmd     string                                   `json:"c"`
+		FilesChanged string                                   `json:"f,omitempty"`
+	}{vars, gs.Spec.Resources, gs.Spec.ImageName, gs.Spec.StartCommand, gs.Annotations[gameserversv1alpha1.FilesChangedAnnotation]})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])
 }
