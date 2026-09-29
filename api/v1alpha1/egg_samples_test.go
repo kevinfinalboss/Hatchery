@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,9 +84,14 @@ func TestModpackEggSample(t *testing.T) {
 }
 
 func TestSampleEggsPauseSavingForBackups(t *testing.T) {
-	minecraft := []string{"paper", "purpur", "fabric", "quilt", "neoforge", "spigot"}
+	// "" is the itzg vanilla Egg (gameservers_v1alpha1_egg.yaml).
+	minecraft := []string{"paper", "purpur", "fabric", "quilt", "neoforge", "spigot", "", "modpack"}
 	for _, file := range append(minecraft, "terraria", "zomboid") {
-		raw, err := os.ReadFile("../../config/samples/gameservers_v1alpha1_egg_" + file + ".yaml")
+		name := "gameservers_v1alpha1_egg.yaml"
+		if file != "" {
+			name = "gameservers_v1alpha1_egg_" + file + ".yaml"
+		}
+		raw, err := os.ReadFile("../../config/samples/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,6 +122,28 @@ func TestSampleEggsPauseSavingForBackups(t *testing.T) {
 		}
 		if strings.Join(b.Before, "|") != "save-off|save-all flush" || strings.Join(b.After, "|") != "save-on" || b.SavedRegex != "Saved the game" {
 			t.Errorf("%s: backup = %+v", file, b)
+		}
+	}
+}
+
+// The itzg image's PID 1 (mc-server-runner) takes console input from a named pipe only when
+// CREATE_CONSOLE_IN_PIPE is set; the Egg must point consoleInput at it and fix the variable.
+func TestItzgEggsWriteConsoleToThePipe(t *testing.T) {
+	for _, file := range []string{"gameservers_v1alpha1_egg.yaml", "gameservers_v1alpha1_egg_modpack.yaml"} {
+		raw, err := os.ReadFile("../../config/samples/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var egg Egg
+		if err := yaml.UnmarshalStrict(raw, &egg); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if got := egg.Spec.ConsoleInputPath(); got != "/tmp/minecraft-console-in" {
+			t.Errorf("%s: console input = %q", file, got)
+		}
+		i := slices.IndexFunc(egg.Spec.Variables, func(v EggVariable) bool { return v.Name == "CREATE_CONSOLE_IN_PIPE" })
+		if i < 0 || egg.Spec.Variables[i].Default != "true" || egg.Spec.Variables[i].UserEditable {
+			t.Errorf("%s: CREATE_CONSOLE_IN_PIPE must be a fixed \"true\" variable", file)
 		}
 	}
 }

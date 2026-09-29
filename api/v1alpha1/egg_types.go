@@ -260,6 +260,14 @@ type EggSpec struct {
 	// +optional
 	StopCommand string `json:"stopCommand,omitempty"`
 
+	// ConsoleInput is the file console lines are written to (schedule commands, backup save
+	// commands, the stop command, the panel's command route). Empty means the stdin of PID 1
+	// (/proc/1/fd/0). Images whose PID 1 does not take console input that way declare their own,
+	// e.g. the named pipe itzg/minecraft-server creates with CREATE_CONSOLE_IN_PIPE=true.
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	ConsoleInput string `json:"consoleInput,omitempty"`
+
 	// StopSignal is the OS signal sent to the container when StopCommand is empty
 	// or does not terminate the process within the grace period, e.g. "SIGTERM".
 	// +kubebuilder:default=SIGTERM
