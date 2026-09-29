@@ -30,7 +30,8 @@ import (
 )
 
 func (s *Server) handleFeatures(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]bool{"passwordReset": s.mailEnabled(), "discord": s.discordEnabled()})
+	writeJSON(w, http.StatusOK, map[string]bool{"passwordReset": s.mailEnabled(), "discord": s.discordEnabled(),
+		"twoFactor": s.twoFactorOn()})
 }
 
 // profilePatch: nil fields are left unchanged, "" clears.
@@ -85,7 +86,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditEvent(r, "", "user.profile.update", "user", user.Username, "success", nil)
 	user.Profile = p
-	writeJSON(w, http.StatusOK, toUserResponse(user))
+	writeJSON(w, http.StatusOK, s.ownUserResponse(r.Context(), user))
 }
 
 // checkCurrentPassword verifies the signed-in user's password for sensitive
