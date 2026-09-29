@@ -28,7 +28,12 @@ import type {
   OrgDetail,
   OrgQuota,
   OrgRole,
+  OrgSecurity,
   OrgSummary,
+  PlatformSecurity,
+  RecoveryCodes,
+  TwoFactorChallenge,
+  TwoFactorSetup,
   Profile,
   QuotaUsage,
   ScheduleItem,
@@ -46,10 +51,12 @@ const TOKEN_STORAGE_KEY = "hatchery_token";
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
-  constructor(status: number, message: string, retryAfter?: number) {
+  code?: string;
+  constructor(status: number, message: string, retryAfter?: number, code?: string) {
     super(message);
     this.status = status;
     this.retryAfter = retryAfter;
+    this.code = code;
   }
 }
 
@@ -78,13 +85,15 @@ export function getAuthToken() {
 
 async function failure(res: Response): Promise<ApiError> {
   let message = res.statusText;
+  let code: string | undefined;
   try {
-    const body = (await res.json()) as { error?: string };
+    const body = (await res.json()) as { error?: string; code?: string };
     if (body?.error) message = body.error;
+    code = body?.code;
   } catch {
   }
   const retry = Number(res.headers.get("Retry-After"));
-  return new ApiError(res.status, message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
+  return new ApiError(res.status, message, Number.isFinite(retry) && retry > 0 ? retry : undefined, code);
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -106,10 +115,25 @@ const gs = (org: string, name: string) => `/orgs/${org}/gameservers/${name}`;
 
 export const api = {
   login: (username: string, password: string) =>
-    request<LoginResponse>("/auth/login", {
+    request<LoginResponse | TwoFactorChallenge>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+  loginTwoFactor: (ticket: string, code: string) =>
+    request<LoginResponse>("/auth/login/2fa", { method: "POST", body: JSON.stringify({ ticket, code }) }),
+  twoFactorSetup: () => request<TwoFactorSetup>("/me/2fa/setup", { method: "POST" }),
+  twoFactorEnable: (code: string) => request<RecoveryCodes>("/me/2fa/enable", { method: "POST", body: JSON.stringify({ code }) }),
+  twoFactorDisable: (password: string, code: string) =>
+    request<void>("/me/2fa/disable", { method: "POST", body: JSON.stringify({ password, code }) }),
+  twoFactorRegenerate: (password: string, code: string) =>
+    request<RecoveryCodes>("/me/2fa/recovery-codes", { method: "POST", body: JSON.stringify({ password, code }) }),
+  adminDisableTwoFactor: (userId: number) => request<void>(`/users/${userId}/2fa`, { method: "DELETE" }),
+  orgSecurity: (org: string) => request<OrgSecurity>(`/orgs/${org}/security`),
+  setOrgSecurity: (org: string, require2fa: boolean) =>
+    request<OrgSecurity>(`/orgs/${org}/security`, { method: "PUT", body: JSON.stringify({ require2fa }) }),
+  platformSecurity: () => request<PlatformSecurity>("/platform/security"),
+  setPlatformSecurity: (requireAdminTwoFactor: boolean) =>
+    request<PlatformSecurity>("/platform/security", { method: "PUT", body: JSON.stringify({ requireAdminTwoFactor }) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<User>("/auth/me"),
 
