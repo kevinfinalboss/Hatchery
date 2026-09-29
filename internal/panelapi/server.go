@@ -20,11 +20,14 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"sync"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/kevinfinalboss/Hatchery/internal/discord"
 	"github.com/kevinfinalboss/Hatchery/internal/mailer"
 	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
@@ -58,6 +61,23 @@ type Server struct {
 	Metrics panelcache.MetricsStore
 	// Players holds the online-player snapshots written by the PlayersSampler (nil: none shown).
 	Players panelcache.PlayersStore
+	// Notified deduplicates alerts across rounds and replicas (nil: the notifier sends nothing).
+	Notified panelcache.NotifiedStore
+	// Discord posts alerts to organizations' webhooks (nil: Discord off).
+	Discord DiscordSender
+	// Bot is the Discord bot (nil: the Discord feature is off).
+	Bot *DiscordBot
+	// PodNamespace is where the Panel runs (the operator's Lease lives there too; "" outside a cluster).
+	PodNamespace string
+	// PingCache checks Valkey for the bot's /health (nil: not reported).
+	PingCache func(ctx context.Context) error
+	// botWait replaces the pause before /command reads the log (tests make it instant).
+	botWait func()
+	// internalMux is the route table Server.dispatch runs requests through (built once).
+	internalOnce sync.Once
+	internalMux  http.Handler
+	// now is the notifier's clock (nil: time.Now); tests pin it.
+	now func() time.Time
 
 	Backup BackupConfig
 
@@ -192,8 +212,23 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PATCH "+gs, gsAdminRoute("gameserver.update", s.handleUpdateGameServer))
 	mux.Handle("DELETE "+gs, gsAdminRoute("gameserver.delete", s.handleDeleteGameServer))
 	mux.Handle("PATCH "+gs+"/state", gsPermRoute(paneldb.PermPower, "gameserver.state", s.handleSetGameServerState))
+	mux.Handle("POST "+gs+"/command", gsPermRoute(paneldb.PermConsoleWrite, "gameserver.command", s.handleConsoleCommand))
 	mux.Handle("POST "+gs+"/suspend", s.requireAdmin(orgRoute(paneldb.RoleOwner, "gameserver.suspend", s.handleSuspendGameServer)))
 	mux.Handle("POST "+gs+"/unsuspend", s.requireAdmin(orgRoute(paneldb.RoleOwner, "gameserver.unsuspend", s.handleUnsuspendGameServer)))
+	mux.Handle("GET /api/v1/me/discord/authorize", s.discordOn(s.requireAuth(http.HandlerFunc(s.handleDiscordLinkAuthorize))))
+	mux.Handle("DELETE /api/v1/me/discord", s.discordOn(s.requireAuth(http.HandlerFunc(s.handleDiscordUnlink))))
+	mux.Handle("GET "+org+"/discord", s.discordOn(orgRoute(paneldb.RoleAdmin, "", s.handleGetOrgDiscord)))
+	mux.Handle("POST "+org+"/discord/authorize", s.discordOn(orgRoute(paneldb.RoleAdmin, "", s.handleOrgDiscordAuthorize)))
+	mux.Handle("DELETE "+org+"/discord", s.discordOn(orgRoute(paneldb.RoleAdmin, "", s.handleOrgDiscordDisconnect)))
+	mux.Handle("GET /api/v1/platform/discord", s.discordOn(s.requireAdmin(http.HandlerFunc(s.handleGetPlatformDiscord))))
+	mux.Handle("POST /api/v1/platform/discord/authorize", s.discordOn(s.requireAdmin(http.HandlerFunc(s.handlePlatformDiscordAuthorize))))
+	mux.Handle("DELETE /api/v1/platform/discord", s.discordOn(s.requireAdmin(http.HandlerFunc(s.handlePlatformDiscordDisconnect))))
+	mux.Handle("POST "+discord.InteractionsEndpointPath, s.discordOn(http.HandlerFunc(s.handleDiscordInteraction)))
+	mux.Handle("GET "+discord.OAuthCallbackPath, s.discordOn(http.HandlerFunc(s.handleDiscordCallback)))
+
+	mux.Handle("GET "+org+"/notifications", orgRoute(paneldb.RoleAdmin, "", s.handleGetNotifications))
+	mux.Handle("PUT "+org+"/notifications", orgRoute(paneldb.RoleAdmin, "", s.handlePutNotifications))
+	mux.Handle("POST "+org+"/notifications/test", orgRoute(paneldb.RoleAdmin, "", s.handleTestNotifications))
 	mux.Handle("GET "+org+"/backup-settings", orgRoute(paneldb.RoleMember, "", s.handleGetBackupSettings))
 	mux.Handle("PUT "+org+"/backup-connections/{connection}", orgRoute(paneldb.RoleAdmin, "", s.handlePutBackupConnection))
 	mux.Handle("DELETE "+org+"/backup-connections/{connection}", orgRoute(paneldb.RoleAdmin, "", s.handleDeleteBackupConnection))
