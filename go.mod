@@ -9,6 +9,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.40.0
 	github.com/pkg/sftp v1.13.11
+	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -20,6 +21,7 @@ require (
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.25.1
 	sigs.k8s.io/gateway-api v1.6.2
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -28,6 +30,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -117,5 +120,4 @@ require (
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
