@@ -18,6 +18,9 @@ func (s *EggSpec) Validate() []string {
 			msgs = append(msgs, fmt.Sprintf("startupDetection.regex: %v", err))
 		}
 	}
+	if p := s.ConsoleInput; p != "" && !consoleInputPattern.MatchString(p) {
+		msgs = append(msgs, "consoleInput: must be an absolute path of letters, digits, '.', '_', '-' and '/' (at most 256)")
+	}
 	msgs = append(msgs, s.validateMods()...)
 	msgs = append(msgs, s.validateBackup()...)
 	msgs = append(msgs, s.validateQuery()...)
