@@ -82,6 +82,12 @@ panel:
     publicKey: ""
     # Secret in the release namespace with keys "bot-token" and "client-secret".
     existingSecret: hatchery-discord
+  # Key that encrypts the TOTP (two-factor) secrets at rest. Empty = the chart generates the Secret
+  # <release>-panel-encryption (key "key", 32 bytes in base64) once and keeps it on uninstall.
+  # KEEP A COPY OUTSIDE THE CLUSTER: without it no one with 2FA can log in until a platform admin
+  # turns their 2FA off. An existing Secret must hold the same format under the key "key".
+  encryption:
+    existingSecret: ""
   mods:
     # User-Agent sent to the catalogs; empty = hatchery/dev (+<publicURL>). Modrinth requires one
     # that identifies the application.
