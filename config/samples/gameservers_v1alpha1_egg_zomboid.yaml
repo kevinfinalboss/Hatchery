@@ -11,11 +11,15 @@ spec:
     - name: default
       image: ghcr.io/ptero-eggs/steamcmd:debian
   runAsUser: 1000
+  backup:
+    before: ["save"]
+    savedRegex: "Saving took"
+    timeoutSeconds: 60
   startCommand: >-
     bash -c 'limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null);
-    if [ -n "$limit" ] && [ "$limit" != max ]; then xmx=$((limit / 1048576 * 7 / 10));
+    if [ -n "$limit" ] && [ "$limit" != max ]; then xmx=$((limit / 1048576 * 6 / 10));
     sed -i -E "s/-Xmx[0-9]+[kKmMgG]?/-Xmx${xmx}m/" ProjectZomboid64.json;
-    echo "hatchery: JVM heap -Xmx${xmx}m (70% of the container memory limit)"; fi;
+    echo "hatchery: JVM heap -Xmx${xmx}m (60% of the container memory limit)"; fi;
     export PATH="./jre64/bin:$PATH";
     export LD_LIBRARY_PATH="./linux64:./natives:.:./jre64/lib/amd64:${LD_LIBRARY_PATH}";
     export LD_PRELOAD="${LD_PRELOAD}:libjsig.so";
