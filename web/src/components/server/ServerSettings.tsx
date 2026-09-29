@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
-import type { EggEntry, GameServer, UpdateGameServerRequest } from "../../lib/types";
+import { ExtraPortsEditor, extraPortsValid } from "./ExtraPortsEditor";
+import type { EggEntry, GameServer, GameServerExtraPort, UpdateGameServerRequest } from "../../lib/types";
 import { useT } from "../../lib/i18n";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -79,6 +80,7 @@ export function ServerSettings({
   const [memEdit, setMemEdit] = useState<ByteQuantity | null>(null);
   const [exposeEdit, setExposeEdit] = useState<boolean | null>(null);
   const [autoRestartEdit, setAutoRestartEdit] = useState<boolean | null>(null);
+  const [extraEdit, setExtraEdit] = useState<GameServerExtraPort[] | null>(null);
 
   const name = nameEdit ?? current.name;
   const image = imageEdit ?? current.image;
@@ -94,6 +96,11 @@ export function ServerSettings({
   const exposeChanged = exposeEdit !== null && exposeEdit !== (spec.publicExposure?.enabled ?? false);
   const autoRestart = autoRestartEdit ?? (spec.autoRestart ?? true);
   const autoRestartChanged = autoRestartEdit !== null && autoRestartEdit !== (spec.autoRestart ?? true);
+  const extraPorts = extraEdit ?? spec.extraPorts ?? [];
+  const extraChanged = extraEdit !== null && JSON.stringify(extraEdit) !== JSON.stringify(spec.extraPorts ?? []);
+  const publicAddresses = Object.fromEntries(
+    (status?.publicExposure?.ports ?? []).map((p) => [p.name, `${status?.publicExposure?.host}:${p.port}`]),
+  );
 
   const nameChanged = nameEdit !== null && nameEdit !== current.name;
   const cmdChanged = egg !== undefined && cmdEdit !== null && storedCmd !== current.cmd;
@@ -101,8 +108,8 @@ export function ServerSettings({
   const varsChanged = Object.keys(valueEdits).some((k) => valueEdits[k] !== current.values[k]);
   const cpuChanged = cpuEdit !== null && cpuEdit !== current.cpu;
   const memChanged = memEdit !== null && joinBytes(memEdit) !== joinBytes(current.mem);
-  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged || exposeChanged || autoRestartChanged;
-  const valid = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null) && cpu !== "" && Number.isFinite(mem.value);
+  const dirty = nameChanged || imageChanged || cmdChanged || varsChanged || cpuChanged || memChanged || exposeChanged || autoRestartChanged || extraChanged;
+  const valid = variables.every((v) => variableProblem(v, values[v.name] ?? "") === null) && cpu !== "" && Number.isFinite(mem.value) && extraPortsValid(extraPorts);
 
   const save = () => {
     const body: UpdateGameServerRequest = {};
@@ -119,6 +126,7 @@ export function ServerSettings({
     if (cpuChanged || memChanged) body.resources = { limits: { cpu, memory: joinBytes(mem) } };
     if (exposeChanged) body.publicExposureEnabled = expose;
     if (autoRestartChanged) body.autoRestart = autoRestart;
+    if (extraChanged) body.extraPorts = extraPorts;
     onSave(body);
   };
 
@@ -243,6 +251,8 @@ export function ServerSettings({
                 : t("server.publicExposurePending")}
           </span>
         )}
+
+        <ExtraPortsEditor ports={extraPorts} onChange={setExtraEdit} disabled={!canEdit} addresses={publicAddresses} />
 
         {canEdit && (
           <div className="flex items-center gap-3">
