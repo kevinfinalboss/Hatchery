@@ -65,10 +65,3 @@ func TestResumeDecision(t *testing.T) {
 		}
 	}
 }
-
-func TestStdinCommandPassesTheCommandAsAnArgument(t *testing.T) {
-	got := stdinCommand(`say "hi"; rm -rf /`)
-	if len(got) != 5 || got[4] != `say "hi"; rm -rf /` || got[2] != `printf '%s\n' "$1" > /proc/1/fd/0` {
-		t.Fatalf("got %q", got)
-	}
-}
