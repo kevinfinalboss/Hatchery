@@ -44,11 +44,14 @@ type Profile struct {
 // passwords only ever cross the Store boundary as plaintext arguments,
 // hashed with bcrypt immediately.
 type User struct {
-	ID        int64
-	Username  string
-	Email     string
-	IsAdmin   bool
-	CreatedAt time.Time
+	ID              int64
+	Username        string
+	Email           string
+	IsAdmin         bool
+	CreatedAt       time.Time
+	NotifyEmail     bool
+	DiscordUserID   string
+	DiscordUsername string
 	Profile
 }
 
@@ -60,7 +63,7 @@ func NormalizeEmail(s string) string { return strings.ToLower(strings.TrimSpace(
 // with a table alias.
 func userColumns(alias string) string {
 	cols := []string{"id", "username", "email", "is_admin", "created_at",
-		"display_name", "locale", "time_zone", "discord", "minecraft_username", "steam_id"}
+		"display_name", "locale", "time_zone", "discord", "minecraft_username", "steam_id", "notify_email", "discord_user_id", "discord_username"}
 	if alias != "" {
 		for i, c := range cols {
 			cols[i] = alias + "." + c
@@ -72,8 +75,12 @@ func userColumns(alias string) string {
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanUserInto(row rowScanner, u *User) error {
-	return row.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt,
-		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID)
+	var discordID sql.NullString
+	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt,
+		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID, &u.NotifyEmail,
+		&discordID, &u.DiscordUsername)
+	u.DiscordUserID = discordID.String
+	return err
 }
 
 // scanUser scans one user, mapping "no rows" to ErrNotFound.
@@ -178,9 +185,11 @@ func (s *Store) VerifyPassword(ctx context.Context, login, password string) (*Us
 	}
 	u := &User{}
 	var hash string
+	var discordID sql.NullString
 	row := s.db.QueryRowContext(ctx, `SELECT `+userColumns("")+`, password_hash FROM users WHERE `+where, arg)
 	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.IsAdmin, &u.CreatedAt,
-		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID, &hash); err != nil {
+		&u.DisplayName, &u.Locale, &u.TimeZone, &u.Discord, &u.MinecraftUsername, &u.SteamID, &u.NotifyEmail,
+		&discordID, &u.DiscordUsername, &hash); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash(), []byte(password))
 			return nil, ErrNotFound
@@ -190,6 +199,7 @@ func (s *Store) VerifyPassword(ctx context.Context, login, password string) (*Us
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return nil, ErrNotFound
 	}
+	u.DiscordUserID = discordID.String
 	return u, nil
 }
 

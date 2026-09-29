@@ -70,3 +70,5 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode
 }
+
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
