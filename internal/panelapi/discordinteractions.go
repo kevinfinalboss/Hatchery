@@ -125,6 +125,10 @@ func (s *Server) call(ctx context.Context, bc *botContext, method, path string, 
 	case http.StatusNotFound:
 		return false, botText(in, "Servidor não encontrado (ou você não tem acesso a ele).", "Server not found (or you have no access to it).")
 	case http.StatusForbidden:
+		if e.Code == "two_factor_required" {
+			return false, botText(in, "Esta organização exige autenticação em dois fatores (2FA). Ative em ",
+				"This organization requires two-factor authentication (2FA). Turn it on at ") + s.PublicURL + "/account"
+		}
 		return false, botText(in, "Você não tem permissão para isso neste servidor.", "You are not allowed to do that on this server.")
 	case http.StatusLocked:
 		return false, botText(in, "Este servidor está suspenso: ", "This server is suspended: ") + e.Error

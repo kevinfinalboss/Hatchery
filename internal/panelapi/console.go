@@ -102,7 +102,7 @@ func (s *Server) requireConsoleTicket(next http.Handler) http.Handler {
 		}
 		acc, status, msg := s.resolveOrgAccess(r.Context(), user, t.Org, paneldb.RoleMember)
 		if acc == nil {
-			writeError(w, status, msg)
+			writeOrgAccessError(w, status, msg)
 			return
 		}
 		if !acc.Can(t.GameServer, paneldb.PermConsoleWrite) {
