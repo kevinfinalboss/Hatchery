@@ -127,12 +127,15 @@ func job(name, namespace, script, pvcName string, readOnlyData bool, env []corev
 // first — succeed on a fresh repo, fail fast and harmlessly on an existing
 // one — sidesteps the slow path entirely instead of triggering it via a
 // snapshots/exists check.
-func BackupJob(bkp *gameserversv1alpha1.GameServerBackup, pvcName string) *batchv1.Job {
+// affinity pins the Job to the node holding the volume (volumes.NodeAffinity); nil lets it run anywhere.
+func BackupJob(bkp *gameserversv1alpha1.GameServerBackup, pvcName string, affinity *corev1.Affinity) *batchv1.Job {
 	const script = `set -e
 restic init >/dev/null 2>&1 || true
 restic backup --tag "$TAG" /data
 `
-	return job(bkp.Name, bkp.Namespace, script, pvcName, true, resticEnv(bkp.Spec.Destination.S3, Tag(bkp.Name)))
+	j := job(bkp.Name, bkp.Namespace, script, pvcName, true, resticEnv(bkp.Spec.Destination.S3, Tag(bkp.Name)))
+	j.Spec.Template.Spec.Affinity = affinity
+	return j
 }
 
 // CleanupJobName is the deterministic name of a GameServerBackup's cleanup
@@ -171,7 +174,7 @@ fi
 // GameServerRestore whose backup already reached Completed, so the
 // repository is guaranteed to exist by the time this runs; `restic init`
 // still isn't needed here the way it is in BackupJob/CleanupJob.
-func RestoreJob(restore *gameserversv1alpha1.GameServerRestore, dest *gameserversv1alpha1.S3Destination, backupName, pvcName string) *batchv1.Job {
+func RestoreJob(restore *gameserversv1alpha1.GameServerRestore, dest *gameserversv1alpha1.S3Destination, backupName, pvcName string, affinity *corev1.Affinity) *batchv1.Job {
 	// BackupJob runs `restic backup /data`, which restic records using that
 	// same absolute path inside the snapshot. `restore --target` then
 	// prepends its argument to those stored paths — so target "/data" would
@@ -181,5 +184,7 @@ func RestoreJob(restore *gameserversv1alpha1.GameServerRestore, dest *gameserver
 	const script = `set -e
 restic restore latest --tag "$TAG" --target /
 `
-	return job(restore.Name, restore.Namespace, script, pvcName, false, resticEnv(dest, Tag(backupName)))
+	j := job(restore.Name, restore.Namespace, script, pvcName, false, resticEnv(dest, Tag(backupName)))
+	j.Spec.Template.Spec.Affinity = affinity
+	return j
 }
