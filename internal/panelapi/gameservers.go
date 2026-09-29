@@ -150,7 +150,7 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 		}
 		req.Name = uniqueSlug(slugify(req.Spec.DisplayName), taken)
 	}
-	if err := s.checkAgainstEgg(r.Context(), ns, req.Spec.EggRef, req.Spec.ImageName, req.Spec.StartCommand, req.Spec.Variables); err != nil {
+	if err := s.checkAgainstEgg(r.Context(), ns, req.Spec.EggRef, req.Spec.ImageName, req.Spec.StartCommand, req.Spec.Variables, req.Spec.ExtraPorts); err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -181,14 +181,15 @@ func (s *Server) handleCreateGameServer(w http.ResponseWriter, r *http.Request) 
 // nil field is left as it is; Variables replaces the whole override list. Disk (spec.storage) is
 // deliberately absent: it is fixed at creation.
 type updateGameServerRequest struct {
-	DisplayName           *string                                   `json:"displayName"`
-	ImageName             *string                                   `json:"imageName"`
-	StartCommand          *string                                   `json:"startCommand"`
-	BackupTarget          *gameserversv1alpha1.BackupTarget         `json:"backupTarget"`
-	Variables             *[]gameserversv1alpha1.GameServerVariable `json:"variables"`
-	Resources             *corev1.ResourceRequirements              `json:"resources"`
-	PublicExposureEnabled *bool                                     `json:"publicExposureEnabled"`
-	AutoRestart           *bool                                     `json:"autoRestart"`
+	DisplayName           *string                                    `json:"displayName"`
+	ImageName             *string                                    `json:"imageName"`
+	StartCommand          *string                                    `json:"startCommand"`
+	BackupTarget          *gameserversv1alpha1.BackupTarget          `json:"backupTarget"`
+	Variables             *[]gameserversv1alpha1.GameServerVariable  `json:"variables"`
+	Resources             *corev1.ResourceRequirements               `json:"resources"`
+	PublicExposureEnabled *bool                                      `json:"publicExposureEnabled"`
+	ExtraPorts            *[]gameserversv1alpha1.GameServerExtraPort `json:"extraPorts"`
+	AutoRestart           *bool                                      `json:"autoRestart"`
 }
 
 func (s *Server) handleUpdateGameServer(w http.ResponseWriter, r *http.Request) {
@@ -229,8 +230,8 @@ func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequ
 		}
 		gs.Spec.DisplayName = *req.DisplayName
 	}
-	if req.ImageName != nil || req.Variables != nil || req.StartCommand != nil {
-		imageName, startCommand, vars := gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables
+	if req.ImageName != nil || req.Variables != nil || req.StartCommand != nil || req.ExtraPorts != nil {
+		imageName, startCommand, vars, extras := gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables, gs.Spec.ExtraPorts
 		if req.ImageName != nil {
 			imageName = *req.ImageName
 		}
@@ -240,10 +241,13 @@ func (s *Server) applyGameServerUpdate(r *http.Request, req updateGameServerRequ
 		if req.Variables != nil {
 			vars = *req.Variables
 		}
-		if err := s.checkAgainstEgg(r.Context(), ns, gs.Spec.EggRef, imageName, startCommand, vars); err != nil {
+		if req.ExtraPorts != nil {
+			extras = *req.ExtraPorts
+		}
+		if err := s.checkAgainstEgg(r.Context(), ns, gs.Spec.EggRef, imageName, startCommand, vars, extras); err != nil {
 			return nil, http.StatusUnprocessableEntity, err
 		}
-		gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables = imageName, startCommand, vars
+		gs.Spec.ImageName, gs.Spec.StartCommand, gs.Spec.Variables, gs.Spec.ExtraPorts = imageName, startCommand, vars, extras
 	}
 	if req.BackupTarget != nil {
 		target, code, err := s.validateBackupTarget(r.Context(), ns, acc.Org.Slug, req.BackupTarget)
@@ -295,7 +299,7 @@ func normalizeResources(r *corev1.ResourceRequirements) {
 
 // checkAgainstEgg validates the chosen image and the variable overrides against the referenced Egg
 // so a bad value gets a clear 422. An Egg that cannot be found is left to the admission webhook, which is the authority.
-func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, imageName, startCommand string, vars []gameserversv1alpha1.GameServerVariable) error {
+func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameserversv1alpha1.GameServerEggRef, imageName, startCommand string, vars []gameserversv1alpha1.GameServerVariable, extras []gameserversv1alpha1.GameServerExtraPort) error {
 	eggNS := ns
 	if ref.Scope == gameserversv1alpha1.EggScopeCatalog {
 		eggNS = gameserversv1alpha1.CatalogNamespace
@@ -313,6 +317,9 @@ func (s *Server) checkAgainstEgg(ctx context.Context, ns string, ref gameservers
 	}
 	msgs = append(msgs, gameserversv1alpha1.ValidateStartCommand(&egg, startCommand)...)
 	msgs = append(msgs, gameserversv1alpha1.ValidateVariableOverrides(&egg, vars)...)
+	for _, m := range gameserversv1alpha1.ValidateExtraPorts(&egg, extras) {
+		msgs = append(msgs, "extra port "+m)
+	}
 	if len(msgs) > 0 {
 		return fmt.Errorf("%s", strings.Join(msgs, "; "))
 	}
@@ -444,11 +451,14 @@ func (s *Server) handleSuspendGameServer(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	s.mutateGameServer(w, r, http.StatusAccepted, func(gs *gameserversv1alpha1.GameServer) {
+	gs := s.mutateGameServer(w, r, http.StatusAccepted, func(gs *gameserversv1alpha1.GameServer) {
 		gs.Spec.Suspended = true
 		gs.Spec.SuspendReason = reason
 		gs.Spec.State = gameserversv1alpha1.GameServerStateStopped
 	})
+	if acc := orgAccessFromContext(r.Context()); gs != nil && acc != nil {
+		s.notifySuspended(r.Context(), acc.Org, gs)
+	}
 }
 
 // handleUnsuspendGameServer lifts the block. It does not start the server: it stays stopped until
@@ -462,25 +472,26 @@ func (s *Server) handleUnsuspendGameServer(w http.ResponseWriter, r *http.Reques
 
 // mutateGameServer reads the server, applies mutate and writes it back, retrying when the controller
 // wrote in between (the edit is field-level, so re-applying it is safe).
-func (s *Server) mutateGameServer(w http.ResponseWriter, r *http.Request, okStatus int, mutate func(*gameserversv1alpha1.GameServer)) {
+// It returns the written server, or nil when it answered with an error.
+func (s *Server) mutateGameServer(w http.ResponseWriter, r *http.Request, okStatus int, mutate func(*gameserversv1alpha1.GameServer)) *gameserversv1alpha1.GameServer {
 	const attempts = 4
 	for attempt := 1; ; attempt++ {
 		var gs gameserversv1alpha1.GameServer
 		if err := s.Client.Get(r.Context(), gameServerKey(r), &gs); err != nil {
 			writeError(w, statusFor(err), err.Error())
-			return
+			return nil
 		}
 		mutate(&gs)
 		err := s.Client.Update(r.Context(), &gs)
 		if err == nil {
 			writeJSON(w, okStatus, gs)
-			return
+			return &gs
 		}
 		if apierrors.IsConflict(err) && attempt < attempts {
 			continue
 		}
 		writeError(w, statusFor(err), err.Error())
-		return
+		return nil
 	}
 }
 
