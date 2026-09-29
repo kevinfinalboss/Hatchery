@@ -31,10 +31,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorResponse{Error: msg})
+}
+
+func writeErrorCode(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, errorResponse{Error: msg, Code: code})
 }
 
 // statusFor maps a Kubernetes API error to the HTTP status the Panel API
