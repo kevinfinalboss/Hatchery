@@ -107,6 +107,9 @@ func newTestServer(t *testing.T, objs ...client.Object) *Server {
 	srv.RequestLimiter = panelcache.NewMemoryRequestLimiter()
 	srv.ModHashes = panelcache.NewMemoryModHashCache()
 	srv.GameVersions = panelcache.NewMemoryGameVersionCache()
+	srv.TwoFactor = testCipher(t)
+	srv.LoginChallenges = panelcache.NewMemoryLoginChallengeStore()
+	srv.PendingSecrets = panelcache.NewMemoryPendingSecretStore()
 
 	// Every test server has one org, "testorg", owned by a fixture user. Tests
 	// that need other identities add them with newMemberToken/newUserToken.
