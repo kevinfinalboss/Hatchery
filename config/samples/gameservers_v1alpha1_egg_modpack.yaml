@@ -18,6 +18,7 @@ spec:
     - name: "Java 8"
       image: itzg/minecraft-server:java8
   startCommand: "bash -c 'if [ \"$HATCHERY_PACK_SOURCE\" = curseforge ]; then export TYPE=AUTO_CURSEFORGE CF_SLUG=\"$HATCHERY_PACK\" CF_FILE_ID=\"$HATCHERY_PACK_VERSION\"; else export TYPE=MODRINTH MODRINTH_MODPACK=\"$HATCHERY_PACK\" MODRINTH_VERSION=\"$HATCHERY_PACK_VERSION\"; fi; exec /image/scripts/start'"
+  consoleInput: /tmp/minecraft-console-in
   backup:
     before: ["save-off", "save-all flush"]
     savedRegex: "Saved the game"
