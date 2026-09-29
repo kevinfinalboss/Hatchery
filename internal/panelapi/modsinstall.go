@@ -31,6 +31,10 @@ import (
 	"strings"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
 	gameserversv1alpha1 "github.com/kevinfinalboss/Hatchery/api/v1alpha1"
 	"github.com/kevinfinalboss/Hatchery/internal/modsource"
 	"github.com/kevinfinalboss/Hatchery/internal/panelcache"
@@ -346,6 +350,7 @@ func (s *Server) handleInstallMod(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.Installed = append(resp.Installed, installedEntry{ProjectID: p.v.ProjectID, VersionNumber: p.v.VersionNumber, File: p.name})
 	}
+	s.markFilesChanged(r)
 	s.auditMod(r, "mod.install", map[string]string{"source": req.Source, "project": req.ProjectID, "files": fmt.Sprint(len(plan))})
 	writeJSON(w, http.StatusCreated, resp)
 }
@@ -617,6 +622,7 @@ func (s *Server) handleUpdateMod(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.markFilesChanged(r)
 	s.auditMod(r, "mod.update", map[string]string{"source": id.source, "project": latest.ProjectID, "from": req.File, "to": name})
 	writeJSON(w, http.StatusOK, installedEntry{ProjectID: latest.ProjectID, VersionNumber: latest.VersionNumber, File: name})
 }
@@ -646,6 +652,31 @@ func (s *Server) handleRemoveMod(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusForSFTP(err), err.Error())
 		return
 	}
+	s.markFilesChanged(r)
 	s.auditMod(r, "mod.remove", map[string]string{"file": file})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// markFilesChanged flags a running server for a restart after its mods changed: the game only loads
+// them at start. A stopped server needs nothing (the next start picks them up). Failing to flag is
+// logged, never an error for the change that already happened.
+func (s *Server) markFilesChanged(r *http.Request) {
+	key := types.NamespacedName{Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
+	for attempt := 0; attempt < 3; attempt++ {
+		var gs gameserversv1alpha1.GameServer
+		if err := s.Client.Get(r.Context(), key, &gs); err != nil || gs.Spec.State != gameserversv1alpha1.GameServerStateRunning {
+			return
+		}
+		if gs.Annotations == nil {
+			gs.Annotations = map[string]string{}
+		}
+		gs.Annotations[gameserversv1alpha1.FilesChangedAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+		err := s.Client.Update(r.Context(), &gs)
+		if err == nil || !apierrors.IsConflict(err) {
+			if err != nil {
+				logf.FromContext(r.Context()).Error(err, "could not flag the server for a restart after a mod change", "gameserver", key)
+			}
+			return
+		}
+	}
 }

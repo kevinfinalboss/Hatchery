@@ -1,9 +1,12 @@
 package panelapi
 
 import (
+	"context"
+
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"k8s.io/apimachinery/pkg/types"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -230,5 +233,40 @@ func TestUpdateAndRemoveMod(t *testing.T) {
 	}
 	if got := listDir(t, srv, gs, token, "/plugins"); len(got) != 0 {
 		t.Fatalf("after remove: %v", got)
+	}
+}
+
+func TestModChangesAskForARestartOnlyWhileRunning(t *testing.T) {
+	srv, gs, token, _ := newModsTestServer(t, "1.21.4")
+	ctx := context.Background()
+	annotation := func() string {
+		var got gameserversv1alpha1.GameServer
+		if err := srv.Client.Get(ctx, types.NamespacedName{Namespace: gs.Namespace, Name: gs.Name}, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Annotations[gameserversv1alpha1.FilesChangedAnnotation]
+	}
+	putFile(t, srv, gs, token, "/plugins/a.jar", []byte("a"))
+	if rec := doRequest(t, srv, http.MethodDelete, modsURL(gs, "/installed?file=a.jar"), token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	if annotation() == "" {
+		t.Fatal("removing a plugin from a running server must ask for a restart")
+	}
+
+	// A stopped server loads its plugins on the next start anyway: nothing to flag.
+	var stopped gameserversv1alpha1.GameServer
+	_ = srv.Client.Get(ctx, types.NamespacedName{Namespace: gs.Namespace, Name: gs.Name}, &stopped)
+	stopped.Spec.State = gameserversv1alpha1.GameServerStateStopped
+	delete(stopped.Annotations, gameserversv1alpha1.FilesChangedAnnotation)
+	if err := srv.Client.Update(ctx, &stopped); err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, srv, gs, token, "/plugins/b.jar", []byte("b"))
+	if rec := doRequest(t, srv, http.MethodDelete, modsURL(gs, "/installed?file=b.jar"), token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove while stopped: %d %s", rec.Code, rec.Body)
+	}
+	if annotation() != "" {
+		t.Fatal("a stopped server must not be flagged")
 	}
 }
