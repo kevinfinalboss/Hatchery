@@ -35,6 +35,12 @@ export interface GameServerVariable {
   value: string;
 }
 
+export interface GameServerExtraPort {
+  name: string;
+  containerPort: number;
+  protocol: "TCP" | "UDP";
+}
+
 export interface GameServerSpec {
   displayName?: string;
   suspended?: boolean;
@@ -43,6 +49,7 @@ export interface GameServerSpec {
   startCommand?: string;
   imageName?: string;
   eggRef: { name: string; scope?: EggScope };
+  extraPorts?: GameServerExtraPort[];
   state: GameServerState;
   storage: { size: string; storageClassName?: string };
   variables?: GameServerVariable[];
@@ -157,6 +164,26 @@ export interface User extends Profile {
   username: string;
   email: string;
   isAdmin: boolean;
+  notifyEmail: boolean;
+  discordUsername?: string;
+}
+
+export type NotificationEvent =
+  | "gameserver.gave_up"
+  | "backup.failed"
+  | "backup.resume_failed"
+  | "schedule.failed"
+  | "gameserver.suspended";
+
+export interface NotificationSettings {
+  discordConfigured: boolean;
+  muted: NotificationEvent[];
+  events: NotificationEvent[];
+}
+
+export interface NotificationTestResult {
+  discord: string;
+  email: string;
 }
 
 export interface LoginResponse {
@@ -188,6 +215,7 @@ export interface UpdateGameServerRequest {
   resources?: { limits?: Record<string, string> };
   publicExposureEnabled?: boolean;
   autoRestart?: boolean;
+  extraPorts?: GameServerExtraPort[];
 }
 
 export interface QuotaUsage {
@@ -443,4 +471,10 @@ export interface InvitationPreview {
 
 export interface AuthFeatures {
   passwordReset: boolean;
+  discord?: boolean;
+}
+
+export interface DiscordConnection {
+  connected: boolean;
+  guildName: string;
 }
